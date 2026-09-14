@@ -76,11 +76,40 @@ struct ClipboardTextTests {
             expect(false, "cancelled extraction throws")
         } catch is CancellationError { expect(true, "cancelled extraction throws") }
 
+        tabularText()
+
         try await searchAndLifetime(in: directory)
         try await scheduling(in: directory)
         try await retryFailures(in: directory)
         print("\(passes)/\(passes + failures) passed")
         if failures > 0 { exit(1) }
+    }
+
+    static func tabularText() {
+        expect(ClipboardTabularText.isTabularFile(path: "/tmp/a.csv"), "csv is tabular")
+        expect(ClipboardTabularText.isTabularFile(path: "/tmp/a.xlsx"), "xlsx is tabular")
+        expect(!ClipboardTabularText.isTabularFile(path: "/tmp/a.md"), "markdown is not tabular")
+        expect(!ClipboardTabularText.isTabularFile(path: "/tmp/a.txt"), "plain txt is not tabular")
+        do {
+            let tsv = try ClipboardTabularText.extract(
+                from: "Name,Age\nAda,\"1,2\"\n", pathExtension: "csv")
+            expect(tsv == "Name\tAge\nAda\t1,2", "csv becomes tsv with quotes")
+        } catch {
+            expect(false, "csv extract throws \(error)")
+        }
+        let sample = URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent(
+                "Downloads/отчёт_07.07-2026_Получение_курсов_валют_ЦБ.xlsx")
+        if FileManager.default.isReadableFile(atPath: sample.path) {
+            do {
+                let tsv = try ClipboardXLSX.extract(at: sample)
+                expect(tsv.contains("component_name"), "xlsx header cell")
+                expect(tsv.contains("tomcat-embed-core"), "xlsx shared string cell")
+                expect(tsv.contains("\t"), "xlsx is tab-separated")
+            } catch {
+                expect(false, "xlsx extract throws \(error)")
+            }
+        }
     }
 
     static func searchAndLifetime(in directory: URL) async throws {

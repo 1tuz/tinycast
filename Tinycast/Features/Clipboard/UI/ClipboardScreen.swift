@@ -201,6 +201,12 @@ enum ClipboardActionsMenu {
                 ) {
                     core.clipboardCoordinator.extractText(from: item)
                 })
+            if core.clipboardCoordinator.canExtractTable(item) {
+                items.append(
+                    PopoverMenuItem(title: "Extract as Table", systemImage: "tablecells") {
+                        core.clipboardCoordinator.extractTable(from: item)
+                    })
+            }
             if core.settings.quickActionsEnabled {
                 let actions =
                     QuickAction.allBuiltIn
@@ -215,12 +221,20 @@ enum ClipboardActionsMenu {
                         })
                 }
             }
+        } else if core.clipboardCoordinator.canExtractTable(item) {
+            items.append(
+                PopoverMenuItem(
+                    title: "Extract as Table", systemImage: "tablecells", startsSection: true
+                ) {
+                    core.clipboardCoordinator.extractTable(from: item)
+                })
         }
         if item.kind == .image || item.kind == .file {
             items.append(
                 PopoverMenuItem(
                     title: "Show in Finder", systemImage: "folder",
-                    startsSection: !core.clipboardCoordinator.canExtractText(item)
+                    startsSection: !(core.clipboardCoordinator.canExtractText(item)
+                        || core.clipboardCoordinator.canExtractTable(item))
                 ) {
                     core.clipboardCoordinator.revealClip(item)
                 })

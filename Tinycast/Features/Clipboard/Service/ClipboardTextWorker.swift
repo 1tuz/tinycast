@@ -26,6 +26,19 @@ nonisolated enum ClipboardTextWorker {
         return bounded(text)
     }
 
+    /// CSV / TSV / Excel → TSV without spawning the Vision helper.
+    static func extractTabularFile(at url: URL) throws -> String {
+        let ext = url.pathExtension.lowercased()
+        switch ext {
+        case "xlsx", "xlsm":
+            try probeReadable(url)
+            return try ClipboardXLSX.extract(at: url)
+        default:
+            let text = try extractPlainTextFile(at: url)
+            return try ClipboardTabularText.extract(from: text, pathExtension: ext)
+        }
+    }
+
     private static func bounded(_ text: String) -> String {
         var prefix = text.utf8.prefix(max(0, maximumOutputBytes))
         while !prefix.isEmpty, String(bytes: prefix, encoding: .utf8) == nil {

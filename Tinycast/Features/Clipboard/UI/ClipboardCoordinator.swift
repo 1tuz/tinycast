@@ -169,7 +169,7 @@ final class ClipboardCoordinator {
         core.showMessage("Copied path")
     }
 
-    /// Image, PDF, or a plain-text-ish file — anything Extract Text can turn into prose.
+    /// Image, PDF, plain text, or a tabular file — anything Extract Text can turn into prose.
     func canExtractText(_ item: ClipboardItem) -> Bool {
         switch item.kind {
         case .image: return true
@@ -178,42 +178,60 @@ final class ClipboardCoordinator {
             let kind = ClipboardFileKind.of(path: path)
             return kind == .image || kind == .pdf
                 || ClipboardFileKind.isPlainTextReadable(path: path)
+                || ClipboardFileKind.isTabularFile(path: path)
         case .text: return false
         }
     }
 
+    /// Spreadsheet / CSV / TSV — not Vision on a screenshot.
+    func canExtractTable(_ item: ClipboardItem) -> Bool {
+        guard item.kind == .file, let path = item.filePath else { return false }
+        return ClipboardFileKind.isTabularFile(path: path)
+    }
+
     /// Pull prose onto the pasteboard; Vision/PDF stay in `ClipboardTextHelper`.
     func extractText(from item: ClipboardItem) {
-        startExtract(from: item) { text, core in
+        startExtract(from: item, table: false) { text, core in
             Paster.copyPlainText(text)
             core.showMessage("Text copied to clipboard")
         }
     }
 
+    /// Tables as TSV — Excel / Numbers / Sheets paste cleanly.
+    func extractTable(from item: ClipboardItem) {
+        startExtract(from: item, table: true) { text, core in
+            Paster.copyPlainText(text)
+            core.showMessage("Table copied as TSV")
+        }
+    }
+
     /// Extract, then hand the pasteboard to a Quick Action the same way a typed rewrite would.
     func extractTextAndApplyAction(from item: ClipboardItem, action: QuickAction) {
-        startExtract(from: item) { text, core in
+        startExtract(from: item, table: false) { text, core in
             Paster.copyPlainText(text)
             core.quickActionCoordinator.run(action)
         }
     }
 
     private func startExtract(
-        from item: ClipboardItem, finish: @MainActor @escaping (String, AppCore) -> Void
+        from item: ClipboardItem, table: Bool,
+        finish: @MainActor @escaping (String, AppCore) -> Void
     ) {
-        guard canExtractText(item), let url = clipURL(for: item) else { return }
+        let eligible = table ? canExtractTable(item) : canExtractText(item)
+        guard eligible, let url = clipURL(for: item) else { return }
         extractTask?.cancel()
-        core.showProgress("Extracting text…")
+        core.showProgress(table ? "Extracting table…" : "Extracting text…")
         extractTask = Task { [weak self] in
             guard let self else { return }
             defer { self.extractTask = nil }
             do {
-                let text = try await Self.pullText(item: item, url: url)
+                let text = try await Self.pullText(item: item, url: url, table: table)
                 guard !Task.isCancelled else { return }
                 self.core.hideProgress()
                 let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else {
-                    self.core.showMessage("No text found", tone: .danger)
+                    self.core.showMessage(
+                        table ? "No table found" : "No text found", tone: .danger)
                     return
                 }
                 finish(trimmed, self.core)
@@ -237,10 +255,22 @@ final class ClipboardCoordinator {
             if open { Permissions.openFilesAndFoldersSettings() }
             return
         }
+        if error is ClipboardTabularText.Failure || error is ClipboardXLSX.Failure {
+            core.showMessage("No table found", tone: .danger)
+            return
+        }
         core.showMessage(error.localizedDescription, tone: .danger)
     }
 
-    private static func pullText(item: ClipboardItem, url: URL) async throws -> String {
+    private static func pullText(item: ClipboardItem, url: URL, table: Bool) async throws -> String {
+        if table {
+            guard item.kind == .file, let path = item.filePath,
+                ClipboardFileKind.isTabularFile(path: path)
+            else { return "" }
+            return try await Task.detached {
+                try ClipboardTextWorker.extractTabularFile(at: url)
+            }.value
+        }
         if item.kind == .image {
             return try await ClipboardTextWorker.extract(item)
         }
@@ -250,6 +280,11 @@ final class ClipboardCoordinator {
         case .image, .pdf:
             return try await ClipboardTextWorker.extract(item)
         default:
+            if ClipboardFileKind.isTabularFile(path: path) {
+                return try await Task.detached {
+                    try ClipboardTextWorker.extractTabularFile(at: url)
+                }.value
+            }
             guard ClipboardFileKind.isPlainTextReadable(path: path) else { return "" }
             return try await Task.detached {
                 try ClipboardTextWorker.extractPlainTextFile(at: url)

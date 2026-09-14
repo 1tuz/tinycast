@@ -46,6 +46,11 @@ enum ClipboardFileKind: Sendable {
         }
     }
 
+    /// CSV / TSV / Excel — Extract as Table without Vision.
+    static func isTabularFile(path: String) -> Bool {
+        ClipboardTabularText.isTabularFile(path: path)
+    }
+
     var title: String {
         switch self {
         case .image: return "Image"
