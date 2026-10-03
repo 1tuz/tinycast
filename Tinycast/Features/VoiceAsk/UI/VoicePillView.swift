@@ -21,8 +21,11 @@ final class VoicePillController {
             onCancel: onCancel, metrics: metrics)
         if let host {
             host.rootView = view
-            host.frame.size = size
-            panel?.setContentSize(size)
+            if host.frame.size != size {
+                host.frame.size = size
+                panel?.setContentSize(size)
+                if let panel { position(panel) }
+            }
         } else {
             let host = NSHostingView(rootView: view)
             host.frame = NSRect(origin: .zero, size: size)
@@ -31,9 +34,9 @@ final class VoicePillController {
             panel.setContentSize(size)
             self.host = host
             self.panel = panel
+            position(panel)
         }
         guard let panel else { return }
-        position(panel)
         if !panel.isVisible {
             panel.alphaValue = 0
             panel.orderFrontRegardless()
