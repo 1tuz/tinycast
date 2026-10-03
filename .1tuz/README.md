@@ -14,6 +14,7 @@ Everything that makes this fork differ from [abue-ammar/tinycast](https://github
 | `patches/0007-hyper-stability.patch` | Hyper `keyState` watchdog, Caps Lock wake/terminate |
 | `patches/0008-fork-updater.patch` | In-app updater + About GitHub → `1tuz/tinycast` |
 | `patches/0009-disable-support-reminders.patch` | No automatic Support reminder pump |
+| `patches/0010-mic-isolation-early-ptt.patch` | Mic tap off MainActor; early PCM + pending Hyper-stop during Codex connect |
 | `apply.sh` | Applies patches in order (`git apply --3way`), rewrites leftover releases links, regenerates XcodeGen project for new sources |
 | `gate.sh` | Fast validation: apply already done; Release smoke build + Voice Ask / Hyper / updater-focused harnesses |
 | `UPSTREAM` | Upstream commit SHA `main` was last built from |

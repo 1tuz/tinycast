@@ -35,6 +35,10 @@ final class VoiceAskCoordinator {
     private var generation = 0
     /// True while this session was started by Hyper-alone hold (always push-to-talk, never latch).
     private var hyperHoldSession = false
+    /// Hyper released before Codex finished connecting — finalize as soon as listening starts.
+    private var pendingHyperStop = false
+    /// PCM captured while the realtime session is still coming up.
+    private var earlyAudio: [(Data, Int)] = []
 
     init(
         settings: AppSettings, aiSettings: AISettingsStore,
@@ -86,13 +90,19 @@ final class VoiceAskCoordinator {
     func endHyperHoldPTT() {
         guard hyperHoldSession else { return }
         hyperHoldSession = false
+        // Connect still open — keep capturing; finalize the moment listening starts.
+        if phase == .connecting {
+            pendingHyperStop = true
+            return
+        }
         Task { await stopAndDeliver() }
     }
 
     /// Other key won: drop the Hyper dictation without delivering.
     func cancelHyperHoldPTT() {
-        guard hyperHoldSession else { return }
+        guard hyperHoldSession || pendingHyperStop else { return }
         hyperHoldSession = false
+        pendingHyperStop = false
         cancel()
     }
 
@@ -110,6 +120,8 @@ final class VoiceAskCoordinator {
         sessionTask?.cancel()
         sessionTask = nil
         hyperHoldSession = false
+        pendingHyperStop = false
+        earlyAudio = []
         hotKeyPolicy.reset()
         cleanupCapture()
         restoreQueryIfNeeded()
@@ -136,6 +148,8 @@ final class VoiceAskCoordinator {
         let token = generation
         self.surface = surface
         phase = .connecting
+        pendingHyperStop = false
+        earlyAudio = []
         liveTranscript = ""
         transcript.reset()
         pendingLevels = []
@@ -162,18 +176,27 @@ final class VoiceAskCoordinator {
             if case .unavailable(let message) = availability {
                 throw CodexRealtimeTranscriber.TranscriberError.unavailable(message)
             }
-            try await transcriber.start()
-            guard token == generation else { return }
+            // Mic first so Hyper hold audio is not lost while Codex connects.
             try await microphone.start()
+            guard token == generation else {
+                microphone.stop()
+                return
+            }
+            startedAt = .now
+            startLevelTimer()
+            try await transcriber.start()
             guard token == generation else {
                 microphone.stop()
                 transcriber.cancel()
                 return
             }
+            flushEarlyAudio()
             phase = .listening
-            startedAt = .now
-            startLevelTimer()
             refreshPill()
+            if pendingHyperStop {
+                pendingHyperStop = false
+                await stopAndDeliver()
+            }
         } catch {
             guard token == generation else { return }
             fail(userMessage(for: error))
@@ -184,9 +207,11 @@ final class VoiceAskCoordinator {
         guard phase.isActive else { return }
         let token = generation
         phase = .processing
+        pendingHyperStop = false
         refreshPill()
         microphone.stop()
         stopLevelTimer()
+        flushEarlyAudio()
         await transcriber.finish()
         guard token == generation else { return }
         let text = transcript.displayText
@@ -251,6 +276,8 @@ final class VoiceAskCoordinator {
 
     private func fail(_ message: String) {
         hyperHoldSession = false
+        pendingHyperStop = false
+        earlyAudio = []
         hotKeyPolicy.reset()
         cleanupCapture()
         restoreQueryIfNeeded()
@@ -265,11 +292,30 @@ final class VoiceAskCoordinator {
     }
 
     private func handleAudio(data: Data, samples: Int, peak: Float) {
-        guard phase == .listening else { return }
-        transcriber.appendAudio(pcm: data, samplesPerChannel: samples)
         let level = CGFloat(min(max(peak, 0.04), 1))
         pendingLevels.append(level)
         if pendingLevels.count > 8 { pendingLevels.removeFirst(pendingLevels.count - 8) }
+        switch phase {
+        case .connecting:
+            earlyAudio.append((data, samples))
+            // Cap ~5 s at 24 kHz so a slow connect cannot grow unbounded.
+            var total = earlyAudio.reduce(0) { $0 + $1.1 }
+            while total > 24_000 * 5, !earlyAudio.isEmpty {
+                total -= earlyAudio.removeFirst().1
+            }
+        case .listening:
+            transcriber.appendAudio(pcm: data, samplesPerChannel: samples)
+        default:
+            break
+        }
+    }
+
+    private func flushEarlyAudio() {
+        guard !earlyAudio.isEmpty else { return }
+        for (data, samples) in earlyAudio {
+            transcriber.appendAudio(pcm: data, samplesPerChannel: samples)
+        }
+        earlyAudio = []
     }
 
     private func handleTranscript(_ event: CodexRealtimeProtocol.Event) {
@@ -300,6 +346,7 @@ final class VoiceAskCoordinator {
             pill.hide()
         }
         pendingLevels = []
+        earlyAudio = []
         levels = Array(repeating: 0.12, count: levels.count)
         startedAt = nil
     }
@@ -316,7 +363,7 @@ final class VoiceAskCoordinator {
         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         levelTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 24.0, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, self.phase == .listening else { return }
+                guard let self, self.phase == .listening || self.phase == .connecting else { return }
                 if let startedAt = self.startedAt {
                     self.elapsed = ContinuousClock.now - startedAt
                 }
