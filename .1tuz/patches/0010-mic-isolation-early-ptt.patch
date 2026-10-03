@@ -1,0 +1,350 @@
+diff --git a/Tinycast/Features/VoiceAsk/Service/MicrophoneCapture.swift b/Tinycast/Features/VoiceAsk/Service/MicrophoneCapture.swift
+index b3639107..d8b94867 100644
+--- a/Tinycast/Features/VoiceAsk/Service/MicrophoneCapture.swift
++++ b/Tinycast/Features/VoiceAsk/Service/MicrophoneCapture.swift
+@@ -2,6 +2,9 @@ import AVFoundation
+ import Foundation
+ 
+ /// Captures microphone PCM for Codex realtime. Lives only while a Voice Ask session is listening.
++///
++/// The AVAudioEngine tap runs on a realtime audio queue — never touch `@MainActor` state there.
++/// Conversion stays off-main; delivery hops to MainActor via an explicit `Task`.
+ @MainActor
+ final class MicrophoneCapture {
+     enum CaptureError: LocalizedError {
+@@ -22,18 +25,13 @@ final class MicrophoneCapture {
+     /// Coalesce audio-thread taps onto MainActor near waveform FPS without delaying PTT much.
+     static let coalesceInterval: Duration = .milliseconds(40)
+ 
+-    private var engine: AVAudioEngine?
++    private let engine = MicrophoneCaptureEngine()
+     private var coalesceTask: Task<Void, Never>?
+     private var coalescedPCM = Data()
+     private var coalescedSamples = 0
+     private var coalescedPeak: Float = 0
+-    private let targetFormat: AVAudioFormat? = AVAudioFormat(
+-        commonFormat: .pcmFormatInt16,
+-        sampleRate: Double(CodexRealtimeProtocol.sampleRate),
+-        channels: AVAudioChannelCount(CodexRealtimeProtocol.channelCount),
+-        interleaved: true)
+ 
+-    var isRunning: Bool { engine?.isRunning == true }
++    var isRunning: Bool { engine.isRunning }
+ 
+     func start() async throws {
+         stop()
+@@ -44,49 +42,22 @@ final class MicrophoneCapture {
+         case .granted: break
+         }
+ 
+-        guard let targetFormat else { throw CaptureError.unavailable }
+-        let engine = AVAudioEngine()
+-        let input = engine.inputNode
+-        let inputFormat = input.outputFormat(forBus: 0)
+-        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
+-            throw CaptureError.unavailable
+-        }
+-        guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+-            throw CaptureError.unavailable
+-        }
+-
+-        let bufferSize: AVAudioFrameCount = 1_024
+-        input.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) {
+-            [weak self] buffer, _ in
+-            // Convert on the audio thread; hop to MainActor only after coalescing.
+-            guard let converted = Self.convert(buffer, with: converter, to: targetFormat) else {
+-                return
+-            }
+-            let peak = converted.peak
+-            let data = converted.data
+-            let samples = converted.samples
+-            Task { @MainActor in
+-                self?.enqueue(data: data, samples: samples, peak: peak)
+-            }
+-        }
+         do {
+-            try engine.start()
++            try engine.start { [weak self] data, samples, peak in
++                Task { @MainActor in
++                    self?.enqueue(data: data, samples: samples, peak: peak)
++                }
++            }
+         } catch {
+-            input.removeTap(onBus: 0)
+             throw CaptureError.unavailable
+         }
+-        self.engine = engine
+     }
+ 
+     func stop() {
+         coalesceTask?.cancel()
+         coalesceTask = nil
+         flushCoalesced()
+-        if let engine {
+-            engine.inputNode.removeTap(onBus: 0)
+-            engine.stop()
+-        }
+-        engine = nil
++        engine.stop()
+         coalescedPCM = Data()
+         coalescedSamples = 0
+         coalescedPeak = 0
+@@ -115,13 +86,90 @@ final class MicrophoneCapture {
+         coalescedPeak = 0
+         onBuffer?(data, samples, peak)
+     }
++}
++
++/// Owns `AVAudioEngine` off the main actor so the tap callback never trips isolation asserts.
++final class MicrophoneCaptureEngine: @unchecked Sendable {
++    private let lock = NSLock()
++    private var engine: AVAudioEngine?
++    private var onPCM: (@Sendable (Data, Int, Float) -> Void)?
++
++    var isRunning: Bool {
++        lock.lock()
++        defer { lock.unlock() }
++        return engine?.isRunning == true
++    }
++
++    func start(onPCM: @escaping @Sendable (Data, Int, Float) -> Void) throws {
++        stop()
++        self.onPCM = onPCM
++
++        guard
++            let targetFormat = AVAudioFormat(
++                commonFormat: .pcmFormatInt16,
++                sampleRate: Double(CodexRealtimeProtocol.sampleRate),
++                channels: AVAudioChannelCount(CodexRealtimeProtocol.channelCount),
++                interleaved: true)
++        else {
++            throw NSError(
++                domain: "MicrophoneCapture", code: 1,
++                userInfo: [NSLocalizedDescriptionKey: "Microphone unavailable"])
++        }
++
++        let engine = AVAudioEngine()
++        let input = engine.inputNode
++        let inputFormat = input.outputFormat(forBus: 0)
++        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
++            throw NSError(
++                domain: "MicrophoneCapture", code: 1,
++                userInfo: [NSLocalizedDescriptionKey: "Microphone unavailable"])
++        }
++        guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
++            throw NSError(
++                domain: "MicrophoneCapture", code: 1,
++                userInfo: [NSLocalizedDescriptionKey: "Microphone unavailable"])
++        }
++
++        let bufferSize: AVAudioFrameCount = 1_024
++        input.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) {
++            [weak self] buffer, _ in
++            guard let self else { return }
++            guard let converted = Self.convert(buffer, with: converter, to: targetFormat) else {
++                return
++            }
++            let deliver = self.onPCM
++            deliver?(converted.data, converted.samples, converted.peak)
++        }
++
++        do {
++            try engine.start()
++        } catch {
++            input.removeTap(onBus: 0)
++            throw error
++        }
++        lock.lock()
++        self.engine = engine
++        lock.unlock()
++    }
++
++    func stop() {
++        lock.lock()
++        let engine = self.engine
++        self.engine = nil
++        onPCM = nil
++        lock.unlock()
++        if let engine {
++            engine.inputNode.removeTap(onBus: 0)
++            engine.stop()
++        }
++    }
+ 
+-    private nonisolated static func convert(
++    private static func convert(
+         _ buffer: AVAudioPCMBuffer,
+         with converter: AVAudioConverter,
+         to targetFormat: AVAudioFormat
+     ) -> (data: Data, samples: Int, peak: Float)? {
+-        let peak = Self.peak(of: buffer)
++        let peak = peak(of: buffer)
+         let ratio = targetFormat.sampleRate / buffer.format.sampleRate
+         let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 32
+         guard let converted = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: capacity)
+@@ -151,7 +199,7 @@ final class MicrophoneCapture {
+         return (data, Int(converted.frameLength), peak)
+     }
+ 
+-    private nonisolated static func peak(of buffer: AVAudioPCMBuffer) -> Float {
++    private static func peak(of buffer: AVAudioPCMBuffer) -> Float {
+         let count = Int(buffer.frameLength)
+         guard count > 0 else { return 0 }
+         if let samples = buffer.floatChannelData?[0] {
+diff --git a/Tinycast/Features/VoiceAsk/UI/VoiceAskCoordinator.swift b/Tinycast/Features/VoiceAsk/UI/VoiceAskCoordinator.swift
+index 499fb256..ade5f3ae 100644
+--- a/Tinycast/Features/VoiceAsk/UI/VoiceAskCoordinator.swift
++++ b/Tinycast/Features/VoiceAsk/UI/VoiceAskCoordinator.swift
+@@ -35,6 +35,10 @@ final class VoiceAskCoordinator {
+     private var generation = 0
+     /// True while this session was started by Hyper-alone hold (always push-to-talk, never latch).
+     private var hyperHoldSession = false
++    /// Hyper released before Codex finished connecting — finalize as soon as listening starts.
++    private var pendingHyperStop = false
++    /// PCM captured while the realtime session is still coming up.
++    private var earlyAudio: [(Data, Int)] = []
+ 
+     init(
+         settings: AppSettings, aiSettings: AISettingsStore,
+@@ -86,13 +90,19 @@ final class VoiceAskCoordinator {
+     func endHyperHoldPTT() {
+         guard hyperHoldSession else { return }
+         hyperHoldSession = false
++        // Connect still open — keep capturing; finalize the moment listening starts.
++        if phase == .connecting {
++            pendingHyperStop = true
++            return
++        }
+         Task { await stopAndDeliver() }
+     }
+ 
+     /// Other key won: drop the Hyper dictation without delivering.
+     func cancelHyperHoldPTT() {
+-        guard hyperHoldSession else { return }
++        guard hyperHoldSession || pendingHyperStop else { return }
+         hyperHoldSession = false
++        pendingHyperStop = false
+         cancel()
+     }
+ 
+@@ -110,6 +120,8 @@ final class VoiceAskCoordinator {
+         sessionTask?.cancel()
+         sessionTask = nil
+         hyperHoldSession = false
++        pendingHyperStop = false
++        earlyAudio = []
+         hotKeyPolicy.reset()
+         cleanupCapture()
+         restoreQueryIfNeeded()
+@@ -136,6 +148,8 @@ final class VoiceAskCoordinator {
+         let token = generation
+         self.surface = surface
+         phase = .connecting
++        pendingHyperStop = false
++        earlyAudio = []
+         liveTranscript = ""
+         transcript.reset()
+         pendingLevels = []
+@@ -162,18 +176,27 @@ final class VoiceAskCoordinator {
+             if case .unavailable(let message) = availability {
+                 throw CodexRealtimeTranscriber.TranscriberError.unavailable(message)
+             }
+-            try await transcriber.start()
+-            guard token == generation else { return }
++            // Mic first so Hyper hold audio is not lost while Codex connects.
+             try await microphone.start()
+             guard token == generation else {
+                 microphone.stop()
+-                transcriber.cancel()
+                 return
+             }
+-            phase = .listening
+             startedAt = .now
+             startLevelTimer()
++            try await transcriber.start()
++            guard token == generation else {
++                microphone.stop()
++                transcriber.cancel()
++                return
++            }
++            flushEarlyAudio()
++            phase = .listening
+             refreshPill()
++            if pendingHyperStop {
++                pendingHyperStop = false
++                await stopAndDeliver()
++            }
+         } catch {
+             guard token == generation else { return }
+             fail(userMessage(for: error))
+@@ -184,9 +207,11 @@ final class VoiceAskCoordinator {
+         guard phase.isActive else { return }
+         let token = generation
+         phase = .processing
++        pendingHyperStop = false
+         refreshPill()
+         microphone.stop()
+         stopLevelTimer()
++        flushEarlyAudio()
+         await transcriber.finish()
+         guard token == generation else { return }
+         let text = transcript.displayText
+@@ -251,6 +276,8 @@ final class VoiceAskCoordinator {
+ 
+     private func fail(_ message: String) {
+         hyperHoldSession = false
++        pendingHyperStop = false
++        earlyAudio = []
+         hotKeyPolicy.reset()
+         cleanupCapture()
+         restoreQueryIfNeeded()
+@@ -265,11 +292,30 @@ final class VoiceAskCoordinator {
+     }
+ 
+     private func handleAudio(data: Data, samples: Int, peak: Float) {
+-        guard phase == .listening else { return }
+-        transcriber.appendAudio(pcm: data, samplesPerChannel: samples)
+         let level = CGFloat(min(max(peak, 0.04), 1))
+         pendingLevels.append(level)
+         if pendingLevels.count > 8 { pendingLevels.removeFirst(pendingLevels.count - 8) }
++        switch phase {
++        case .connecting:
++            earlyAudio.append((data, samples))
++            // Cap ~5 s at 24 kHz so a slow connect cannot grow unbounded.
++            var total = earlyAudio.reduce(0) { $0 + $1.1 }
++            while total > 24_000 * 5, !earlyAudio.isEmpty {
++                total -= earlyAudio.removeFirst().1
++            }
++        case .listening:
++            transcriber.appendAudio(pcm: data, samplesPerChannel: samples)
++        default:
++            break
++        }
++    }
++
++    private func flushEarlyAudio() {
++        guard !earlyAudio.isEmpty else { return }
++        for (data, samples) in earlyAudio {
++            transcriber.appendAudio(pcm: data, samplesPerChannel: samples)
++        }
++        earlyAudio = []
+     }
+ 
+     private func handleTranscript(_ event: CodexRealtimeProtocol.Event) {
+@@ -300,6 +346,7 @@ final class VoiceAskCoordinator {
+             pill.hide()
+         }
+         pendingLevels = []
++        earlyAudio = []
+         levels = Array(repeating: 0.12, count: levels.count)
+         startedAt = nil
+     }
+@@ -316,7 +363,7 @@ final class VoiceAskCoordinator {
+         let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+         levelTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 24.0, repeats: true) { [weak self] _ in
+             MainActor.assumeIsolated {
+-                guard let self, self.phase == .listening else { return }
++                guard let self, self.phase == .listening || self.phase == .connecting else { return }
+                 if let startedAt = self.startedAt {
+                     self.elapsed = ContinuousClock.now - startedAt
+                 }

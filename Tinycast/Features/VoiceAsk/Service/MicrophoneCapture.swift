@@ -2,6 +2,9 @@ import AVFoundation
 import Foundation
 
 /// Captures microphone PCM for Codex realtime. Lives only while a Voice Ask session is listening.
+///
+/// The AVAudioEngine tap runs on a realtime audio queue — never touch `@MainActor` state there.
+/// Conversion stays off-main; delivery hops to MainActor via an explicit `Task`.
 @MainActor
 final class MicrophoneCapture {
     enum CaptureError: LocalizedError {
@@ -22,18 +25,13 @@ final class MicrophoneCapture {
     /// Coalesce audio-thread taps onto MainActor near waveform FPS without delaying PTT much.
     static let coalesceInterval: Duration = .milliseconds(40)
 
-    private var engine: AVAudioEngine?
+    private let engine = MicrophoneCaptureEngine()
     private var coalesceTask: Task<Void, Never>?
     private var coalescedPCM = Data()
     private var coalescedSamples = 0
     private var coalescedPeak: Float = 0
-    private let targetFormat: AVAudioFormat? = AVAudioFormat(
-        commonFormat: .pcmFormatInt16,
-        sampleRate: Double(CodexRealtimeProtocol.sampleRate),
-        channels: AVAudioChannelCount(CodexRealtimeProtocol.channelCount),
-        interleaved: true)
 
-    var isRunning: Bool { engine?.isRunning == true }
+    var isRunning: Bool { engine.isRunning }
 
     func start() async throws {
         stop()
@@ -44,49 +42,22 @@ final class MicrophoneCapture {
         case .granted: break
         }
 
-        guard let targetFormat else { throw CaptureError.unavailable }
-        let engine = AVAudioEngine()
-        let input = engine.inputNode
-        let inputFormat = input.outputFormat(forBus: 0)
-        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
-            throw CaptureError.unavailable
-        }
-        guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
-            throw CaptureError.unavailable
-        }
-
-        let bufferSize: AVAudioFrameCount = 1_024
-        input.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) {
-            [weak self] buffer, _ in
-            // Convert on the audio thread; hop to MainActor only after coalescing.
-            guard let converted = Self.convert(buffer, with: converter, to: targetFormat) else {
-                return
-            }
-            let peak = converted.peak
-            let data = converted.data
-            let samples = converted.samples
-            Task { @MainActor in
-                self?.enqueue(data: data, samples: samples, peak: peak)
-            }
-        }
         do {
-            try engine.start()
+            try engine.start { [weak self] data, samples, peak in
+                Task { @MainActor in
+                    self?.enqueue(data: data, samples: samples, peak: peak)
+                }
+            }
         } catch {
-            input.removeTap(onBus: 0)
             throw CaptureError.unavailable
         }
-        self.engine = engine
     }
 
     func stop() {
         coalesceTask?.cancel()
         coalesceTask = nil
         flushCoalesced()
-        if let engine {
-            engine.inputNode.removeTap(onBus: 0)
-            engine.stop()
-        }
-        engine = nil
+        engine.stop()
         coalescedPCM = Data()
         coalescedSamples = 0
         coalescedPeak = 0
@@ -115,13 +86,90 @@ final class MicrophoneCapture {
         coalescedPeak = 0
         onBuffer?(data, samples, peak)
     }
+}
 
-    private nonisolated static func convert(
+/// Owns `AVAudioEngine` off the main actor so the tap callback never trips isolation asserts.
+final class MicrophoneCaptureEngine: @unchecked Sendable {
+    private let lock = NSLock()
+    private var engine: AVAudioEngine?
+    private var onPCM: (@Sendable (Data, Int, Float) -> Void)?
+
+    var isRunning: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return engine?.isRunning == true
+    }
+
+    func start(onPCM: @escaping @Sendable (Data, Int, Float) -> Void) throws {
+        stop()
+        self.onPCM = onPCM
+
+        guard
+            let targetFormat = AVAudioFormat(
+                commonFormat: .pcmFormatInt16,
+                sampleRate: Double(CodexRealtimeProtocol.sampleRate),
+                channels: AVAudioChannelCount(CodexRealtimeProtocol.channelCount),
+                interleaved: true)
+        else {
+            throw NSError(
+                domain: "MicrophoneCapture", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Microphone unavailable"])
+        }
+
+        let engine = AVAudioEngine()
+        let input = engine.inputNode
+        let inputFormat = input.outputFormat(forBus: 0)
+        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
+            throw NSError(
+                domain: "MicrophoneCapture", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Microphone unavailable"])
+        }
+        guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+            throw NSError(
+                domain: "MicrophoneCapture", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Microphone unavailable"])
+        }
+
+        let bufferSize: AVAudioFrameCount = 1_024
+        input.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) {
+            [weak self] buffer, _ in
+            guard let self else { return }
+            guard let converted = Self.convert(buffer, with: converter, to: targetFormat) else {
+                return
+            }
+            let deliver = self.onPCM
+            deliver?(converted.data, converted.samples, converted.peak)
+        }
+
+        do {
+            try engine.start()
+        } catch {
+            input.removeTap(onBus: 0)
+            throw error
+        }
+        lock.lock()
+        self.engine = engine
+        lock.unlock()
+    }
+
+    func stop() {
+        lock.lock()
+        let engine = self.engine
+        self.engine = nil
+        onPCM = nil
+        lock.unlock()
+        if let engine {
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
+        }
+    }
+
+    private static func convert(
         _ buffer: AVAudioPCMBuffer,
         with converter: AVAudioConverter,
         to targetFormat: AVAudioFormat
     ) -> (data: Data, samples: Int, peak: Float)? {
-        let peak = Self.peak(of: buffer)
+        let peak = peak(of: buffer)
         let ratio = targetFormat.sampleRate / buffer.format.sampleRate
         let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 32
         guard let converted = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: capacity)
@@ -151,7 +199,7 @@ final class MicrophoneCapture {
         return (data, Int(converted.frameLength), peak)
     }
 
-    private nonisolated static func peak(of buffer: AVAudioPCMBuffer) -> Float {
+    private static func peak(of buffer: AVAudioPCMBuffer) -> Float {
         let count = Int(buffer.frameLength)
         guard count > 0 else { return 0 }
         if let samples = buffer.floatChannelData?[0] {
