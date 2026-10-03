@@ -278,6 +278,7 @@ run dictionary-test        Tinycast/Features/Dictionary/Model/DictionaryEntry.sw
                            Tinycast/Features/Dictionary/Model/DictionaryMarkup.swift
 run hotkey-test            Tinycast/Features/HotKeys/Model/DoubleTapModifier.swift \
                            Tinycast/Features/HotKeys/Model/HotKeyTiming.swift \
+                           Tinycast/Features/HotKeys/Model/HyperHoldWatchdog.swift \
                            Tinycast/Features/HotKeys/Model/DoubleTapDetector.swift \
                            Tinycast/Features/HotKeys/Model/GlobeTapDetector.swift \
                            Tinycast/Features/HotKeys/Model/HotKeyBinding.swift \
@@ -297,10 +298,14 @@ run hotkey-test            Tinycast/Features/HotKeys/Model/DoubleTapModifier.swi
                            Tinycast/Features/Snippets/Model/Snippet.swift
 run voice-ask-test         Tinycast/Features/HotKeys/Model/HotKeyTiming.swift \
                            Tinycast/Features/HotKeys/Model/HyperVoiceAskHold.swift \
+                           Tinycast/Features/HotKeys/Model/HyperHoldWatchdog.swift \
                            Tinycast/Features/VoiceAsk/Model/VoiceAskHotKeyPolicy.swift \
                            Tinycast/Features/VoiceAsk/Model/VoiceAskPhase.swift \
                            Tinycast/Features/VoiceAsk/Model/CodexRealtimeProtocol.swift \
                            Tinycast/Features/VoiceAsk/Model/VoiceCommandRouter.swift \
+                           Tinycast/Features/VoiceAsk/Model/RealtimeAudioBatchPolicy.swift \
+                           Tinycast/Features/AI/Model/CodexHelperLifetimePolicy.swift \
+                           Tinycast/Features/AI/Model/AIConversationOpenPolicy.swift \
                            Tinycast/Features/AI/Model/JSONValue.swift
 run callout-test          Tinycast/Platform/Appearance.swift \
                            Tinycast/DesignSystem/Theme.swift \

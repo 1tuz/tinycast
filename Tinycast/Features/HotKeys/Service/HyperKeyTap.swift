@@ -341,6 +341,28 @@ final class HyperKeyTap: HealthCheckable {
         otherKeyPressed = false
     }
 
+    /// Physical Hyper down via `CGEventSource.keyState`. Watchdog-only — never in `decide`.
+    private var isPhysicalKeyDown: Bool {
+        guard key != .none else { return false }
+        if let tapCode = key.tapKeyCode,
+            CGEventSource.keyState(.combinedSessionState, key: CGKeyCode(tapCode))
+        {
+            return true
+        }
+        if let physCode = key.keyCode, physCode != key.tapKeyCode,
+            CGEventSource.keyState(.combinedSessionState, key: CGKeyCode(physCode))
+        {
+            return true
+        }
+        return false
+    }
+
+    private func clearCapsLockLatchAndRemap() {
+        guard key == .capsLock else { return }
+        setCapsLockState(false)
+        CapsLockRemap.setEnabled(true)
+    }
+
     private func applyVoiceAskEffect(_ effect: HyperVoiceAskHold.Effect) {
         switch effect {
         case .none:
@@ -388,6 +410,7 @@ final class HyperKeyTap: HealthCheckable {
             setCapsLockState(false)
             CapsLockRemap.setEnabled(true)
         } else if wasCapsLock {
+            setCapsLockState(false)
             CapsLockRemap.setEnabled(false)
         }
         syncTapPresence()
@@ -395,7 +418,10 @@ final class HyperKeyTap: HealthCheckable {
 
     /// The HID remap outlives the process, so hand the key back before exiting.
     func prepareForTermination() {
-        if key == .capsLock { CapsLockRemap.clearBlocking() }
+        if key == .capsLock {
+            setCapsLockState(false)
+            CapsLockRemap.clearBlocking()
+        }
     }
 
     // MARK: - Tap lifecycle
@@ -453,12 +479,18 @@ final class HyperKeyTap: HealthCheckable {
     /// Called when the system disables the tap; any half-tracked hold is stale by then.
     fileprivate func reenable() {
         cancelHold()
+        clearCapsLockLatchAndRemap()
         if let tapPort { CGEvent.tapEnable(tap: tapPort, enable: true) }
     }
 
     /// One-second watchdog while a key is configured. See docs/features/hotkeys.md#lifecycle.
     func healthCheck() {
         guard key != .none else { return }
+        // Missed key-up (sleep, focus steal): internal hold without a physical key is stale.
+        if HyperHoldWatchdog.shouldReset(hyperActive: hyperActive, physicalKeyDown: isPhysicalKeyDown) {
+            cancelHold()
+            clearCapsLockLatchAndRemap()
+        }
         if tapPort == nil {
             installTapIfNeeded()
         } else if !Permissions.isAccessibilityTrusted() {
@@ -467,20 +499,17 @@ final class HyperKeyTap: HealthCheckable {
         } else if let tapPort, !CGEvent.tapIsEnabled(tap: tapPort) {
             CGEvent.tapEnable(tap: tapPort, enable: true)
         }
-
     }
 
     private func sessionDidResign() {
         cancelHold()
+        if key == .capsLock { setCapsLockState(false) }
         if let tapPort { CGEvent.tapEnable(tap: tapPort, enable: false) }
     }
 
     private func sessionDidBecomeActive() {
         cancelHold()
-        if key == .capsLock {
-            setCapsLockState(false)
-            CapsLockRemap.setEnabled(true)
-        }
+        clearCapsLockLatchAndRemap()
         if let tapPort {
             CGEvent.tapEnable(tap: tapPort, enable: true)
         } else {

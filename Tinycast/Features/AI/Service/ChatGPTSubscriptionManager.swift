@@ -7,7 +7,7 @@ import Observation
 final class ChatGPTSubscriptionManager {
     /// Keep Codex warm briefly, then return its ~20 MB resident helper when the assistant is idle.
     /// Three minutes keeps consecutive voice commands fast without paying a ten-minute idle tax.
-    private static let idleShutdown: Duration = .seconds(180)
+    private static let idleShutdown: Duration = .seconds(CodexHelperLifetimePolicy.idleShutdownSeconds)
 
     private let client: CodexAppServerClient
     let turns: CodexTurnRunner
@@ -66,6 +66,14 @@ final class ChatGPTSubscriptionManager {
         try await ensureConnected(toolServers: [])
     }
 
+    /// After a one-shot probe: return to the normal idle timer so the helper is not pinned forever.
+    func scheduleIdleAfterProbe() {
+        guard CodexHelperLifetimePolicy.shouldArmIdleAfterProbe(
+            realtimeHoldCount: realtimeHoldCount, turnActive: turns.isActive)
+        else { return }
+        scheduleIdleShutdown()
+    }
+
     /// Holds idle shutdown for an active realtime session; pairs with `realtimeSessionDidEnd`.
     func beginRealtimeHold() {
         realtimeHoldCount += 1
@@ -78,6 +86,12 @@ final class ChatGPTSubscriptionManager {
             scheduleIdleShutdown()
         }
     }
+
+    /// Test seam: whether an idle shutdown task is armed (probe / session end must leave one).
+    var hasIdleShutdownArmed: Bool { idleTask != nil }
+
+    /// Test seam: active realtime holds that keep the helper alive.
+    var realtimeHoldDepth: Int { realtimeHoldCount }
 
     func realtimeRequest(
         method: String, params: [String: Any] = [:], timeout: Duration = .seconds(15)

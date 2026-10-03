@@ -145,6 +145,7 @@ final class VoiceAskCoordinator {
             palette.query = ""
         } else {
             savedQuery = nil
+            pill.updateMetrics(settings.interfaceSize.metrics)
             pill.show(phase: phase, levels: levels, elapsed: elapsed, error: nil)
             installEscapeMonitor()
         }
@@ -224,7 +225,8 @@ final class VoiceAskCoordinator {
             if surface == .palette { palette.query = "" }
             core.launcherCoordinator.launch(entry)
         case .automation(let transcript):
-            // Reserved: compound speech is not a local app launch. No Codex computer_use.
+            // Explicit: `.automation` is reserved compound speech, not computer_use / agent runtime.
+            // Today it shares the Quick AI path with `.askAI` (MCP tools + selected Codex route).
             deliverAskAI(transcript)
         case .askAI(let transcript):
             deliverAskAI(transcript)
@@ -236,12 +238,12 @@ final class VoiceAskCoordinator {
         if fromPalette {
             palette.query = text
             if aiSettings.voiceAskSendAutomatically {
-                core.quickAICoordinator.ask(text)
+                core.quickAICoordinator.sendVoicePrompt(text)
             }
             return
         }
         if aiSettings.voiceAskSendAutomatically {
-            core.quickAICoordinator.ask(text)
+            core.quickAICoordinator.sendVoicePrompt(text)
         } else {
             core.quickAICoordinator.compose(text)
         }
@@ -340,6 +342,7 @@ final class VoiceAskCoordinator {
 
     private func refreshPill() {
         guard surface == .pill else { return }
+        pill.updateMetrics(settings.interfaceSize.metrics)
         pill.show(
             phase: phase, levels: levels, elapsed: elapsed, error: phase.errorMessage)
     }

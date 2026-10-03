@@ -68,6 +68,7 @@ struct DoubleTapDetectorTests {
         interruptions()
         repeats()
         resetting()
+        hyperHoldWatchdog()
 
         print("\(passes) passed, \(failures) failed")
         if failures > 0 { exit(1) }
@@ -518,5 +519,17 @@ struct DoubleTapDetectorTests {
         stuck.tap(.command, at: 0.10)
         stuck.tap(.command, at: 0.25)
         expect(stuck.fired, [.command], "reset clears a half-held press")
+    }
+
+    static func hyperHoldWatchdog() {
+        expect(
+            !HyperHoldWatchdog.shouldReset(hyperActive: false, physicalKeyDown: false),
+            "idle + up → no reset")
+        expect(
+            !HyperHoldWatchdog.shouldReset(hyperActive: true, physicalKeyDown: true),
+            "active + down → keep")
+        expect(
+            HyperHoldWatchdog.shouldReset(hyperActive: true, physicalKeyDown: false),
+            "stale hold → reset")
     }
 }
