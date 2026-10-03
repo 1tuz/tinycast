@@ -351,7 +351,7 @@ index 00000000..20656930
 +    }
 +}
 diff --git a/Tinycast/App/AppCore.swift b/Tinycast/App/AppCore.swift
-index 1d525446..72169c5d 100644
+index 1d525446..979f6ab8 100644
 --- a/Tinycast/App/AppCore.swift
 +++ b/Tinycast/App/AppCore.swift
 @@ -215,6 +215,9 @@ final class AppCore {
@@ -364,7 +364,17 @@ index 1d525446..72169c5d 100644
  
      @ObservationIgnored private lazy var windowController = PaletteWindowController(core: self)
      @ObservationIgnored private lazy var messageHUD = MessageHUDController(settings: settings)
-@@ -369,6 +372,12 @@ final class AppCore {
+@@ -329,8 +332,7 @@ final class AppCore {
+                 self?.updateCoordinator.presentIfAvailable(release) ?? true
+             }
+             updateChecker.start()
+-            supportReminders.onDue = { [weak self] in self?.supportCoordinator.presentIfDue() }
+-            supportReminders.start()
++            // Support reminders stay opt-in via the Support window — no background pump.
+ 
+             hyperKeyTap.healthTicker = healthTicker
+             hotKeys.modifierTapMonitor.healthTicker = healthTicker
+@@ -369,6 +371,12 @@ final class AppCore {
              hotKeys.onRunExtensionCommand = { [weak self] entryID in
                  self?.extensionCoordinator.runExtensionCommand(entryID: entryID)
              }
@@ -377,7 +387,7 @@ index 1d525446..72169c5d 100644
              extensions.onDidUninstall = { [weak self] entryIDs in
                  self?.extensionCoordinator.removeExtensionReferences(entryIDs: entryIDs)
              }
-@@ -399,6 +408,15 @@ final class AppCore {
+@@ -399,6 +407,15 @@ final class AppCore {
                  quickActionIDs: Set(customQuickActions.actions.map(\.id)))
              // Keeps running while Carbon pauses: the recorder needs its rewritten flags.
              hyperKeyTap.start(settings: settings)
@@ -393,7 +403,7 @@ index 1d525446..72169c5d 100644
  
              snippetsStore.onSnapshot = { [weak self] snapshot in
                  guard let self else { return }
-@@ -482,7 +500,7 @@ final class AppCore {
+@@ -482,7 +499,7 @@ final class AppCore {
              return snippetsStore.record(id: id)?.snippet.name
          case .extensionCommand(let entryID):
              return appIndex.apps.first { $0.kind == .extensionCommand && $0.id == entryID }?.name
@@ -1493,17 +1503,18 @@ index 72b98563..632c78e2 100644
  
  `Manager` is the one worth thinking twice about. It means *lifecycle plus policy*, which is a lot for one
  type, so there are only two: `ClipboardManager` (polls, and owns the capture policy and the paste-side
-diff --git a/Tinycast/App/AppCore.swift b/Tinycast/App/AppCore.swift
-index 72169c5d..979f6ab8 100644
---- a/Tinycast/App/AppCore.swift
-+++ b/Tinycast/App/AppCore.swift
-@@ -332,8 +332,7 @@ final class AppCore {
-                 self?.updateCoordinator.presentIfAvailable(release) ?? true
-             }
-             updateChecker.start()
--            supportReminders.onDue = { [weak self] in self?.supportCoordinator.presentIfDue() }
--            supportReminders.start()
-+            // Support reminders stay opt-in via the Support window — no background pump.
+diff --git a/Tests/voice-ask-test.swift b/Tests/voice-ask-test.swift
+index 20656930..82160e8f 100644
+--- a/Tests/voice-ask-test.swift
++++ b/Tests/voice-ask-test.swift
+@@ -246,6 +246,10 @@ enum VoiceAskTests {
+         expect(
+             HyperHoldWatchdog.shouldReset(hyperActive: true, physicalKeyDown: false),
+             "stale hold without physical key → reset")
++        expect(
++            !HyperHoldWatchdog.shouldReset(
++                hyperActive: true, physicalKeyDown: false, trustsPhysicalProbe: false),
++            "Caps Lock Hyper skips keyState probe")
+     }
  
-             hyperKeyTap.healthTicker = healthTicker
-             hotKeys.modifierTapMonitor.healthTicker = healthTicker
+     static func codexHelperLifetime() {

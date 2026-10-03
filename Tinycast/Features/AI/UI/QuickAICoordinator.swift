@@ -71,7 +71,10 @@ final class QuickAICoordinator {
         }
         applyOpenPolicy()
         paletteCoordinator.showPalette(mode: .ai)
-        send(trimmed)
+        if send(trimmed) {
+            // Match AIScreen's Return path: do not leave the sent text sitting in the composer.
+            palette.query = ""
+        }
     }
 
     /// Off leaves the screen too, so the palette never shows a feature that is gone.

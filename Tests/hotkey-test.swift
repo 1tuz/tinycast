@@ -531,5 +531,9 @@ struct DoubleTapDetectorTests {
         expect(
             HyperHoldWatchdog.shouldReset(hyperActive: true, physicalKeyDown: false),
             "stale hold → reset")
+        expect(
+            !HyperHoldWatchdog.shouldReset(
+                hyperActive: true, physicalKeyDown: false, trustsPhysicalProbe: false),
+            "Caps Lock skips physical probe")
     }
 }

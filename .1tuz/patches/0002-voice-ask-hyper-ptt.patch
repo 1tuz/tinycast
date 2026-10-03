@@ -324,3 +324,17 @@ index d83956c5..53795cc9 100644
          case .command(let id): onRunCommand?(id)
          case .app(let bundleID): AppLauncher.toggle(bundleID: bundleID)
          case .settingsPane(let bundleID): AppLauncher.openSettingsPane(bundleID: bundleID)
+diff --git a/Tests/hotkey-test.swift b/Tests/hotkey-test.swift
+index 6c688827..714f0570 100644
+--- a/Tests/hotkey-test.swift
++++ b/Tests/hotkey-test.swift
+@@ -531,5 +531,9 @@ struct DoubleTapDetectorTests {
+         expect(
+             HyperHoldWatchdog.shouldReset(hyperActive: true, physicalKeyDown: false),
+             "stale hold → reset")
++        expect(
++            !HyperHoldWatchdog.shouldReset(
++                hyperActive: true, physicalKeyDown: false, trustsPhysicalProbe: false),
++            "Caps Lock skips physical probe")
+     }
+ }

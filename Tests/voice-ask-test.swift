@@ -246,6 +246,10 @@ enum VoiceAskTests {
         expect(
             HyperHoldWatchdog.shouldReset(hyperActive: true, physicalKeyDown: false),
             "stale hold without physical key → reset")
+        expect(
+            !HyperHoldWatchdog.shouldReset(
+                hyperActive: true, physicalKeyDown: false, trustsPhysicalProbe: false),
+            "Caps Lock Hyper skips keyState probe")
     }
 
     static func codexHelperLifetime() {

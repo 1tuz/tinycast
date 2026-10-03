@@ -342,8 +342,9 @@ final class HyperKeyTap: HealthCheckable {
     }
 
     /// Physical Hyper down via `CGEventSource.keyState`. Watchdog-only — never in `decide`.
+    /// Caps Lock is excluded: after hidutil remap, `keyState` for F18/Caps is not a reliable hold bit.
     private var isPhysicalKeyDown: Bool {
-        guard key != .none else { return false }
+        guard key != .none, key != .capsLock else { return false }
         if let tapCode = key.tapKeyCode,
             CGEventSource.keyState(.combinedSessionState, key: CGKeyCode(tapCode))
         {
@@ -487,7 +488,12 @@ final class HyperKeyTap: HealthCheckable {
     func healthCheck() {
         guard key != .none else { return }
         // Missed key-up (sleep, focus steal): internal hold without a physical key is stale.
-        if HyperHoldWatchdog.shouldReset(hyperActive: hyperActive, physicalKeyDown: isPhysicalKeyDown) {
+        // Caps Lock Hyper skips keyState — wake/session/reenable still cancelHold.
+        if HyperHoldWatchdog.shouldReset(
+            hyperActive: hyperActive,
+            physicalKeyDown: isPhysicalKeyDown,
+            trustsPhysicalProbe: key != .capsLock)
+        {
             cancelHold()
             clearCapsLockLatchAndRemap()
         }

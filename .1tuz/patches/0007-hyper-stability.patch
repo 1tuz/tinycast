@@ -231,3 +231,55 @@ index 307be1c8..32fae8bf 100644
          if let tapPort {
              CGEvent.tapEnable(tap: tapPort, enable: true)
          } else {
+diff --git a/Tinycast/Features/HotKeys/Model/HyperHoldWatchdog.swift b/Tinycast/Features/HotKeys/Model/HyperHoldWatchdog.swift
+index 83ad14f8..e7146607 100644
+--- a/Tinycast/Features/HotKeys/Model/HyperHoldWatchdog.swift
++++ b/Tinycast/Features/HotKeys/Model/HyperHoldWatchdog.swift
+@@ -1,9 +1,15 @@
+ import Foundation
+ 
+-/// Pure rule for the Hyper health-check watchdog. `CGEventSource.keyState` supplies `physicalKeyDown`.
++/// Pure rule for the Hyper health-check watchdog. `CGEventSource.keyState` supplies `physicalKeyDown`
++/// for ordinary keys. Caps Lock Hyper must not use that probe — remapped F18/`keyState` often reads
++/// up while the hold is live, which would cancel chords and Voice Ask PTT every second.
+ enum HyperHoldWatchdog {
+     /// Internal hold without a physical key (missed key-up / sleep) must reset.
+-    static func shouldReset(hyperActive: Bool, physicalKeyDown: Bool) -> Bool {
+-        hyperActive && !physicalKeyDown
++    /// Pass `trustsPhysicalProbe: false` for Caps Lock (session/wake paths still clear holds).
++    static func shouldReset(
++        hyperActive: Bool, physicalKeyDown: Bool, trustsPhysicalProbe: Bool = true
++    ) -> Bool {
++        guard trustsPhysicalProbe else { return false }
++        return hyperActive && !physicalKeyDown
+     }
+ }
+diff --git a/Tinycast/Features/HotKeys/Service/HyperKeyTap.swift b/Tinycast/Features/HotKeys/Service/HyperKeyTap.swift
+index 32fae8bf..05605a21 100644
+--- a/Tinycast/Features/HotKeys/Service/HyperKeyTap.swift
++++ b/Tinycast/Features/HotKeys/Service/HyperKeyTap.swift
+@@ -342,8 +342,9 @@ final class HyperKeyTap: HealthCheckable {
+     }
+ 
+     /// Physical Hyper down via `CGEventSource.keyState`. Watchdog-only — never in `decide`.
++    /// Caps Lock is excluded: after hidutil remap, `keyState` for F18/Caps is not a reliable hold bit.
+     private var isPhysicalKeyDown: Bool {
+-        guard key != .none else { return false }
++        guard key != .none, key != .capsLock else { return false }
+         if let tapCode = key.tapKeyCode,
+             CGEventSource.keyState(.combinedSessionState, key: CGKeyCode(tapCode))
+         {
+@@ -487,7 +488,12 @@ final class HyperKeyTap: HealthCheckable {
+     func healthCheck() {
+         guard key != .none else { return }
+         // Missed key-up (sleep, focus steal): internal hold without a physical key is stale.
+-        if HyperHoldWatchdog.shouldReset(hyperActive: hyperActive, physicalKeyDown: isPhysicalKeyDown) {
++        // Caps Lock Hyper skips keyState — wake/session/reenable still cancelHold.
++        if HyperHoldWatchdog.shouldReset(
++            hyperActive: hyperActive,
++            physicalKeyDown: isPhysicalKeyDown,
++            trustsPhysicalProbe: key != .capsLock)
++        {
+             cancelHold()
+             clearCapsLockLatchAndRemap()
+         }
