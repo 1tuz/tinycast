@@ -238,7 +238,7 @@ final class CodexAppServerClient {
                         "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
                             ?? "0"
                     ],
-                    "capabilities": ["experimentalApi": false]
+                    "capabilities": ["experimentalApi": true]
                 ])
             try send(CodexAppServerProtocol.notification(method: "initialized"))
         } catch {

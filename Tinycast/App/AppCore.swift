@@ -215,6 +215,9 @@ final class AppCore {
     @ObservationIgnored private(set) lazy var quickAICoordinator = QuickAICoordinator(
         chats: aiChats, settings: settings, palette: palette,
         paletteCoordinator: paletteCoordinator, core: self)
+    @ObservationIgnored private(set) lazy var voiceAskCoordinator = VoiceAskCoordinator(
+        settings: settings, aiSettings: aiSettings, subscription: chatGPTSubscription,
+        palette: palette, paletteCoordinator: paletteCoordinator, core: self)
 
     @ObservationIgnored private lazy var windowController = PaletteWindowController(core: self)
     @ObservationIgnored private lazy var messageHUD = MessageHUDController(settings: settings)
@@ -369,6 +372,12 @@ final class AppCore {
             hotKeys.onRunExtensionCommand = { [weak self] entryID in
                 self?.extensionCoordinator.runExtensionCommand(entryID: entryID)
             }
+            hotKeys.onVoiceAskKeyDown = { [weak self] in
+                self?.voiceAskCoordinator.handleHotKeyDown()
+            }
+            hotKeys.onVoiceAskKeyUp = { [weak self] in
+                self?.voiceAskCoordinator.handleHotKeyUp()
+            }
             extensions.onDidUninstall = { [weak self] entryIDs in
                 self?.extensionCoordinator.removeExtensionReferences(entryIDs: entryIDs)
             }
@@ -399,6 +408,15 @@ final class AppCore {
                 quickActionIDs: Set(customQuickActions.actions.map(\.id)))
             // Keeps running while Carbon pauses: the recorder needs its rewritten flags.
             hyperKeyTap.start(settings: settings)
+            hyperKeyTap.onVoiceAskHoldStart = { [weak self] in
+                self?.voiceAskCoordinator.beginHyperHoldPTT()
+            }
+            hyperKeyTap.onVoiceAskHoldStop = { [weak self] in
+                self?.voiceAskCoordinator.endHyperHoldPTT()
+            }
+            hyperKeyTap.onVoiceAskHoldCancel = { [weak self] in
+                self?.voiceAskCoordinator.cancelHyperHoldPTT()
+            }
 
             snippetsStore.onSnapshot = { [weak self] snapshot in
                 guard let self else { return }
@@ -482,7 +500,7 @@ final class AppCore {
             return snippetsStore.record(id: id)?.snippet.name
         case .extensionCommand(let entryID):
             return appIndex.apps.first { $0.kind == .extensionCommand && $0.id == entryID }?.name
-        case .togglePalette, .command, .systemAction, .windowCommand:
+        case .togglePalette, .voiceAsk, .command, .systemAction, .windowCommand:
             return nil
         }
     }

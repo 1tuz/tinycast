@@ -5,8 +5,9 @@ import Observation
 @MainActor
 @Observable
 final class ChatGPTSubscriptionManager {
-    /// Long enough to span a conversation; a relaunch costs a second, a resident server ~20 MB.
-    private static let idleShutdown: Duration = .seconds(600)
+    /// Keep Codex warm briefly, then return its ~20 MB resident helper when the assistant is idle.
+    /// Three minutes keeps consecutive voice commands fast without paying a ten-minute idle tax.
+    private static let idleShutdown: Duration = .seconds(180)
 
     private let client: CodexAppServerClient
     let turns: CodexTurnRunner
@@ -23,8 +24,12 @@ final class ChatGPTSubscriptionManager {
     /// Copied from the client at each check: the client is not observed, and Settings shows this.
     private(set) var executable: URL?
 
+    /// Forwarded realtime notifications; text turns keep using `turns.handle`.
+    @ObservationIgnored var onRealtimeNotification: ((String, [String: JSONValue]) -> Void)?
+
     @ObservationIgnored private var operationTask: Task<Void, Never>?
     @ObservationIgnored private var idleTask: Task<Void, Never>?
+    @ObservationIgnored private var realtimeHoldCount = 0
 
     init(supportDirectory: URL = AppPaths.applicationSupport()) {
         let root = supportDirectory.appending(path: "InstalledAI/Codex", directoryHint: .isDirectory)
@@ -51,6 +56,34 @@ final class ChatGPTSubscriptionManager {
     }
 
     var isConnected: Bool { access != nil && phase == .connected }
+
+    /// Path handed to `thread/start` for Voice Ask's ephemeral realtime thread.
+    var workspacePath: String { client.workspace.path }
+
+    /// Brings the app-server up for Voice Ask without extending idle lifetime by itself.
+    func prepareForRealtime() async throws {
+        idleTask?.cancel()
+        try await ensureConnected(toolServers: [])
+    }
+
+    /// Holds idle shutdown for an active realtime session; pairs with `realtimeSessionDidEnd`.
+    func beginRealtimeHold() {
+        realtimeHoldCount += 1
+        idleTask?.cancel()
+    }
+
+    func realtimeSessionDidEnd() {
+        realtimeHoldCount = max(0, realtimeHoldCount - 1)
+        if realtimeHoldCount == 0, !turns.isActive {
+            scheduleIdleShutdown()
+        }
+    }
+
+    func realtimeRequest(
+        method: String, params: [String: Any] = [:], timeout: Duration = .seconds(15)
+    ) async throws -> [String: JSONValue] {
+        try await client.request(method: method, params: params, timeout: timeout)
+    }
 
     @discardableResult
     func refresh() -> Task<Void, Never> {
@@ -137,7 +170,8 @@ final class ChatGPTSubscriptionManager {
         idleTask?.cancel()
         idleTask = Task { [weak self] in
             try? await Task.sleep(for: Self.idleShutdown)
-            guard !Task.isCancelled, let self, !self.turns.isActive else { return }
+            guard !Task.isCancelled, let self, !self.turns.isActive, self.realtimeHoldCount == 0
+            else { return }
             self.turns.reset()
             self.client.stop()
         }
@@ -221,6 +255,8 @@ final class ChatGPTSubscriptionManager {
         switch method {
         case "account/updated":
             runOperation { [weak self] in await self?.refreshNow() }
+        case let method where method.hasPrefix("thread/realtime/"):
+            onRealtimeNotification?(method, params)
         default:
             turns.handle(method: method, params: params)
         }

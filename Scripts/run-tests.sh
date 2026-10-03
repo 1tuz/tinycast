@@ -277,6 +277,7 @@ run fallback-test          Tinycast/Features/Launcher/Model/Fallback.swift \
 run dictionary-test        Tinycast/Features/Dictionary/Model/DictionaryEntry.swift \
                            Tinycast/Features/Dictionary/Model/DictionaryMarkup.swift
 run hotkey-test            Tinycast/Features/HotKeys/Model/DoubleTapModifier.swift \
+                           Tinycast/Features/HotKeys/Model/HotKeyTiming.swift \
                            Tinycast/Features/HotKeys/Model/DoubleTapDetector.swift \
                            Tinycast/Features/HotKeys/Model/GlobeTapDetector.swift \
                            Tinycast/Features/HotKeys/Model/HotKeyBinding.swift \
@@ -294,6 +295,13 @@ run hotkey-test            Tinycast/Features/HotKeys/Model/DoubleTapModifier.swi
                            Tinycast/Features/SystemActions/Model/SystemAction.swift \
                            Tinycast/Features/WindowManagement/Model/WindowCommand.swift \
                            Tinycast/Features/Snippets/Model/Snippet.swift
+run voice-ask-test         Tinycast/Features/HotKeys/Model/HotKeyTiming.swift \
+                           Tinycast/Features/HotKeys/Model/HyperVoiceAskHold.swift \
+                           Tinycast/Features/VoiceAsk/Model/VoiceAskHotKeyPolicy.swift \
+                           Tinycast/Features/VoiceAsk/Model/VoiceAskPhase.swift \
+                           Tinycast/Features/VoiceAsk/Model/CodexRealtimeProtocol.swift \
+                           Tinycast/Features/VoiceAsk/Model/VoiceCommandRouter.swift \
+                           Tinycast/Features/AI/Model/JSONValue.swift
 run callout-test          Tinycast/Platform/Appearance.swift \
                            Tinycast/DesignSystem/Theme.swift \
                            Tinycast/DesignSystem/InterfaceMetrics.swift \

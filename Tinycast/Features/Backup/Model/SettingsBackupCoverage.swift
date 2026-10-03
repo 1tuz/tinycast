@@ -11,6 +11,7 @@ enum SettingsBackupCoverage {
         "hyperKey": .hyperKey,
         "hyperKeyIncludesShift": .hyperKeyIncludesShift,
         "hyperKeyQuickPress": .hyperKeyQuickPress,
+        "hyperKeyHoldVoiceAsk": .hyperKeyHoldVoiceAsk,
         "showInMenuBar": .showInMenuBar,
         "emojiSkinTone": .emojiSkinTone,
         "emojiGridColumns": .emojiGridColumns,
@@ -134,6 +135,8 @@ enum SettingsBackupCoverage {
         AppSettingsKey.aiInstalledOverrides.rawValue:
             "Names a command to run and the variables to run it with; an import must never decide "
             + "which program this Mac launches.",
+        AppSettingsKey.aiVoiceAskSendAutomatically.rawValue:
+            "Whether Voice Ask sends the transcript without review; an import must not arm that.",
         AppSettingsKey.mcpEnabled.rawValue:
             "Doubles as consent to run third-party MCP servers, one of which is a local process; a "
             + "flag that grants a capability is never carried by a backup.",

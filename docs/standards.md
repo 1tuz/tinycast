@@ -79,8 +79,9 @@ fit the table.
 | `State` | Shared observable state that persists nothing itself |
 | `Catalog` | Pure static namespace over a built-in list |
 | `Index` | A searchable collection, rebuilt as its inputs change |
-| `Engine` | A pure evaluator: input → output |
-| `Policy` | A pure decision — no state, no effects |
+    | `Engine` | A pure evaluator: input → output |
+    | `Policy` | A pure decision — no state, no effects |
+    | `Router` | Pure multi-way dispatch: classify input, pick one of several outcomes |
 
 `Manager` is the one worth thinking twice about. It means *lifecycle plus policy*, which is a lot for one
 type, so there are only two: `ClipboardManager` (polls, and owns the capture policy and the paste-side

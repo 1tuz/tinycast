@@ -635,12 +635,46 @@ app-server lifecycle and discovered account metadata. Production never sets `COD
 server uses the same login and credential store as the user's normal Codex command. Tinycast supplies
 only a private working directory. The server stops after ten idle minutes, when AI is switched off or
 when the app terminates, and restarts on demand. Account state, model availability and rate-limit
-windows come from the supported app-server protocol. A custom Codex provider can report no account
-and `requiresOpenaiAuth: false`; Tinycast then loads its models and runs turns without inventing an
-account or asking for `codex login`. A missing or true flag still requires sign-in. A running server
-rereads `config.toml` at every `account/read`, but Tinycast keeps what a check found, account or
-provider, beside the models and rate limits it read with it, until the next check; a turn that finds
-nothing to run on leaves Codex signed out and stops the server, as a check does.
+windows come from the supported app-server protocol. Initialize advertises `experimentalApi: true` so
+Voice Ask can call `thread/realtime/*`; ordinary text turns are unchanged. A Codex CLI too old for
+realtime leaves chat working and marks Voice Ask unavailable.
+
+## Voice Ask
+
+Voice Ask is Codex realtime dictation into the existing Quick AI composer. It is not a second chat
+stack and not a local speech recognizer.
+
+- **Voice provider and chat provider stay apart.** Microphone audio goes only to Codex realtime
+  (`thread/realtime/start` with `outputModality: text`, `clientManagedHandoffs: true`,
+  `flushTranscriptTailOnSessionEnd: true`). The finished user transcript becomes the Quick AI query
+  and is answered by whatever model is selected — Claude, Codex, Grok, OpenCode, Cursor, Apple
+  Intelligence or an API connection.
+- **Three entry points share one coordinator.** The launcher header shows Quick AI + mic whenever
+  `aiEnabled` is on (icon-only in compact, label + Tab chip when expanded). The mic records into the
+  search field; the global `HotKeyAction.voiceAsk` shortcut shows a non-activating Voice Pill when the
+  palette is closed, then opens Quick AI with the transcript. One Carbon chord is both toggle
+  (shorter than `HotKeyTiming.tapWindow`) and push-to-talk (hold). Opt-in
+  **Settings → General → Hold Hyper for Voice Ask** reuses `HyperKeyTap` so a lone Hyper hold past
+  the same window starts push-to-talk only — never latch — and Hyper+key cancels dictation in favour
+  of the shortcut.
+- **Obvious voice commands launch apps directly.** `VoiceCommandRouter` classifies the final
+  transcript with a tiny deterministic layer (`Open` / `Launch` / `Открой` / `Запусти`). A confident
+  AppIndex hit runs through `LauncherCoordinator` — never Codex computer use — and skips Quick AI.
+  An unresolved name, or compound speech ("Open Safari and find…"), falls through to Quick AI; the
+  automation outcome is reserved and does not arm `features.computer_use`.
+- **Idle is free.** No microphone, no realtime session, no waveform timer and no pill until a session
+  starts. The session reuses `ChatGPTSubscriptionManager`'s app-server and participates in its idle
+  shutdown hold count.
+- **Settings → AI → Voice Ask** binds the shortcut, toggles “Send automatically after dictation”
+  (off by default), and shows realtime availability. That auto-send flag is excluded from settings
+  backups like every other AI key. Hyper-hold is configured under General → Hyper Key.
+
+A custom Codex provider can report no account and `requiresOpenaiAuth: false`; Tinycast then loads
+its models and runs turns without inventing an account or asking for `codex login`. A missing or true
+flag still requires sign-in. A running server rereads `config.toml` at every `account/read`, but
+Tinycast keeps what a check found, account or provider, beside the models and rate limits it read
+with it, until the next check; a turn that finds nothing to run on leaves Codex signed out and stops
+the server, as a check does.
 
 MCP is the one thing about that server that is fixed at `exec`: its overrides and its environment
 both are, so `CodexAppServerClient` remembers the list it was launched with and relaunches when the

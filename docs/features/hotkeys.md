@@ -15,6 +15,9 @@ the keycap rendering — only the _engine_ differs.
 
 ## Invariants
 
+- **`HotKeyCenter` registers both press and release.** Existing shortcuts pass only `onKeyDown` and
+  behave as before. Voice Ask registers an optional `onKeyUp` so one chord can be toggle or
+  push-to-talk (`VoiceAskHotKeyPolicy.latchThreshold` shares `HotKeyTiming.tapWindow`).
 - **Hotkeys persist as JSON strings under `hotkey.<action>` UserDefaults keys**, and
   `HotKeyAction.defaultsKey` is the one place that computes a key — it is also the `HotKeyCenter`
   registration id, so the two cannot drift.
@@ -206,6 +209,21 @@ A keyboard event built from `.combinedSessionState` inherits the source's modifi
 that ended the hold is still in flight a runloop turn later — so the Escape went out as ⌃⌥⇧⌘Escape.
 Terminals read the raw `0x1B` and did not care; a focused field editor and any exact-match keymap
 swallowed it, which is why Quick Press worked in Ghostty but never in Zed or the palette itself.
+
+### Hold Hyper for Voice Ask
+
+Opt-in (`AppSettings.hyperKeyHoldVoiceAsk`, off by default). Reuses the same hold tracking —
+`hyperDownAt`, `otherKeyPressed`, and `HotKeyTiming.tapWindow` (250 ms) — without a second
+`CGEventTap`. `HyperVoiceAskHold` is the pure state machine; `HyperKeyTap` only schedules the
+threshold timer and forwards start / stop / cancel to `VoiceAskCoordinator`.
+
+- A lone Hyper release inside the tap window still fires Quick Press when configured.
+- Hyper+key before the threshold is a normal Hyper shortcut; Voice Ask never starts.
+- Holding Hyper alone past the threshold starts Voice Ask in **push-to-talk only** (no latch).
+- Releasing Hyper stops capture and delivers the transcript into Quick AI.
+- Another key while Hyper dictation is active **cancels** Voice Ask and continues as a Hyper combo —
+  the shortcut wins over dictation.
+- The dedicated Voice Ask Carbon hotkey is unchanged.
 
 ### ✦ is the notation, not a preference
 

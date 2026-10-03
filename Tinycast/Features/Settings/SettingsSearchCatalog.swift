@@ -161,6 +161,9 @@ enum SettingsSearchCatalog {
             .generalHyperKey, "Include Shift (⇧)",
             keywords: ["modifier", "chord"]),
         .init(
+            .generalHyperKey, "Hold Hyper for Voice Ask",
+            keywords: ["voice", "dictate", "microphone", "ptt", "push to talk", "hold"]),
+        .init(
             .generalCalculator, "Number format",
             keywords: ["decimal", "comma", "separator", "locale", "region", "thousands"]),
         .init(
@@ -280,6 +283,13 @@ enum SettingsSearchCatalog {
             ]),
         .init(.aiDefault, "Default model", keywords: ["llm", "gpt", "claude", "grok"]),
         .init(.aiDefault, "Reasoning effort", keywords: ["thinking", "effort", "deepseek"]),
+        .init(
+            group: .aiVoiceAsk, "Voice Ask",
+            keywords: ["dictation", "microphone", "speech", "voice", "realtime", "codex"]),
+        .init(.aiVoiceAsk, "Shortcut", keywords: ["hotkey", "push to talk", "dictation"]),
+        .init(
+            .aiVoiceAsk, "Send automatically after dictation",
+            keywords: ["autosend", "auto send"]),
         .init(.aiChat, "Web search", keywords: ["browse", "internet"]),
         .init(.aiChat, "Tool call rounds", keywords: ["mcp", "tools", "limit", "loop", "agent", "unlimited"]),
         .init(
@@ -592,7 +602,10 @@ enum SettingsSearchCatalog {
             keywords: ["paste", "keystrokes", "privacy", "grant"]),
         .init(
             .permissionsCalendars, "Calendars",
-            keywords: ["events", "privacy", "grant", "eventkit"])
+            keywords: ["events", "privacy", "grant", "eventkit"]),
+        .init(
+            .permissionsMicrophone, "Microphone",
+            keywords: ["voice", "dictation", "speech", "privacy", "grant", "audio"])
     ]
 
     private static let backup: [SettingsSearchEntry] = [

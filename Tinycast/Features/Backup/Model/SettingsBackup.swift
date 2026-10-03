@@ -28,6 +28,7 @@ struct SettingsBackup: Codable {
         var hyperKey: String?
         var hyperKeyIncludesShift: Bool?
         var hyperKeyQuickPress: String?
+        var hyperKeyHoldVoiceAsk: Bool?
         var emojiSkinTone: String?
         var emojiGridColumns: Int?
         var showInMenuBar: Bool?
@@ -94,6 +95,7 @@ struct SettingsBackup: Codable {
     struct HotkeyBackup: Codable {
         /// Named apart from `commands`: the launcher toggle is the one action with no command row.
         var togglePalette: HotKeyBinding?
+        var voiceAsk: HotKeyBinding?
         var commands: [String: HotKeyBinding]?
         var apps: [String: HotKeyBinding]?
         var panes: [String: HotKeyBinding]?
@@ -138,6 +140,7 @@ extension SettingsBackup {
             hyperKey: s.hyperKey.rawValue,
             hyperKeyIncludesShift: s.hyperKeyIncludesShift,
             hyperKeyQuickPress: s.hyperKeyQuickPress.rawValue,
+            hyperKeyHoldVoiceAsk: s.hyperKeyHoldVoiceAsk,
             emojiSkinTone: s.emojiSkinTone.rawValue,
             emojiGridColumns: s.emojiGridColumns.rawValue,
             showInMenuBar: s.showInMenuBar,
@@ -193,6 +196,7 @@ extension SettingsBackup {
         let hk = core.hotKeys
         var hotkeys = HotkeyBackup()
         hotkeys.togglePalette = hk.binding(for: .togglePalette)
+        hotkeys.voiceAsk = hk.binding(for: .voiceAsk)
         hotkeys.commands = Dictionary(
             uniqueKeysWithValues: CommandID.allCases.compactMap { id in
                 id.hotKeyAction.flatMap(hk.binding(for:)).map { (id.rawValue, $0) }
@@ -327,6 +331,10 @@ extension SettingsBackup {
         }
         if let raw = s.hyperKeyQuickPress, let quick = HyperKeyQuickPress(rawValue: raw) {
             settings.hyperKeyQuickPress = quick
+            count += 1
+        }
+        if let flag = s.hyperKeyHoldVoiceAsk {
+            settings.hyperKeyHoldVoiceAsk = flag
             count += 1
         }
         if let raw = s.emojiSkinTone, let tone = EmojiSkinTone(rawValue: raw) {
@@ -551,6 +559,7 @@ extension SettingsBackup {
             count += 1
         }
         if let b = hotkeys.togglePalette { apply(b, .togglePalette) }
+        if let b = hotkeys.voiceAsk { apply(b, .voiceAsk) }
         for (rawID, b) in hotkeys.commands ?? [:] {
             guard let action = CommandID(rawValue: rawID)?.hotKeyAction else { continue }
             apply(b, action)
