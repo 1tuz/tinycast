@@ -666,10 +666,10 @@ struct RootPaletteView: View {
                 accessory.view
                 // Given room last: at the default priority it would split it with the field.
                 Spacer(minLength: 0).layoutPriority(-1)
-            }
-            if tabOpensChat {
-                headerGutter(width: metrics.spacing.md)
-                quickAITabHint
+            } else if showsAIHeaderControls {
+                // Same: without a spacer the field's ideal width swallows the trailing controls.
+                Spacer(minLength: metrics.spacing.md).layoutPriority(-1)
+                quickAIControls
             }
             // Keyed off the mode, which says which screen is up; the field just flexes narrower.
             if !isCollapsed, vm.mode == .clipboard {
@@ -757,17 +757,56 @@ struct RootPaletteView: View {
         return screen.headerAccessory(at: selection(in: screen), focus: $argumentFocused)
     }
 
-    /// Nothing else advertises Tab, so the launcher says where it goes.
-    private var quickAITabHint: some View {
-        BarButton(chrome: .rounded, action: cycleMode) {
-            HStack(spacing: metrics.spacing.sm) {
-                Text("Quick AI")
-                    .font(metrics.typography.bar)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                KeyCapChip(text: "⇥", style: .outline)
+    /// Compact Quick AI + Voice Ask, shown on the launcher whenever AI is on.
+    private var quickAIControls: some View {
+        HStack(spacing: metrics.spacing.sm) {
+            BarButton(chrome: .rounded, action: cycleMode) {
+                HStack(spacing: metrics.spacing.sm) {
+                    Image(systemName: "sparkles")
+                        .font(metrics.typography.bar)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                    // Compact has no room for the label + Tab chip beside favorites.
+                    if !isCollapsed {
+                        Text("AI")
+                            .font(metrics.typography.bar)
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                        KeyCapChip(text: "⇥", style: .outline)
+                    }
+                }
             }
+            .help("Ask Quick AI what you typed  ⇥")
+
+            voiceAskButton
         }
-        .help("Ask Quick AI what you typed  ⇥")
+    }
+
+    private var voiceAskButton: some View {
+        let recording = core.voiceAskCoordinator.isRecording
+            && core.voiceAskCoordinator.surface == .palette
+        return BarButton(chrome: .rounded, action: { core.voiceAskCoordinator.toggleFromPalette() }) {
+            Group {
+                if recording {
+                    VoiceWaveformView(
+                        levels: core.voiceAskCoordinator.levels, isActive: true
+                    )
+                    .frame(width: 28, height: 14)
+                } else {
+                    Image(systemName: "mic.fill")
+                        .font(metrics.typography.bar)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                }
+            }
+            .frame(width: 28, height: 16)
+        }
+        .help(recording ? "Stop Voice Ask" : "Dictate with Voice Ask")
+    }
+
+    /// AI + mic on the launcher when AI is on — compact and expanded.
+    private var showsAIHeaderControls: Bool {
+        guard settings.aiEnabled, vm.mode == .launcher else { return false }
+        // Expanded: hide while an argument strip owns the header. Compact has no accessory.
+        if isCollapsed { return true }
+        return headerAccessory?.fieldNames.isEmpty ?? true
     }
 
     /// Resolved through `PaletteTabAction`, so the hint cannot promise the wrong destination.
@@ -785,7 +824,12 @@ struct RootPaletteView: View {
     private var headerField: some View {
         searchField
             // A ceiling, not a size, so the row squeezes a long query before the strip overruns.
-            .frame(minWidth: searchFieldFloor, maxWidth: searchFieldWidth)
+            .frame(
+                minWidth: searchFieldFloor,
+                maxWidth: searchFieldWidth ?? (showsAIHeaderControls ? .infinity : nil)
+            )
+            // Yield to trailing AI/mic so the field cannot crush them to zero width.
+            .layoutPriority(showsAIHeaderControls && headerAccessory == nil ? -1 : 0)
             .opacity(hidesSearchField ? 0 : 1)
             .allowsHitTesting(!hidesSearchField)
             .accessibilityHidden(hidesSearchField)

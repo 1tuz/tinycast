@@ -130,8 +130,14 @@ final class HyperKeyTap: HealthCheckable {
     @ObservationIgnored private var hyperActive = false
     @ObservationIgnored private var hyperDownAt: ContinuousClock.Instant?
     @ObservationIgnored private var otherKeyPressed = false
+    @ObservationIgnored private var voiceAskHold = HyperVoiceAskHold()
+    @ObservationIgnored private var voiceAskHoldTask: Task<Void, Never>?
     private let clock = ContinuousClock()
-    private static let quickPressWindow: Duration = .milliseconds(250)
+
+    /// Opt-in Hyper-alone hold → Voice Ask PTT. Wired from `AppCore`.
+    var onVoiceAskHoldStart: (() -> Void)?
+    var onVoiceAskHoldStop: (() -> Void)?
+    var onVoiceAskHoldCancel: (() -> Void)?
 
     // Isolated so teardown can release the main-actor IOKit connection.
     isolated deinit {
@@ -143,7 +149,7 @@ final class HyperKeyTap: HealthCheckable {
         applyKey(settings.hyperKey)
         observeKey()
 
-        // Fast user switching: drop half-held state and stop rewriting until we are back.
+        // Fast user switching & wake: drop half-held state and re-assert the remap when back.
         let center = NSWorkspace.shared.notificationCenter
         sessionTokens = [
             NotificationToken(
@@ -156,6 +162,20 @@ final class HyperKeyTap: HealthCheckable {
             NotificationToken(
                 center.addObserver(
                     forName: NSWorkspace.sessionDidBecomeActiveNotification, object: nil,
+                    queue: .main
+                ) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.sessionDidBecomeActive() }
+                }, center: center),
+            NotificationToken(
+                center.addObserver(
+                    forName: NSWorkspace.didWakeNotification, object: nil,
+                    queue: .main
+                ) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.sessionDidBecomeActive() }
+                }, center: center),
+            NotificationToken(
+                center.addObserver(
+                    forName: NSWorkspace.screensDidWakeNotification, object: nil,
                     queue: .main
                 ) { [weak self] _ in
                     MainActor.assumeIsolated { self?.sessionDidBecomeActive() }
@@ -229,7 +249,10 @@ final class HyperKeyTap: HealthCheckable {
         }
         guard hyperActive else { return .pass }
         // Any other key or modifier going down while Hyper is held makes this a combo, not a tap.
-        if type == .keyDown || type == .flagsChanged { otherKeyPressed = true }
+        if type == .keyDown || type == .flagsChanged {
+            otherKeyPressed = true
+            applyVoiceAskEffect(voiceAskHold.otherKey())
+        }
         return .rewrite(flags: hyperized(flagsRaw))
     }
 
@@ -275,14 +298,20 @@ final class HyperKeyTap: HealthCheckable {
         hyperActive = true
         hyperDownAt = clock.now
         otherKeyPressed = false
+        voiceAskHold.isEnabled = settings?.hyperKeyHoldVoiceAsk ?? false
+        applyVoiceAskEffect(voiceAskHold.beginHold())
     }
 
     private func endHold() {
         let isQuick =
-            !otherKeyPressed && hyperDownAt.map { clock.now - $0 < Self.quickPressWindow } ?? false
+            !otherKeyPressed
+            && hyperDownAt.map { clock.now - $0 < HotKeyTiming.tapWindow } ?? false
         hyperActive = false
         hyperDownAt = nil
-        guard isQuick else { return }
+        let voiceEffect = voiceAskHold.endHold()
+        applyVoiceAskEffect(voiceEffect)
+        // Voice Ask PTT release is not a Quick Press, even when the hold cleared pending.
+        guard isQuick, voiceEffect != .stop else { return }
         let action = settings?.hyperKeyQuickPress ?? .none
         let key = key
         // Posting or touching IOKit inside the callback risks re-entrancy, so defer a turn.
@@ -301,9 +330,50 @@ final class HyperKeyTap: HealthCheckable {
     }
 
     private func cancelHold() {
+        let wasRecording = voiceAskHold.phase == .recording
+        voiceAskHold.reset()
+        cancelVoiceAskHoldCheck()
+        if wasRecording {
+            Task { @MainActor [weak self] in self?.onVoiceAskHoldCancel?() }
+        }
         hyperActive = false
         hyperDownAt = nil
         otherKeyPressed = false
+    }
+
+    private func applyVoiceAskEffect(_ effect: HyperVoiceAskHold.Effect) {
+        switch effect {
+        case .none:
+            break
+        case .scheduleHoldCheck:
+            scheduleVoiceAskHoldCheck()
+        case .cancelHoldCheck:
+            cancelVoiceAskHoldCheck()
+        case .start:
+            cancelVoiceAskHoldCheck()
+            // Defer: starting capture inside the tap callback risks re-entrancy.
+            Task { @MainActor [weak self] in self?.onVoiceAskHoldStart?() }
+        case .stop:
+            cancelVoiceAskHoldCheck()
+            Task { @MainActor [weak self] in self?.onVoiceAskHoldStop?() }
+        case .cancel:
+            cancelVoiceAskHoldCheck()
+            Task { @MainActor [weak self] in self?.onVoiceAskHoldCancel?() }
+        }
+    }
+
+    private func scheduleVoiceAskHoldCheck() {
+        cancelVoiceAskHoldCheck()
+        voiceAskHoldTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: HotKeyTiming.tapWindow)
+            guard !Task.isCancelled, let self else { return }
+            self.applyVoiceAskEffect(self.voiceAskHold.holdThresholdReached())
+        }
+    }
+
+    private func cancelVoiceAskHoldCheck() {
+        voiceAskHoldTask?.cancel()
+        voiceAskHoldTask = nil
     }
 
     // MARK: - Configuration
@@ -406,6 +476,11 @@ final class HyperKeyTap: HealthCheckable {
     }
 
     private func sessionDidBecomeActive() {
+        cancelHold()
+        if key == .capsLock {
+            setCapsLockState(false)
+            CapsLockRemap.setEnabled(true)
+        }
         if let tapPort {
             CGEvent.tapEnable(tap: tapPort, enable: true)
         } else {

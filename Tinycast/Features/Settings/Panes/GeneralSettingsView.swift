@@ -147,6 +147,12 @@ struct GeneralSettingsView: View {
                 }
                 // Flipping it re-points recorded chords, so it needs a chord to mean.
                 .settingsEnabled(settings.hyperKey != .none)
+
+                Toggle(isOn: $settings.hyperKeyHoldVoiceAsk) {
+                    SettingsRowTitle(.generalHyperKey, "Hold Hyper for Voice Ask")
+                    Text("Hold ✦ alone to dictate. Hyper+key shortcuts still win.")
+                }
+                .settingsEnabled(settings.hyperKey != .none)
             } header: {
                 SettingsSectionHeader(.generalHyperKey)
             }

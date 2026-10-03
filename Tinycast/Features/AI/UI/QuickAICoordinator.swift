@@ -34,6 +34,19 @@ final class QuickAICoordinator {
         paletteCoordinator.showPalette(mode: .ai)
     }
 
+    /// Opens Quick AI with `prompt` in the composer, without sending.
+    func compose(_ prompt: String) {
+        guard settings.aiEnabled else { return }
+        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            show()
+            return
+        }
+        applyOpenPolicy()
+        paletteCoordinator.showPalette(mode: .ai)
+        palette.query = trimmed
+    }
+
     /// ⇥ and the AI fallback: a fresh chat that carries the question, already asked.
     func ask(_ prompt: String) {
         guard settings.aiEnabled else { return }

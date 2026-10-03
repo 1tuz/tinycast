@@ -33,6 +33,7 @@ struct AISettingsView: View {
 
             Group {
                 defaultModelSection
+                voiceAskSection
                 chatSection
                 conversationsSection
                 systemPromptSection
@@ -115,6 +116,34 @@ struct AISettingsView: View {
 
     private func syncSelection() {
         settings.reconcile(subscription: subscription, installedAI: installedAI)
+    }
+
+    private var voiceAskSection: some View {
+        @Bindable var settings = settings
+        return Section {
+            SettingsRow(
+                title: "Shortcut", subtitle: "Toggle with a tap, or hold to talk.",
+                anchor: .aiVoiceAsk
+            ) {
+                ShortcutRecorder(action: .voiceAsk)
+            }
+            Toggle(isOn: $settings.voiceAskSendAutomatically) {
+                SettingsRowTitle(.aiVoiceAsk, "Send automatically after dictation")
+                Text("Off keeps the transcript editable in Quick AI.")
+            }
+            LabeledContent("Status") {
+                Text(core.voiceAskCoordinator.availability.statusText)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.trailing)
+            }
+        } header: {
+            SettingsSectionHeader(.aiVoiceAsk)
+        } footer: {
+            Text("Dictation uses Codex realtime. The reply still goes to your selected chat model.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .onAppear { core.voiceAskCoordinator.refreshAvailability() }
     }
 
     private var chatSection: some View {

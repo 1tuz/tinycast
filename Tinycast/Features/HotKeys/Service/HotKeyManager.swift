@@ -18,6 +18,9 @@ final class HotKeyManager {
     var onRunAppleShortcut: ((UUID) -> Void)?
     var onExpandSnippet: ((StoredSnippet.ID) -> Void)?
     var onRunExtensionCommand: ((String) -> Void)?
+    /// Voice Ask needs both edges of the chord for toggle vs push-to-talk.
+    var onVoiceAskKeyDown: (() -> Void)?
+    var onVoiceAskKeyUp: (() -> Void)?
     /// Names what only the stores know; the fixed catalogs resolve here. Set in `AppCore.start()`.
     var displayName: ((HotKeyAction) -> String?)?
     /// Whether the action's launcher category is switched on. Set in `AppCore.start()`.
@@ -199,7 +202,7 @@ final class HotKeyManager {
             index(id, bound: binding != nil, key: boundSnippetKey)
         case .extensionCommand(let entryID):
             index(entryID, bound: binding != nil, key: boundExtensionCommandKey)
-        case .togglePalette, .command, .systemAction, .windowCommand:
+        case .togglePalette, .voiceAsk, .command, .systemAction, .windowCommand:
             break
         }
         candidateActionsCache = nil
@@ -256,6 +259,8 @@ final class HotKeyManager {
         switch action {
         case .togglePalette:
             return "App Launcher"
+        case .voiceAsk:
+            return "Voice Ask"
         case .command(let id):
             return id.name
         case .app(let bundleID), .settingsPane(let bundleID):
@@ -288,9 +293,26 @@ final class HotKeyManager {
     /// Hands a combo to Carbon; a modifier-only binding has no per-action registration.
     private func register(_ action: HotKeyAction) {
         guard let shortcut = binding(for: action)?.shortcut else { return }
+        if action == .voiceAsk {
+            center.register(
+                id: action.defaultsKey, shortcut: shortcut,
+                onKeyDown: { [weak self] in self?.performVoiceAskKeyDown() },
+                onKeyUp: { [weak self] in self?.performVoiceAskKeyUp() })
+            return
+        }
         center.register(id: action.defaultsKey, shortcut: shortcut) { [weak self] in
             self?.perform(action)
         }
+    }
+
+    private func performVoiceAskKeyDown() {
+        guard allowsAction?(.voiceAsk) ?? true else { return }
+        onVoiceAskKeyDown?()
+    }
+
+    private func performVoiceAskKeyUp() {
+        guard allowsAction?(.voiceAsk) ?? true else { return }
+        onVoiceAskKeyUp?()
     }
 
     /// Rebuilt wholesale, so the map can't drift from what is on disk.
@@ -298,6 +320,8 @@ final class HotKeyManager {
         modifierTaps = [:]
         for action in candidateActions {
             guard let binding = binding(for: action), binding.usesModifierTapMonitor else { continue }
+            // Voice Ask needs Carbon key-up for push-to-talk; a modifier-only binding can't.
+            guard action != .voiceAsk else { continue }
             modifierTaps[binding] = action
         }
         modifierTapMonitor.update(bound: Set(modifierTaps.keys))
@@ -308,6 +332,7 @@ final class HotKeyManager {
         guard allowsAction?(action) ?? true else { return }
         switch action {
         case .togglePalette: onTogglePalette?()
+        case .voiceAsk: onVoiceAskKeyDown?()
         case .command(let id): onRunCommand?(id)
         case .app(let bundleID): AppLauncher.toggle(bundleID: bundleID)
         case .settingsPane(let bundleID): AppLauncher.openSettingsPane(bundleID: bundleID)

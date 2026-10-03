@@ -254,6 +254,12 @@ struct DoubleTapDetectorTests {
         expect(
             HotKeyAction.builtInActions.contains(.togglePalette),
             "the launcher toggle is bindable without a command row of its own")
+        expect(
+            HotKeyAction.builtInActions.contains(.voiceAsk),
+            "Voice Ask is a fixed bindable action")
+        expect(
+            HotKeyAction.voiceAsk.defaultsKey == "hotkey.voiceAsk",
+            "Voice Ask persists under hotkey.voiceAsk")
 
         // Every action reaches the launcher as well as a shortcut; `CommandID.init` is exhaustive.
         expect(

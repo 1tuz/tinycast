@@ -5,6 +5,7 @@ struct PermissionsSettingsView: View {
     @Environment(AppCore.self) private var core
     @State private var accessibilityTrusted = Permissions.isAccessibilityTrusted()
     @State private var calendarAccess = Permissions.calendarAccess()
+    @State private var microphoneAccess = Permissions.microphoneAccess()
     private let refreshTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -76,6 +77,47 @@ struct PermissionsSettingsView: View {
             } header: {
                 SettingsSectionHeader(.permissionsCalendars)
             }
+
+            Section {
+                LabeledContent {
+                    HStack(spacing: Theme.Spacing.lg) {
+                        HStack(spacing: Theme.Spacing.xs) {
+                            Image(systemName: microphoneStatus.symbol)
+                                .accessibilityHidden(true)
+                            Text(microphoneStatus.title)
+                        }
+                        .foregroundStyle(microphoneStatus.tint)
+                        Button(microphoneNeedsPrompt ? "Grant Access…" : "Open…") {
+                            if microphoneNeedsPrompt {
+                                Task {
+                                    _ = await Permissions.requestMicrophoneAccess()
+                                    refresh()
+                                }
+                            } else {
+                                Permissions.openMicrophoneSettings()
+                            }
+                        }
+                        .help(
+                            microphoneNeedsPrompt
+                                ? "Asks macOS for microphone access for Voice Ask."
+                                : "Opens Privacy & Security › Microphone.")
+                    }
+                } label: {
+                    HStack(spacing: Theme.Spacing.lg) {
+                        PermissionSettingsIcon(
+                            path:
+                                "/System/Library/ExtensionKit/Extensions/Sound.appex"
+                        )
+                        VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
+                            SettingsRowTitle(.permissionsMicrophone, "Microphone")
+                            Text("Voice Ask sends speech to Codex for transcription.")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            } header: {
+                SettingsSectionHeader(.permissionsMicrophone)
+            }
         }
         .formStyle(.grouped)
         .settingsScrollTarget(.permissions)
@@ -84,6 +126,7 @@ struct PermissionsSettingsView: View {
     }
 
     private var calendarNeedsPrompt: Bool { calendarAccess == .notDetermined }
+    private var microphoneNeedsPrompt: Bool { microphoneAccess == .notDetermined }
 
     private var accessibilityStatus: (title: String, symbol: String, tint: Color) {
         accessibilityTrusted
@@ -99,11 +142,21 @@ struct PermissionsSettingsView: View {
         }
     }
 
+    private var microphoneStatus: (title: String, symbol: String, tint: Color) {
+        switch microphoneAccess {
+        case .granted: return ("Granted", "checkmark.circle.fill", .green)
+        case .notDetermined: return ("Not asked yet", "questionmark.circle.fill", .secondary)
+        case .denied: return ("Not granted", "exclamationmark.triangle.fill", .orange)
+        }
+    }
+
     private func refresh() {
         let trusted = Permissions.isAccessibilityTrusted()
         if trusted != accessibilityTrusted { accessibilityTrusted = trusted }
-        let access = Permissions.calendarAccess()
-        if access != calendarAccess { calendarAccess = access }
+        let calendar = Permissions.calendarAccess()
+        if calendar != calendarAccess { calendarAccess = calendar }
+        let microphone = Permissions.microphoneAccess()
+        if microphone != microphoneAccess { microphoneAccess = microphone }
     }
 }
 

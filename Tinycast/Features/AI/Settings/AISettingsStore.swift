@@ -41,6 +41,14 @@ final class AISettingsStore {
     var toolRounds: AIToolRounds {
         didSet { defaults.set(toolRounds.rawValue, forKey: AppSettingsKey.aiToolRounds.rawValue) }
     }
+    /// Off by default: dictation fills Quick AI; Enter still sends.
+    var voiceAskSendAutomatically: Bool {
+        didSet {
+            defaults.set(
+                voiceAskSendAutomatically,
+                forKey: AppSettingsKey.aiVoiceAskSendAutomatically.rawValue)
+        }
+    }
     /// Per route, the models its picker lists; no entry lists all it offers, later ones too.
     private(set) var shownModels: [String: [String]] {
         didSet { defaults.set(shownModels, forKey: AppSettingsKey.aiShownModels.rawValue) }
@@ -106,6 +114,9 @@ final class AISettingsStore {
         toolRounds =
             AIToolRounds(rawValue: defaults.integer(forKey: AppSettingsKey.aiToolRounds.rawValue))
             ?? .twentyFive
+        voiceAskSendAutomatically =
+            defaults.object(forKey: AppSettingsKey.aiVoiceAskSendAutomatically.rawValue) as? Bool
+            ?? false
         shownModels =
             defaults.dictionary(forKey: AppSettingsKey.aiShownModels.rawValue) as? [String: [String]]
             ?? [:]
