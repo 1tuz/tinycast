@@ -1,0 +1,112 @@
+name: "Fork · sync upstream"
+
+# main = upstream main + .1tuz/patches, rebuilt once a day (or on manual dispatch).
+# Cheap Linux check first; macOS build only when upstream moved or force=true.
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Rebuild even if upstream SHA is unchanged"
+        type: boolean
+        default: false
+
+concurrency:
+  group: fork-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  UPSTREAM: https://github.com/abue-ammar/tinycast.git
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.check.outputs.go }}
+      upstream: ${{ steps.check.outputs.upstream }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          UP=$(git ls-remote "$UPSTREAM" refs/heads/main | cut -f1)
+          BUILT=$(gh api "repos/$REPO/contents/.1tuz/UPSTREAM" -q .content 2>/dev/null | base64 -d | tr -d '\n' || true)
+          GO=false
+          if [ "$UP" != "$BUILT" ]; then GO=true; fi
+          [ "$FORCE" = "true" ] && GO=true
+          echo "upstream=$UP built=$BUILT go=$GO"
+          echo "go=$GO" >> "$GITHUB_OUTPUT"
+          echo "upstream=$UP" >> "$GITHUB_OUTPUT"
+
+  sync:
+    needs: check
+    if: needs.check.outputs.go == 'true'
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.FORK_PUSH_TOKEN }}
+
+      - name: Select Xcode 26
+        run: |
+          XCODE_PATH="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n1)"
+          [ -n "$XCODE_PATH" ] || { ls /Applications | grep -i xcode; exit 1; }
+          echo "DEVELOPER_DIR=$XCODE_PATH/Contents/Developer" >> "$GITHUB_ENV"
+
+      - name: Rebuild main on upstream
+        id: rebuild
+        run: |
+          git config user.name "1tuz-fork-sync"
+          git config user.email "58532577+1tuz@users.noreply.github.com"
+          OLD=$(git rev-parse HEAD)
+          git fetch --no-tags "$UPSTREAM" main
+          UP=$(git rev-parse FETCH_HEAD)
+          KEEP="$RUNNER_TEMP/keep"; mkdir -p "$KEEP/wf"
+          cp -R .1tuz "$KEEP/"
+          cp .github/workflows/fork-sync.yml "$KEEP/wf/"
+          # Keep the fork-adapted release workflow too.
+          cp .github/workflows/release.yml "$KEEP/wf/" 2>/dev/null || true
+          git checkout -q --detach "$UP"
+          rm -rf .1tuz
+          cp -R "$KEEP/.1tuz" .
+          mkdir -p .github/workflows
+          cp "$KEEP"/wf/* .github/workflows/
+          echo "$UP" > .1tuz/UPSTREAM
+          chmod +x .1tuz/apply.sh .1tuz/gate.sh
+          if ! .1tuz/apply.sh; then
+            echo "::error::apply failed on upstream ${UP:0:7}"
+            exit 1
+          fi
+          git add -A
+          git commit -q -m "1tuz: Voice Ask fork on upstream ${UP:0:7}"
+          {
+            echo "OLD=$OLD"
+            echo "UP=$UP"
+          } >> "$GITHUB_ENV"
+
+      - name: Fast gate
+        run: .1tuz/gate.sh "$UP"
+
+      - name: Publish main
+        run: |
+          git push --force-with-lease="main:$OLD" origin HEAD:main
+          echo "Published main from upstream ${UP:0:7} (lease against $OLD)"
+
+      - name: Failure summary
+        if: failure()
+        run: |
+          {
+            echo "## Fork sync failed"
+            echo "- upstream: \`${UP:-unknown}\`"
+            echo "- previous main left untouched (no push)"
+            echo "- check apply.sh / gate.sh logs above for the failing patch or harness"
+          } >> "$GITHUB_STEP_SUMMARY"

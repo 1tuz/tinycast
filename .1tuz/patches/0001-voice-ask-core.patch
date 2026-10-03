@@ -1,0 +1,1509 @@
+diff --git a/Scripts/run-tests.sh b/Scripts/run-tests.sh
+index 9e6a2e21..b9bf26ed 100755
+--- a/Scripts/run-tests.sh
++++ b/Scripts/run-tests.sh
+@@ -277,6 +277,8 @@ run fallback-test          Tinycast/Features/Launcher/Model/Fallback.swift \
+ run dictionary-test        Tinycast/Features/Dictionary/Model/DictionaryEntry.swift \
+                            Tinycast/Features/Dictionary/Model/DictionaryMarkup.swift
+ run hotkey-test            Tinycast/Features/HotKeys/Model/DoubleTapModifier.swift \
++                           Tinycast/Features/HotKeys/Model/HotKeyTiming.swift \
++                           Tinycast/Features/HotKeys/Model/HyperHoldWatchdog.swift \
+                            Tinycast/Features/HotKeys/Model/DoubleTapDetector.swift \
+                            Tinycast/Features/HotKeys/Model/GlobeTapDetector.swift \
+                            Tinycast/Features/HotKeys/Model/HotKeyBinding.swift \
+@@ -294,6 +296,17 @@ run hotkey-test            Tinycast/Features/HotKeys/Model/DoubleTapModifier.swi
+                            Tinycast/Features/SystemActions/Model/SystemAction.swift \
+                            Tinycast/Features/WindowManagement/Model/WindowCommand.swift \
+                            Tinycast/Features/Snippets/Model/Snippet.swift
++run voice-ask-test         Tinycast/Features/HotKeys/Model/HotKeyTiming.swift \
++                           Tinycast/Features/HotKeys/Model/HyperVoiceAskHold.swift \
++                           Tinycast/Features/HotKeys/Model/HyperHoldWatchdog.swift \
++                           Tinycast/Features/VoiceAsk/Model/VoiceAskHotKeyPolicy.swift \
++                           Tinycast/Features/VoiceAsk/Model/VoiceAskPhase.swift \
++                           Tinycast/Features/VoiceAsk/Model/CodexRealtimeProtocol.swift \
++                           Tinycast/Features/VoiceAsk/Model/VoiceCommandRouter.swift \
++                           Tinycast/Features/VoiceAsk/Model/RealtimeAudioBatchPolicy.swift \
++                           Tinycast/Features/AI/Model/CodexHelperLifetimePolicy.swift \
++                           Tinycast/Features/AI/Model/AIConversationOpenPolicy.swift \
++                           Tinycast/Features/AI/Model/JSONValue.swift
+ run callout-test          Tinycast/Platform/Appearance.swift \
+                            Tinycast/DesignSystem/Theme.swift \
+                            Tinycast/DesignSystem/InterfaceMetrics.swift \
+diff --git a/Tests/voice-ask-test.swift b/Tests/voice-ask-test.swift
+new file mode 100644
+index 00000000..20656930
+--- /dev/null
++++ b/Tests/voice-ask-test.swift
+@@ -0,0 +1,315 @@
++import Foundation
++
++@main
++@MainActor
++enum VoiceAskTests {
++    static var failures = 0
++    static var passes = 0
++
++    static func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
++        if condition() {
++            passes += 1
++        } else {
++            failures += 1
++            print("FAIL: \(message)")
++        }
++    }
++
++    static func main() {
++        hotKeyPolicy()
++        hyperVoiceAskHold()
++        hyperHoldWatchdog()
++        transcriptAccumulation()
++        protocolParsing()
++        phaseFlags()
++        voiceCommands()
++        codexHelperLifetime()
++        realtimeAudioBatch()
++        voicePromptOpenPolicy()
++        print("\(passes) passed, \(failures) failed")
++        if failures > 0 { exit(1) }
++    }
++
++    static func hotKeyPolicy() {
++        expect(
++            VoiceAskHotKeyPolicy.latchThreshold == HotKeyTiming.tapWindow,
++            "Voice Ask latch shares HotKeyTiming.tapWindow")
++        var policy = VoiceAskHotKeyPolicy()
++        let t0 = ContinuousClock.Instant.now
++
++        expect(policy.keyDown(at: t0) == .start, "first keyDown starts")
++        expect(policy.isRecording, "recording after keyDown")
++        // Quick release: latch.
++        let quick = t0.advanced(by: .milliseconds(100))
++        expect(policy.keyUp(at: quick) == .none, "quick keyUp keeps recording")
++        expect(policy.mode == .latched, "latched after quick tap")
++        expect(policy.keyDown(at: quick.advanced(by: .milliseconds(50))) == .stop, "second tap stops")
++        expect(!policy.isRecording, "idle after second tap")
++
++        policy.reset()
++        let holdStart = ContinuousClock.Instant.now
++        expect(policy.keyDown(at: holdStart) == .start, "hold keyDown starts")
++        let holdEnd = holdStart.advanced(by: HotKeyTiming.tapWindow + .milliseconds(50))
++        expect(policy.keyUp(at: holdEnd) == .stop, "long hold keyUp stops")
++        expect(!policy.isRecording, "idle after push-to-talk release")
++
++        policy.reset()
++        expect(policy.keyUp(at: .now) == .none, "keyUp while idle is a no-op")
++    }
++
++    static func hyperVoiceAskHold() {
++        expect(
++            HotKeyTiming.tapWindowSeconds == 0.25,
++            "tap window seconds matches Duration milliseconds")
++
++        // Setting OFF → Hyper hold machine stays inert (Quick Press / combo untouched).
++        var off = HyperVoiceAskHold()
++        off.isEnabled = false
++        expect(off.beginHold() == .none, "disabled beginHold is a no-op")
++        expect(off.phase == .idle, "disabled stays idle after beginHold")
++        expect(off.otherKey() == .none, "disabled otherKey is a no-op")
++        expect(off.holdThresholdReached() == .none, "disabled threshold is a no-op")
++        expect(off.endHold() == .none, "disabled endHold is a no-op")
++
++        // Short lone Hyper → pending then release without start (Quick Press path).
++        var short = HyperVoiceAskHold()
++        short.isEnabled = true
++        expect(short.beginHold() == .scheduleHoldCheck, "enabled beginHold schedules check")
++        expect(short.phase == .pending, "pending after beginHold")
++        expect(short.endHold() == .cancelHoldCheck, "early release cancels check, no Voice Ask")
++        expect(short.phase == .idle, "idle after short release")
++
++        // Hyper+key before threshold → combo, no Voice Ask.
++        var combo = HyperVoiceAskHold()
++        combo.isEnabled = true
++        expect(combo.beginHold() == .scheduleHoldCheck, "combo beginHold schedules")
++        expect(combo.otherKey() == .cancelHoldCheck, "other key before threshold cancels check")
++        expect(combo.phase == .combo, "combo after other key")
++        expect(combo.holdThresholdReached() == .none, "threshold ignored in combo")
++        expect(combo.endHold() == .none, "combo release does not stop Voice Ask")
++
++        // Hold past threshold → start; release → stop.
++        var hold = HyperVoiceAskHold()
++        hold.isEnabled = true
++        expect(hold.beginHold() == .scheduleHoldCheck, "hold beginHold schedules")
++        expect(hold.holdThresholdReached() == .start, "threshold starts Voice Ask")
++        expect(hold.phase == .recording, "recording after threshold")
++        expect(hold.endHold() == .stop, "release stops Voice Ask")
++        expect(hold.phase == .idle, "idle after stop")
++
++        // Other key during Voice Ask → cancel + combo.
++        var interrupt = HyperVoiceAskHold()
++        interrupt.isEnabled = true
++        expect(interrupt.beginHold() == .scheduleHoldCheck, "interrupt beginHold")
++        expect(interrupt.holdThresholdReached() == .start, "interrupt starts")
++        expect(interrupt.otherKey() == .cancel, "other key cancels active Voice Ask")
++        expect(interrupt.phase == .combo, "combo after cancel")
++        expect(interrupt.endHold() == .none, "combo release after cancel is quiet")
++    }
++
++    static func transcriptAccumulation() {
++        var transcript = VoiceAskTranscript()
++        transcript.applyDelta("Hello ")
++        transcript.applyDelta("world")
++        expect(transcript.displayText == "Hello world", "deltas concatenate")
++        transcript.applyDone("Hello world")
++        expect(transcript.displayText == "Hello world", "done replaces partial")
++        transcript.applyDelta(" again")
++        expect(transcript.displayText == "Hello world again", "new partial after done")
++        transcript.applyDone("Hello world again")
++        expect(transcript.displayText == "Hello world again", "second done sticks")
++
++        var late = VoiceAskTranscript()
++        late.applyDelta("Okay.")
++        late.applyDelta("I will check")
++        late.applyDone("Okay.")
++        expect(late.displayText == "Okay.I will check", "late done preserves newer speech")
++    }
++
++    static func protocolParsing() {
++        let delta = CodexRealtimeProtocol.parse(
++            method: CodexRealtimeProtocol.transcriptDeltaNotification,
++            params: ["role": .string("user"), "delta": .string("hi")])
++        expect(delta == .userTranscriptDelta("hi"), "user delta")
++
++        let assistant = CodexRealtimeProtocol.parse(
++            method: CodexRealtimeProtocol.transcriptDeltaNotification,
++            params: ["role": .string("assistant"), "delta": .string("nope")])
++        expect(assistant == .ignored, "assistant delta ignored")
++
++        let done = CodexRealtimeProtocol.parse(
++            method: CodexRealtimeProtocol.transcriptDoneNotification,
++            params: ["role": .string("user"), "text": .string("final")])
++        expect(done == .userTranscriptDone("final"), "user done")
++
++        let error = CodexRealtimeProtocol.parse(
++            method: CodexRealtimeProtocol.errorNotification,
++            params: ["message": .string("boom")])
++        expect(error == .error("boom"), "error event")
++
++        let started = CodexRealtimeProtocol.parse(
++            method: CodexRealtimeProtocol.startedNotification,
++            params: ["realtimeSessionId": .string("s1")])
++        expect(started == .started(sessionID: "s1"), "started event")
++
++        struct Fake: LocalizedError {
++            var errorDescription: String? { "thread/realtime/start requires experimentalApi capability" }
++        }
++        expect(CodexRealtimeProtocol.isUnsupported(Fake()), "experimentalApi error is unsupported")
++        expect(
++            CodexRealtimeProtocol.unavailableMessage(for: Fake())
++                == "Voice Ask requires a newer Codex CLI",
++            "unsupported message")
++
++        let params = CodexRealtimeProtocol.startParams(threadID: "t1")
++        expect(params["clientManagedHandoffs"] as? Bool == true, "client managed handoffs")
++        expect(params["flushTranscriptTailOnSessionEnd"] as? Bool == true, "flush tail")
++        expect(params["outputModality"] as? String == "text", "text modality")
++    }
++
++    static func phaseFlags() {
++        expect(VoiceAskPhase.idle.isActive == false, "idle inactive")
++        expect(VoiceAskPhase.connecting.isActive, "connecting active")
++        expect(VoiceAskPhase.listening.isActive, "listening active")
++        expect(VoiceAskPhase.processing.isActive, "processing active")
++        expect(VoiceAskPhase.completed.isActive == false, "completed inactive")
++        expect(VoiceAskPhase.failed("x").errorMessage == "x", "failed message")
++        expect(VoiceAskAvailability.available.isAvailable, "available")
++        expect(!VoiceAskAvailability.unavailable("old").isAvailable, "unavailable")
++    }
++
++    static func voiceCommands() {
++        let apps = [
++            VoiceCommandApp(id: "/Apps/Zed.app", name: "Zed"),
++            VoiceCommandApp(
++                id: "/Apps/Safari.app", name: "Safari", alternateTitles: ["Safari Browser"]),
++            VoiceCommandApp(id: "/Apps/Notes.app", name: "Notes")
++        ]
++
++        expect(
++            VoiceCommandPolicy.plan(for: "Open Zed") == .launchApplication(query: "Zed"),
++            "Open Zed")
++        expect(
++            VoiceCommandPolicy.plan(for: "Launch Safari!") == .launchApplication(query: "Safari"),
++            "Launch Safari strips punctuation")
++        expect(
++            VoiceCommandPolicy.plan(for: "Открой Zed") == .launchApplication(query: "Zed"),
++            "Открой Zed")
++        expect(
++            VoiceCommandPolicy.plan(for: "Запусти Notes") == .launchApplication(query: "Notes"),
++            "Запусти Notes")
++        expect(
++            VoiceCommandPolicy.plan(for: "what is kubernetes") == .askAI("what is kubernetes"),
++            "plain speech is askAI")
++        expect(
++            VoiceCommandPolicy.plan(for: "Open Safari and find Kubernetes docs")
++                == .automation("Open Safari and find Kubernetes docs"),
++            "compound English → automation")
++        expect(
++            VoiceCommandPolicy.plan(for: "Открой Safari и найди документацию")
++                == .automation("Открой Safari и найди документацию"),
++            "compound Russian → automation")
++
++        expect(
++            VoiceCommandRouter.route(transcript: "Open Zed", apps: apps)
++                == .launchApplication(apps[0]),
++            "routes Open Zed to launch")
++        expect(
++            VoiceCommandRouter.route(transcript: "Открой Safari Browser", apps: apps)
++                == .launchApplication(apps[1]),
++            "alternate title resolves")
++        expect(
++            VoiceCommandRouter.route(transcript: "Open UnknownApp", apps: apps)
++                == .askAI("Open UnknownApp"),
++            "missing app falls back to askAI")
++        expect(
++            VoiceCommandRouter.route(
++                transcript: "Open Safari and find Kubernetes", apps: apps)
++                == .automation("Open Safari and find Kubernetes"),
++            "automation is not forced into a launch")
++        expect(
++            VoiceCommandRouter.resolve("zed", in: apps)?.id == apps[0].id,
++            "resolve is case-insensitive")
++        expect(VoiceCommandRouter.resolve("Saf", in: apps) == nil, "no fuzzy guess on prefix")
++    }
++
++    static func hyperHoldWatchdog() {
++        expect(
++            !HyperHoldWatchdog.shouldReset(hyperActive: false, physicalKeyDown: false),
++            "idle + key up → no reset")
++        expect(
++            !HyperHoldWatchdog.shouldReset(hyperActive: false, physicalKeyDown: true),
++            "idle + key down → no reset")
++        expect(
++            !HyperHoldWatchdog.shouldReset(hyperActive: true, physicalKeyDown: true),
++            "hold + physical down → keep hold")
++        expect(
++            HyperHoldWatchdog.shouldReset(hyperActive: true, physicalKeyDown: false),
++            "stale hold without physical key → reset")
++    }
++
++    static func codexHelperLifetime() {
++        expect(
++            CodexHelperLifetimePolicy.idleShutdownSeconds == 180,
++            "idle shutdown is 180 seconds")
++        expect(
++            CodexHelperLifetimePolicy.shouldArmIdleAfterProbe(realtimeHoldCount: 0, turnActive: false),
++            "probe with no hold arms idle")
++        expect(
++            !CodexHelperLifetimePolicy.shouldArmIdleAfterProbe(realtimeHoldCount: 1, turnActive: false),
++            "probe during realtime hold does not arm idle")
++        expect(
++            !CodexHelperLifetimePolicy.shouldArmIdleAfterProbe(realtimeHoldCount: 0, turnActive: true),
++            "probe during an active turn does not arm idle")
++        expect(
++            CodexHelperLifetimePolicy.shouldArmIdleAfterRealtimeEnd(
++                realtimeHoldCount: 0, turnActive: false),
++            "realtime end with zero holds arms idle")
++        expect(
++            !CodexHelperLifetimePolicy.shouldArmIdleAfterRealtimeEnd(
++                realtimeHoldCount: 1, turnActive: false),
++            "nested realtime hold keeps helper alive")
++    }
++
++    static func realtimeAudioBatch() {
++        expect(
++            RealtimeAudioBatchPolicy.sampleThreshold == 2_400,
++            "batch ~100 ms at 24 kHz")
++        expect(
++            RealtimeAudioBatchPolicy.flushDelayMilliseconds == 80,
++            "flush delay stays under a frame of PTT lag")
++        expect(
++            !RealtimeAudioBatchPolicy.shouldFlushImmediately(pendingSamples: 1_024),
++            "single 1024-frame tap waits")
++        expect(
++            RealtimeAudioBatchPolicy.shouldFlushImmediately(pendingSamples: 2_400),
++            "threshold flushes immediately")
++        expect(
++            RealtimeAudioBatchPolicy.shouldFlushImmediately(pendingSamples: 4_800),
++            "over-threshold flushes immediately")
++    }
++
++    static func voicePromptOpenPolicy() {
++        let now = Date(timeIntervalSince1970: 1_000_000)
++        expect(
++            AIConversationOpenPolicy.decide(
++                opensTo: .recent, newAfter: .tenMinutes,
++                lastActiveAt: now.addingTimeInterval(-60), now: now) == .resume,
++            "voice into recent chat resumes within window")
++        expect(
++            AIConversationOpenPolicy.decide(
++                opensTo: .recent, newAfter: .twoMinutes,
++                lastActiveAt: now.addingTimeInterval(-180), now: now) == .startNew,
++            "voice into stale chat starts new per policy")
++        expect(
++            AIConversationOpenPolicy.decide(
++                opensTo: .newConversation, newAfter: .never,
++                lastActiveAt: now, now: now) == .startNew,
++            "opensTo newConversation always starts new")
++        expect(
++            VoiceCommandRouter.route(
++                transcript: "Open Safari and find Kubernetes", apps: [])
++                == .automation("Open Safari and find Kubernetes"),
++            "automation stays explicit compound outcome (Quick AI path, not agent runtime)")
++    }
++}
+diff --git a/Tinycast/App/AppCore.swift b/Tinycast/App/AppCore.swift
+index 1d525446..72169c5d 100644
+--- a/Tinycast/App/AppCore.swift
++++ b/Tinycast/App/AppCore.swift
+@@ -215,6 +215,9 @@ final class AppCore {
+     @ObservationIgnored private(set) lazy var quickAICoordinator = QuickAICoordinator(
+         chats: aiChats, settings: settings, palette: palette,
+         paletteCoordinator: paletteCoordinator, core: self)
++    @ObservationIgnored private(set) lazy var voiceAskCoordinator = VoiceAskCoordinator(
++        settings: settings, aiSettings: aiSettings, subscription: chatGPTSubscription,
++        palette: palette, paletteCoordinator: paletteCoordinator, core: self)
+ 
+     @ObservationIgnored private lazy var windowController = PaletteWindowController(core: self)
+     @ObservationIgnored private lazy var messageHUD = MessageHUDController(settings: settings)
+@@ -369,6 +372,12 @@ final class AppCore {
+             hotKeys.onRunExtensionCommand = { [weak self] entryID in
+                 self?.extensionCoordinator.runExtensionCommand(entryID: entryID)
+             }
++            hotKeys.onVoiceAskKeyDown = { [weak self] in
++                self?.voiceAskCoordinator.handleHotKeyDown()
++            }
++            hotKeys.onVoiceAskKeyUp = { [weak self] in
++                self?.voiceAskCoordinator.handleHotKeyUp()
++            }
+             extensions.onDidUninstall = { [weak self] entryIDs in
+                 self?.extensionCoordinator.removeExtensionReferences(entryIDs: entryIDs)
+             }
+@@ -399,6 +408,15 @@ final class AppCore {
+                 quickActionIDs: Set(customQuickActions.actions.map(\.id)))
+             // Keeps running while Carbon pauses: the recorder needs its rewritten flags.
+             hyperKeyTap.start(settings: settings)
++            hyperKeyTap.onVoiceAskHoldStart = { [weak self] in
++                self?.voiceAskCoordinator.beginHyperHoldPTT()
++            }
++            hyperKeyTap.onVoiceAskHoldStop = { [weak self] in
++                self?.voiceAskCoordinator.endHyperHoldPTT()
++            }
++            hyperKeyTap.onVoiceAskHoldCancel = { [weak self] in
++                self?.voiceAskCoordinator.cancelHyperHoldPTT()
++            }
+ 
+             snippetsStore.onSnapshot = { [weak self] snapshot in
+                 guard let self else { return }
+@@ -482,7 +500,7 @@ final class AppCore {
+             return snippetsStore.record(id: id)?.snippet.name
+         case .extensionCommand(let entryID):
+             return appIndex.apps.first { $0.kind == .extensionCommand && $0.id == entryID }?.name
+-        case .togglePalette, .command, .systemAction, .windowCommand:
++        case .togglePalette, .voiceAsk, .command, .systemAction, .windowCommand:
+             return nil
+         }
+     }
+diff --git a/Tinycast/Features/AI/Service/CodexAppServerClient.swift b/Tinycast/Features/AI/Service/CodexAppServerClient.swift
+index d4c11ea5..a68c51c4 100644
+--- a/Tinycast/Features/AI/Service/CodexAppServerClient.swift
++++ b/Tinycast/Features/AI/Service/CodexAppServerClient.swift
+@@ -238,7 +238,7 @@ final class CodexAppServerClient {
+                         "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+                             ?? "0"
+                     ],
+-                    "capabilities": ["experimentalApi": false]
++                    "capabilities": ["experimentalApi": true]
+                 ])
+             try send(CodexAppServerProtocol.notification(method: "initialized"))
+         } catch {
+diff --git a/Tinycast/Features/AI/Settings/AISettingsStore.swift b/Tinycast/Features/AI/Settings/AISettingsStore.swift
+index 8415e05d..89c45f39 100644
+--- a/Tinycast/Features/AI/Settings/AISettingsStore.swift
++++ b/Tinycast/Features/AI/Settings/AISettingsStore.swift
+@@ -41,6 +41,14 @@ final class AISettingsStore {
+     var toolRounds: AIToolRounds {
+         didSet { defaults.set(toolRounds.rawValue, forKey: AppSettingsKey.aiToolRounds.rawValue) }
+     }
++    /// Off by default: dictation fills Quick AI; Enter still sends.
++    var voiceAskSendAutomatically: Bool {
++        didSet {
++            defaults.set(
++                voiceAskSendAutomatically,
++                forKey: AppSettingsKey.aiVoiceAskSendAutomatically.rawValue)
++        }
++    }
+     /// Per route, the models its picker lists; no entry lists all it offers, later ones too.
+     private(set) var shownModels: [String: [String]] {
+         didSet { defaults.set(shownModels, forKey: AppSettingsKey.aiShownModels.rawValue) }
+@@ -106,6 +114,9 @@ final class AISettingsStore {
+         toolRounds =
+             AIToolRounds(rawValue: defaults.integer(forKey: AppSettingsKey.aiToolRounds.rawValue))
+             ?? .twentyFive
++        voiceAskSendAutomatically =
++            defaults.object(forKey: AppSettingsKey.aiVoiceAskSendAutomatically.rawValue) as? Bool
++            ?? false
+         shownModels =
+             defaults.dictionary(forKey: AppSettingsKey.aiShownModels.rawValue) as? [String: [String]]
+             ?? [:]
+diff --git a/Tinycast/Features/AI/Settings/AISettingsView.swift b/Tinycast/Features/AI/Settings/AISettingsView.swift
+index f5d62b4f..f7dfac4b 100644
+--- a/Tinycast/Features/AI/Settings/AISettingsView.swift
++++ b/Tinycast/Features/AI/Settings/AISettingsView.swift
+@@ -33,6 +33,7 @@ struct AISettingsView: View {
+ 
+             Group {
+                 defaultModelSection
++                voiceAskSection
+                 chatSection
+                 conversationsSection
+                 systemPromptSection
+@@ -117,6 +118,34 @@ struct AISettingsView: View {
+         settings.reconcile(subscription: subscription, installedAI: installedAI)
+     }
+ 
++    private var voiceAskSection: some View {
++        @Bindable var settings = settings
++        return Section {
++            SettingsRow(
++                title: "Shortcut", subtitle: "Toggle with a tap, or hold to talk.",
++                anchor: .aiVoiceAsk
++            ) {
++                ShortcutRecorder(action: .voiceAsk)
++            }
++            Toggle(isOn: $settings.voiceAskSendAutomatically) {
++                SettingsRowTitle(.aiVoiceAsk, "Send automatically after dictation")
++                Text("Off keeps the transcript editable in Quick AI.")
++            }
++            LabeledContent("Status") {
++                Text(core.voiceAskCoordinator.availability.statusText)
++                    .foregroundStyle(.secondary)
++                    .multilineTextAlignment(.trailing)
++            }
++        } header: {
++            SettingsSectionHeader(.aiVoiceAsk)
++        } footer: {
++            Text("Dictation uses Codex realtime. The reply still goes to your selected chat model.")
++                .font(.caption)
++                .foregroundStyle(.secondary)
++        }
++        .onAppear { core.voiceAskCoordinator.refreshAvailability() }
++    }
++
+     private var chatSection: some View {
+         @Bindable var settings = settings
+         return Section {
+diff --git a/Tinycast/Features/Backup/Model/SettingsBackup.swift b/Tinycast/Features/Backup/Model/SettingsBackup.swift
+index 0fde16b9..d3b10c56 100644
+--- a/Tinycast/Features/Backup/Model/SettingsBackup.swift
++++ b/Tinycast/Features/Backup/Model/SettingsBackup.swift
+@@ -28,6 +28,7 @@ struct SettingsBackup: Codable {
+         var hyperKey: String?
+         var hyperKeyIncludesShift: Bool?
+         var hyperKeyQuickPress: String?
++        var hyperKeyHoldVoiceAsk: Bool?
+         var emojiSkinTone: String?
+         var emojiGridColumns: Int?
+         var showInMenuBar: Bool?
+@@ -94,6 +95,7 @@ struct SettingsBackup: Codable {
+     struct HotkeyBackup: Codable {
+         /// Named apart from `commands`: the launcher toggle is the one action with no command row.
+         var togglePalette: HotKeyBinding?
++        var voiceAsk: HotKeyBinding?
+         var commands: [String: HotKeyBinding]?
+         var apps: [String: HotKeyBinding]?
+         var panes: [String: HotKeyBinding]?
+@@ -138,6 +140,7 @@ extension SettingsBackup {
+             hyperKey: s.hyperKey.rawValue,
+             hyperKeyIncludesShift: s.hyperKeyIncludesShift,
+             hyperKeyQuickPress: s.hyperKeyQuickPress.rawValue,
++            hyperKeyHoldVoiceAsk: s.hyperKeyHoldVoiceAsk,
+             emojiSkinTone: s.emojiSkinTone.rawValue,
+             emojiGridColumns: s.emojiGridColumns.rawValue,
+             showInMenuBar: s.showInMenuBar,
+@@ -193,6 +196,7 @@ extension SettingsBackup {
+         let hk = core.hotKeys
+         var hotkeys = HotkeyBackup()
+         hotkeys.togglePalette = hk.binding(for: .togglePalette)
++        hotkeys.voiceAsk = hk.binding(for: .voiceAsk)
+         hotkeys.commands = Dictionary(
+             uniqueKeysWithValues: CommandID.allCases.compactMap { id in
+                 id.hotKeyAction.flatMap(hk.binding(for:)).map { (id.rawValue, $0) }
+@@ -329,6 +333,10 @@ extension SettingsBackup {
+             settings.hyperKeyQuickPress = quick
+             count += 1
+         }
++        if let flag = s.hyperKeyHoldVoiceAsk {
++            settings.hyperKeyHoldVoiceAsk = flag
++            count += 1
++        }
+         if let raw = s.emojiSkinTone, let tone = EmojiSkinTone(rawValue: raw) {
+             settings.emojiSkinTone = tone
+             count += 1
+@@ -551,6 +559,7 @@ extension SettingsBackup {
+             count += 1
+         }
+         if let b = hotkeys.togglePalette { apply(b, .togglePalette) }
++        if let b = hotkeys.voiceAsk { apply(b, .voiceAsk) }
+         for (rawID, b) in hotkeys.commands ?? [:] {
+             guard let action = CommandID(rawValue: rawID)?.hotKeyAction else { continue }
+             apply(b, action)
+diff --git a/Tinycast/Features/Backup/Model/SettingsBackupCoverage.swift b/Tinycast/Features/Backup/Model/SettingsBackupCoverage.swift
+index facaa376..ca3555d0 100644
+--- a/Tinycast/Features/Backup/Model/SettingsBackupCoverage.swift
++++ b/Tinycast/Features/Backup/Model/SettingsBackupCoverage.swift
+@@ -11,6 +11,7 @@ enum SettingsBackupCoverage {
+         "hyperKey": .hyperKey,
+         "hyperKeyIncludesShift": .hyperKeyIncludesShift,
+         "hyperKeyQuickPress": .hyperKeyQuickPress,
++        "hyperKeyHoldVoiceAsk": .hyperKeyHoldVoiceAsk,
+         "showInMenuBar": .showInMenuBar,
+         "emojiSkinTone": .emojiSkinTone,
+         "emojiGridColumns": .emojiGridColumns,
+@@ -134,6 +135,8 @@ enum SettingsBackupCoverage {
+         AppSettingsKey.aiInstalledOverrides.rawValue:
+             "Names a command to run and the variables to run it with; an import must never decide "
+             + "which program this Mac launches.",
++        AppSettingsKey.aiVoiceAskSendAutomatically.rawValue:
++            "Whether Voice Ask sends the transcript without review; an import must not arm that.",
+         AppSettingsKey.mcpEnabled.rawValue:
+             "Doubles as consent to run third-party MCP servers, one of which is a local process; a "
+             + "flag that grants a capability is never carried by a backup.",
+diff --git a/Tinycast/Features/Launcher/Service/VisibilityStore.swift b/Tinycast/Features/Launcher/Service/VisibilityStore.swift
+index 7ebf3c7e..db61e609 100644
+--- a/Tinycast/Features/Launcher/Service/VisibilityStore.swift
++++ b/Tinycast/Features/Launcher/Service/VisibilityStore.swift
+@@ -76,7 +76,7 @@ final class VisibilityStore {
+         case .settingsPane: isKindEnabled(.systemSettings)
+         case .systemAction: isKindEnabled(.systemAction)
+         case .command(let id): id.owner == nil ? isKindEnabled(.command) : true
+-        case .togglePalette, .quickAction, .customCommand, .windowCommand, .customWindowSize,
++        case .togglePalette, .voiceAsk, .quickAction, .customCommand, .windowCommand, .customWindowSize,
+             .windowLayout, .windowRoom, .quicklink, .appleShortcut, .snippet, .extensionCommand:
+             true
+         }
+diff --git a/Tinycast/Features/Settings/AppSettings.swift b/Tinycast/Features/Settings/AppSettings.swift
+index a74ae55c..e5d656fc 100644
+--- a/Tinycast/Features/Settings/AppSettings.swift
++++ b/Tinycast/Features/Settings/AppSettings.swift
+@@ -182,6 +182,11 @@ final class AppSettings {
+         }
+     }
+ 
++    /// Opt-in: hold Hyper alone past the tap window to dictate with Voice Ask (push-to-talk).
++    var hyperKeyHoldVoiceAsk: Bool {
++        didSet { defaults.set(hyperKeyHoldVoiceAsk, forKey: Key.hyperKeyHoldVoiceAsk.rawValue) }
++    }
++
+     /// Preferred skin tone applied to modifier-capable emoji at render and copy time.
+     var emojiSkinTone: EmojiSkinTone {
+         didSet { defaults.set(emojiSkinTone.rawValue, forKey: Key.emojiSkinTone.rawValue) }
+@@ -605,6 +610,7 @@ final class AppSettings {
+             defaults.string(forKey: Key.hyperKeyQuickPress.rawValue)
+             .flatMap(HyperKeyQuickPress.init)
+             ?? .none
++        hyperKeyHoldVoiceAsk = defaults.bool(forKey: Key.hyperKeyHoldVoiceAsk.rawValue)
+         emojiSkinTone =
+             defaults.string(forKey: Key.emojiSkinTone.rawValue).flatMap(EmojiSkinTone.init) ?? .none
+         emojiGridColumns =
+diff --git a/Tinycast/Features/Settings/AppSettingsKey.swift b/Tinycast/Features/Settings/AppSettingsKey.swift
+index a7b53f91..a8c1b6ee 100644
+--- a/Tinycast/Features/Settings/AppSettingsKey.swift
++++ b/Tinycast/Features/Settings/AppSettingsKey.swift
+@@ -11,6 +11,7 @@ enum AppSettingsKey: String, CaseIterable {
+     case hyperKey = "hyperKeyPhysicalKey"
+     case hyperKeyIncludesShift = "hyperKeyIncludesShift"
+     case hyperKeyQuickPress = "hyperKeyQuickPress"
++    case hyperKeyHoldVoiceAsk = "hyperKeyHoldVoiceAsk"
+     case emojiSkinTone = "emojiSkinTone"
+     case emojiGridColumns = "emojiGridColumns"
+     case showInMenuBar = "showInMenuBar"
+@@ -88,6 +89,7 @@ enum AppSettingsKey: String, CaseIterable {
+     case aiShownModels = "aiShownModels"
+     case aiDisabledRoutes = "aiDisabledRoutes"
+     case aiInstalledOverrides = "aiInstalledOverrides"
++    case aiVoiceAskSendAutomatically = "aiVoiceAskSendAutomatically"
+     case mcpEnabled = "mcpEnabled"
+     case mcpServers = "mcpServers"
+     case quickActionsEnabled = "quickActionsEnabled"
+diff --git a/Tinycast/Features/Settings/Model/SettingsFileKey.swift b/Tinycast/Features/Settings/Model/SettingsFileKey.swift
+index 1a74e9a6..7e3a2136 100644
+--- a/Tinycast/Features/Settings/Model/SettingsFileKey.swift
++++ b/Tinycast/Features/Settings/Model/SettingsFileKey.swift
+@@ -17,6 +17,7 @@ enum SettingsFileKey: String, CaseIterable, Sendable {
+     case hyperKey = "hyperKey.key"
+     case hyperKeyIncludesShift = "hyperKey.includesShift"
+     case hyperKeyQuickPress = "hyperKey.quickPress"
++    case hyperKeyHoldVoiceAsk = "hyperKey.holdVoiceAsk"
+     case calcNumberStyle = "calculator.numberStyle"
+     case launcherShowsSuggestions = "search.showsSuggestions"
+     case rootSearchSensitivity = "search.sensitivity"
+diff --git a/Tinycast/Features/Settings/Panes/GeneralSettingsView.swift b/Tinycast/Features/Settings/Panes/GeneralSettingsView.swift
+index f4c64339..6b39581a 100644
+--- a/Tinycast/Features/Settings/Panes/GeneralSettingsView.swift
++++ b/Tinycast/Features/Settings/Panes/GeneralSettingsView.swift
+@@ -147,6 +147,12 @@ struct GeneralSettingsView: View {
+                 }
+                 // Flipping it re-points recorded chords, so it needs a chord to mean.
+                 .settingsEnabled(settings.hyperKey != .none)
++
++                Toggle(isOn: $settings.hyperKeyHoldVoiceAsk) {
++                    SettingsRowTitle(.generalHyperKey, "Hold Hyper for Voice Ask")
++                    Text("Hold ✦ alone to dictate. Hyper+key shortcuts still win.")
++                }
++                .settingsEnabled(settings.hyperKey != .none)
+             } header: {
+                 SettingsSectionHeader(.generalHyperKey)
+             }
+diff --git a/Tinycast/Features/Settings/SettingsAnchor.swift b/Tinycast/Features/Settings/SettingsAnchor.swift
+index 9cff12df..c6c0cfb0 100644
+--- a/Tinycast/Features/Settings/SettingsAnchor.swift
++++ b/Tinycast/Features/Settings/SettingsAnchor.swift
+@@ -38,6 +38,7 @@ extension SettingsAnchor {
+     static let aiAI = Self(tab: .ai, title: "AI")
+     static let aiProviders = Self(tab: .ai, title: "Providers")
+     static let aiDefault = Self(tab: .ai, title: "Default")
++    static let aiVoiceAsk = Self(tab: .ai, title: "Voice Ask")
+     static let aiChat = Self(tab: .ai, title: "Chat")
+     static let aiConversations = Self(tab: .ai, title: "Conversations")
+     static let aiSystemPrompt = Self(tab: .ai, title: "System prompt")
+@@ -98,6 +99,7 @@ extension SettingsAnchor {
+ 
+     static let permissionsAccessibility = Self(tab: .permissions, title: "Accessibility")
+     static let permissionsCalendars = Self(tab: .permissions, title: "Calendars")
++    static let permissionsMicrophone = Self(tab: .permissions, title: "Microphone")
+ 
+     static let backupExport = Self(tab: .backup, title: "Export")
+     static let backupImport = Self(tab: .backup, title: "Import")
+diff --git a/Tinycast/Features/Settings/SettingsFileSchema.swift b/Tinycast/Features/Settings/SettingsFileSchema.swift
+index dbb3d842..6edeb060 100644
+--- a/Tinycast/Features/Settings/SettingsFileSchema.swift
++++ b/Tinycast/Features/Settings/SettingsFileSchema.swift
+@@ -43,6 +43,7 @@ enum SettingsFileSchema {
+         case .hyperKey: return bind(settings, \.hyperKey)
+         case .hyperKeyIncludesShift: return bind(settings, \.hyperKeyIncludesShift)
+         case .hyperKeyQuickPress: return bind(settings, \.hyperKeyQuickPress)
++        case .hyperKeyHoldVoiceAsk: return bind(settings, \.hyperKeyHoldVoiceAsk)
+         case .calcNumberStyle: return bind(settings, \.calcNumberStyle)
+         case .launcherShowsSuggestions: return bind(settings, \.launcherShowsSuggestions)
+         case .rootSearchSensitivity: return bind(settings, \.rootSearchSensitivity)
+diff --git a/Tinycast/Features/Settings/SettingsSearchCatalog.swift b/Tinycast/Features/Settings/SettingsSearchCatalog.swift
+index 685fa76b..a536baca 100644
+--- a/Tinycast/Features/Settings/SettingsSearchCatalog.swift
++++ b/Tinycast/Features/Settings/SettingsSearchCatalog.swift
+@@ -160,6 +160,9 @@ enum SettingsSearchCatalog {
+         .init(
+             .generalHyperKey, "Include Shift (⇧)",
+             keywords: ["modifier", "chord"]),
++        .init(
++            .generalHyperKey, "Hold Hyper for Voice Ask",
++            keywords: ["voice", "dictate", "microphone", "ptt", "push to talk", "hold"]),
+         .init(
+             .generalCalculator, "Number format",
+             keywords: ["decimal", "comma", "separator", "locale", "region", "thousands"]),
+@@ -280,6 +283,13 @@ enum SettingsSearchCatalog {
+             ]),
+         .init(.aiDefault, "Default model", keywords: ["llm", "gpt", "claude", "grok"]),
+         .init(.aiDefault, "Reasoning effort", keywords: ["thinking", "effort", "deepseek"]),
++        .init(
++            group: .aiVoiceAsk, "Voice Ask",
++            keywords: ["dictation", "microphone", "speech", "voice", "realtime", "codex"]),
++        .init(.aiVoiceAsk, "Shortcut", keywords: ["hotkey", "push to talk", "dictation"]),
++        .init(
++            .aiVoiceAsk, "Send automatically after dictation",
++            keywords: ["autosend", "auto send"]),
+         .init(.aiChat, "Web search", keywords: ["browse", "internet"]),
+         .init(.aiChat, "Tool call rounds", keywords: ["mcp", "tools", "limit", "loop", "agent", "unlimited"]),
+         .init(
+@@ -592,7 +602,10 @@ enum SettingsSearchCatalog {
+             keywords: ["paste", "keystrokes", "privacy", "grant"]),
+         .init(
+             .permissionsCalendars, "Calendars",
+-            keywords: ["events", "privacy", "grant", "eventkit"])
++            keywords: ["events", "privacy", "grant", "eventkit"]),
++        .init(
++            .permissionsMicrophone, "Microphone",
++            keywords: ["voice", "dictation", "speech", "privacy", "grant", "audio"])
+     ]
+ 
+     private static let backup: [SettingsSearchEntry] = [
+diff --git a/Tinycast/Features/VoiceAsk/Model/VoiceAskHotKeyPolicy.swift b/Tinycast/Features/VoiceAsk/Model/VoiceAskHotKeyPolicy.swift
+new file mode 100644
+index 00000000..39c7150e
+--- /dev/null
++++ b/Tinycast/Features/VoiceAsk/Model/VoiceAskHotKeyPolicy.swift
+@@ -0,0 +1,55 @@
++import Foundation
++
++/// Toggle vs push-to-talk from one shortcut: a quick tap latches, a hold releases on key-up.
++struct VoiceAskHotKeyPolicy: Equatable, Sendable {
++    /// Hold shorter than this and the release leaves recording on; longer is push-to-talk.
++    static let latchThreshold: Duration = HotKeyTiming.tapWindow
++
++    enum Mode: Equatable, Sendable {
++        case latched
++        case pushToTalk
++    }
++
++    enum Effect: Equatable, Sendable {
++        case start
++        case stop
++        case none
++    }
++
++    var isRecording = false
++    var mode: Mode?
++    var pressedAt: ContinuousClock.Instant?
++
++    mutating func keyDown(at now: ContinuousClock.Instant = .now) -> Effect {
++        if isRecording {
++            guard mode == .latched else { return .none }
++            isRecording = false
++            mode = nil
++            pressedAt = nil
++            return .stop
++        }
++        pressedAt = now
++        isRecording = true
++        mode = nil
++        return .start
++    }
++
++    mutating func keyUp(at now: ContinuousClock.Instant = .now) -> Effect {
++        guard isRecording, let pressedAt else { return .none }
++        let held = now - pressedAt
++        self.pressedAt = nil
++        if held < Self.latchThreshold {
++            mode = .latched
++            return .none
++        }
++        mode = nil
++        isRecording = false
++        return .stop
++    }
++
++    mutating func reset() {
++        isRecording = false
++        mode = nil
++        pressedAt = nil
++    }
++}
+diff --git a/Tinycast/Features/VoiceAsk/Model/VoiceAskPhase.swift b/Tinycast/Features/VoiceAsk/Model/VoiceAskPhase.swift
+new file mode 100644
+index 00000000..d6a25a0c
+--- /dev/null
++++ b/Tinycast/Features/VoiceAsk/Model/VoiceAskPhase.swift
+@@ -0,0 +1,48 @@
++import Foundation
++
++/// Lifetime of one Voice Ask capture. Idle means nothing is allocated.
++enum VoiceAskPhase: Equatable, Sendable {
++    case idle
++    case connecting
++    case listening
++    case processing
++    case completed
++    case failed(String)
++
++    var isActive: Bool {
++        switch self {
++        case .connecting, .listening, .processing: true
++        case .idle, .completed, .failed: false
++        }
++    }
++
++    var errorMessage: String? {
++        if case .failed(let message) = self { message } else { nil }
++    }
++}
++
++/// Where the transcript is written while a session runs.
++enum VoiceAskSurface: Equatable, Sendable {
++    /// Global hotkey with the palette closed: floating pill, then open Quick AI.
++    case pill
++    /// Mic from an already-open palette: transcript lands in the query field.
++    case palette
++}
++
++enum VoiceAskAvailability: Equatable, Sendable {
++    case unknown
++    case available
++    case unavailable(String)
++
++    var isAvailable: Bool {
++        if case .available = self { true } else { false }
++    }
++
++    var statusText: String {
++        switch self {
++        case .unknown: "Checking Codex realtime…"
++        case .available: "Codex realtime available"
++        case .unavailable(let message): message
++        }
++    }
++}
+diff --git a/Tinycast/Features/VoiceAsk/Model/VoiceCommandRouter.swift b/Tinycast/Features/VoiceAsk/Model/VoiceCommandRouter.swift
+new file mode 100644
+index 00000000..f7d7150a
+--- /dev/null
++++ b/Tinycast/Features/VoiceAsk/Model/VoiceCommandRouter.swift
+@@ -0,0 +1,113 @@
++import Foundation
++
++/// Enough of a launcher entry for voice resolve. Foundation-only so the harness can pin it.
++struct VoiceCommandApp: Equatable, Sendable {
++    let id: String
++    let name: String
++    let alternateTitles: [String]
++
++    init(id: String, name: String, alternateTitles: [String] = []) {
++        self.id = id
++        self.name = name
++        self.alternateTitles = alternateTitles
++    }
++}
++
++/// Deterministic voice intents. Obvious commands only — no NLP.
++enum VoiceCommandPlan: Equatable, Sendable {
++    /// "Open Zed" / "Открой Safari" — resolve through AppIndex, launch directly.
++    case launchApplication(query: String)
++    /// Compound speech ("Open Safari and find…") — not a local launch.
++    /// Routed to Quick AI today; not a computer_use / agent runtime.
++    case automation(String)
++    /// Not a local command, or a launch that could not be resolved confidently.
++    case askAI(String)
++}
++
++/// Pure classifier for Voice Ask transcripts.
++enum VoiceCommandPolicy {
++    private static let openVerbs = ["open", "launch", "открой", "запусти"]
++    private static let compoundMarkers = [
++        " and ", " и ", " then ", " потом ", " чтобы ", " and then ", ", and "
++    ]
++
++    static func plan(for transcript: String) -> VoiceCommandPlan {
++        let trimmed = Self.normalize(transcript)
++        guard !trimmed.isEmpty else { return .askAI(transcript) }
++        guard let (verb, remainder) = splitVerb(trimmed) else {
++            return .askAI(transcript)
++        }
++        _ = verb
++        let query = remainder.trimmingCharacters(in: .whitespacesAndNewlines)
++        guard !query.isEmpty else { return .askAI(transcript) }
++        if isCompound(query) { return .automation(transcript) }
++        return .launchApplication(query: query)
++    }
++
++    static func normalize(_ raw: String) -> String {
++        var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
++        while let last = text.last, ".?!…,".contains(last) {
++            text.removeLast()
++            text = text.trimmingCharacters(in: .whitespacesAndNewlines)
++        }
++        return text
++    }
++
++    private static func splitVerb(_ text: String) -> (verb: String, remainder: String)? {
++        let lower = text.lowercased()
++        for verb in openVerbs {
++            guard lower.hasPrefix(verb) else { continue }
++            let index = text.index(text.startIndex, offsetBy: verb.count)
++            guard index < text.endIndex, text[index].isWhitespace else { continue }
++            return (verb, String(text[text.index(after: index)...]))
++        }
++        return nil
++    }
++
++    private static func isCompound(_ query: String) -> Bool {
++        let lower = " \(query.lowercased()) "
++        return compoundMarkers.contains { lower.contains($0) }
++    }
++}
++
++/// Resolves a classified plan against known apps. No effects — the coordinator launches.
++enum VoiceCommandRouter {
++    enum Outcome: Equatable, Sendable {
++        case launchApplication(VoiceCommandApp)
++        case automation(String)
++        case askAI(String)
++    }
++
++    static func route(transcript: String, apps: [VoiceCommandApp]) -> Outcome {
++        switch VoiceCommandPolicy.plan(for: transcript) {
++        case .launchApplication(let query):
++            if let app = resolve(query, in: apps) {
++                return .launchApplication(app)
++            }
++            return .askAI(transcript)
++        case .automation(let text):
++            return .automation(text)
++        case .askAI(let text):
++            return .askAI(text)
++        }
++    }
++
++    /// Exact name / alternate title only. Fuzzy guessing belongs to Quick AI, not Voice Ask.
++    static func resolve(_ query: String, in apps: [VoiceCommandApp]) -> VoiceCommandApp? {
++        let needle = fold(query)
++        guard !needle.isEmpty else { return nil }
++        if let exact = apps.first(where: { fold($0.name) == needle }) {
++            return exact
++        }
++        if let alternate = apps.first(where: { $0.alternateTitles.contains { fold($0) == needle } })
++        {
++            return alternate
++        }
++        return nil
++    }
++
++    private static func fold(_ value: String) -> String {
++        value.trimmingCharacters(in: .whitespacesAndNewlines)
++            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
++    }
++}
+diff --git a/Tinycast/Features/VoiceAsk/UI/VoiceAskCoordinator.swift b/Tinycast/Features/VoiceAsk/UI/VoiceAskCoordinator.swift
+new file mode 100644
+index 00000000..499fb256
+--- /dev/null
++++ b/Tinycast/Features/VoiceAsk/UI/VoiceAskCoordinator.swift
+@@ -0,0 +1,394 @@
++import AppKit
++import Carbon.HIToolbox
++import Foundation
++import Observation
++
++/// Owns Voice Ask: global hotkey, in-palette mic, Codex realtime transcript → Quick AI.
++@MainActor
++@Observable
++final class VoiceAskCoordinator {
++    private(set) var phase: VoiceAskPhase = .idle
++    private(set) var surface: VoiceAskSurface?
++    private(set) var levels: [CGFloat] = Array(repeating: 0.12, count: 28)
++    private(set) var elapsed: Duration = .zero
++    private(set) var availability: VoiceAskAvailability = .unknown
++    private(set) var liveTranscript = ""
++
++    private let settings: AppSettings
++    private let aiSettings: AISettingsStore
++    private let subscription: ChatGPTSubscriptionManager
++    private let palette: PaletteState
++    private let paletteCoordinator: PaletteCoordinator
++    private unowned let core: AppCore
++
++    private let microphone = MicrophoneCapture()
++    private let transcriber: CodexRealtimeTranscriber
++    private let pill = VoicePillController()
++    private var hotKeyPolicy = VoiceAskHotKeyPolicy()
++    private var transcript = VoiceAskTranscript()
++    private var savedQuery: String?
++    private var sessionTask: Task<Void, Never>?
++    private var levelTimer: Timer?
++    private var startedAt: ContinuousClock.Instant?
++    private var pendingLevels: [CGFloat] = []
++    private var escapeMonitor: Any?
++    private var generation = 0
++    /// True while this session was started by Hyper-alone hold (always push-to-talk, never latch).
++    private var hyperHoldSession = false
++
++    init(
++        settings: AppSettings, aiSettings: AISettingsStore,
++        subscription: ChatGPTSubscriptionManager, palette: PaletteState,
++        paletteCoordinator: PaletteCoordinator, core: AppCore
++    ) {
++        self.settings = settings
++        self.aiSettings = aiSettings
++        self.subscription = subscription
++        self.palette = palette
++        self.paletteCoordinator = paletteCoordinator
++        self.core = core
++        transcriber = CodexRealtimeTranscriber(subscription: subscription)
++        pill.onCancel = { [weak self] in self?.cancel() }
++        microphone.onBuffer = { [weak self] data, samples, peak in
++            self?.handleAudio(data: data, samples: samples, peak: peak)
++        }
++        transcriber.onEvent = { [weak self] event in
++            self?.handleTranscript(event)
++        }
++    }
++
++    var isRecording: Bool { phase.isActive }
++
++    func handleHotKeyDown() {
++        switch hotKeyPolicy.keyDown() {
++        case .start: start(surface: preferredSurface())
++        case .stop: Task { await stopAndDeliver() }
++        case .none: break
++        }
++    }
++
++    func handleHotKeyUp() {
++        switch hotKeyPolicy.keyUp() {
++        case .stop: Task { await stopAndDeliver() }
++        case .start, .none: break
++        }
++    }
++
++    /// Hyper-alone hold past the tap window: start push-to-talk only (no latch).
++    func beginHyperHoldPTT() {
++        guard !phase.isActive else { return }
++        hotKeyPolicy.reset()
++        hyperHoldSession = true
++        start(surface: preferredSurface())
++    }
++
++    /// Hyper released after a Voice Ask hold session.
++    func endHyperHoldPTT() {
++        guard hyperHoldSession else { return }
++        hyperHoldSession = false
++        Task { await stopAndDeliver() }
++    }
++
++    /// Other key won: drop the Hyper dictation without delivering.
++    func cancelHyperHoldPTT() {
++        guard hyperHoldSession else { return }
++        hyperHoldSession = false
++        cancel()
++    }
++
++    /// Mic button inside an already-visible palette.
++    func toggleFromPalette() {
++        if phase.isActive {
++            Task { await stopAndDeliver() }
++        } else {
++            start(surface: .palette)
++        }
++    }
++
++    func cancel() {
++        generation &+= 1
++        sessionTask?.cancel()
++        sessionTask = nil
++        hyperHoldSession = false
++        hotKeyPolicy.reset()
++        cleanupCapture()
++        restoreQueryIfNeeded()
++        phase = .idle
++        surface = nil
++        liveTranscript = ""
++        transcript.reset()
++    }
++
++    func refreshAvailability() {
++        Task { await probeAvailability() }
++    }
++
++    private func preferredSurface() -> VoiceAskSurface {
++        paletteCoordinator.isVisible ? .palette : .pill
++    }
++
++    private func start(surface: VoiceAskSurface) {
++        guard settings.aiEnabled else {
++            fail("Enable AI in Settings to use Voice Ask.")
++            return
++        }
++        generation &+= 1
++        let token = generation
++        self.surface = surface
++        phase = .connecting
++        liveTranscript = ""
++        transcript.reset()
++        pendingLevels = []
++        elapsed = .zero
++        if surface == .palette {
++            savedQuery = palette.query
++            palette.query = ""
++        } else {
++            savedQuery = nil
++            pill.updateMetrics(settings.interfaceSize.metrics)
++            pill.show(phase: phase, levels: levels, elapsed: elapsed, error: nil)
++            installEscapeMonitor()
++        }
++        sessionTask = Task { [weak self] in
++            await self?.runSession(token: token)
++        }
++    }
++
++    private func runSession(token: Int) async {
++        do {
++            if case .unknown = availability {
++                availability = await transcriber.probeAvailability()
++            }
++            if case .unavailable(let message) = availability {
++                throw CodexRealtimeTranscriber.TranscriberError.unavailable(message)
++            }
++            try await transcriber.start()
++            guard token == generation else { return }
++            try await microphone.start()
++            guard token == generation else {
++                microphone.stop()
++                transcriber.cancel()
++                return
++            }
++            phase = .listening
++            startedAt = .now
++            startLevelTimer()
++            refreshPill()
++        } catch {
++            guard token == generation else { return }
++            fail(userMessage(for: error))
++        }
++    }
++
++    private func stopAndDeliver() async {
++        guard phase.isActive else { return }
++        let token = generation
++        phase = .processing
++        refreshPill()
++        microphone.stop()
++        stopLevelTimer()
++        await transcriber.finish()
++        guard token == generation else { return }
++        let text = transcript.displayText
++        cleanupCapture(keepPhase: true)
++        hyperHoldSession = false
++        hotKeyPolicy.reset()
++        if text.isEmpty {
++            restoreQueryIfNeeded()
++            phase = .failed("No speech detected")
++            refreshPill()
++            schedulePillDismiss()
++            return
++        }
++        phase = .completed
++        liveTranscript = text
++        deliver(text)
++        phase = .idle
++        surface = nil
++        pill.hide()
++        removeEscapeMonitor()
++    }
++
++    private func deliver(_ text: String) {
++        savedQuery = nil
++        let apps = core.appIndex.apps.compactMap { entry -> VoiceCommandApp? in
++            guard entry.kind == .application else { return nil }
++            return VoiceCommandApp(
++                id: entry.id, name: entry.name, alternateTitles: entry.alternateTitles)
++        }
++        switch VoiceCommandRouter.route(transcript: text, apps: apps) {
++        case .launchApplication(let commandApp):
++            guard let entry = core.appIndex.apps.first(where: { $0.id == commandApp.id }) else {
++                deliverAskAI(text)
++                return
++            }
++            if surface == .palette { palette.query = "" }
++            core.launcherCoordinator.launch(entry)
++        case .automation(let transcript):
++            // Explicit: `.automation` is reserved compound speech, not computer_use / agent runtime.
++            // Today it shares the Quick AI path with `.askAI` (MCP tools + selected Codex route).
++            deliverAskAI(transcript)
++        case .askAI(let transcript):
++            deliverAskAI(transcript)
++        }
++    }
++
++    private func deliverAskAI(_ text: String) {
++        let fromPalette = surface == .palette
++        if fromPalette {
++            palette.query = text
++            if aiSettings.voiceAskSendAutomatically {
++                core.quickAICoordinator.sendVoicePrompt(text)
++            }
++            return
++        }
++        if aiSettings.voiceAskSendAutomatically {
++            core.quickAICoordinator.sendVoicePrompt(text)
++        } else {
++            core.quickAICoordinator.compose(text)
++        }
++    }
++
++    private func fail(_ message: String) {
++        hyperHoldSession = false
++        hotKeyPolicy.reset()
++        cleanupCapture()
++        restoreQueryIfNeeded()
++        phase = .failed(message)
++        refreshPill()
++        schedulePillDismiss()
++        if case .unavailable = availability {
++            // Keep the cached probe result.
++        } else if message.contains("newer Codex") {
++            availability = .unavailable(message)
++        }
++    }
++
++    private func handleAudio(data: Data, samples: Int, peak: Float) {
++        guard phase == .listening else { return }
++        transcriber.appendAudio(pcm: data, samplesPerChannel: samples)
++        let level = CGFloat(min(max(peak, 0.04), 1))
++        pendingLevels.append(level)
++        if pendingLevels.count > 8 { pendingLevels.removeFirst(pendingLevels.count - 8) }
++    }
++
++    private func handleTranscript(_ event: CodexRealtimeProtocol.Event) {
++        switch event {
++        case .userTranscriptDelta(let delta):
++            transcript.applyDelta(delta)
++            liveTranscript = transcript.displayText
++            if surface == .palette { palette.query = liveTranscript }
++        case .userTranscriptDone(let text):
++            transcript.applyDone(text)
++            liveTranscript = transcript.displayText
++            if surface == .palette { palette.query = liveTranscript }
++        case .error(let message):
++            fail(message.isEmpty ? "Codex unavailable" : message)
++        case .closed:
++            break
++        case .started, .ignored:
++            break
++        }
++    }
++
++    private func cleanupCapture(keepPhase: Bool = false) {
++        microphone.stop()
++        transcriber.cancel()
++        stopLevelTimer()
++        removeEscapeMonitor()
++        if !keepPhase {
++            pill.hide()
++        }
++        pendingLevels = []
++        levels = Array(repeating: 0.12, count: levels.count)
++        startedAt = nil
++    }
++
++    private func restoreQueryIfNeeded() {
++        if let savedQuery {
++            palette.query = savedQuery
++        }
++        self.savedQuery = nil
++    }
++
++    private func startLevelTimer() {
++        stopLevelTimer()
++        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
++        levelTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 24.0, repeats: true) { [weak self] _ in
++            MainActor.assumeIsolated {
++                guard let self, self.phase == .listening else { return }
++                if let startedAt = self.startedAt {
++                    self.elapsed = ContinuousClock.now - startedAt
++                }
++                let sample = self.pendingLevels.last ?? 0.08
++                self.pendingLevels.removeAll(keepingCapacity: true)
++                if reduceMotion {
++                    self.levels = Array(repeating: max(sample, 0.15), count: self.levels.count)
++                } else {
++                    var next = self.levels
++                    next.removeFirst()
++                    next.append(sample)
++                    self.levels = next
++                }
++                self.refreshPill()
++            }
++        }
++    }
++
++    private func stopLevelTimer() {
++        levelTimer?.invalidate()
++        levelTimer = nil
++    }
++
++    private func refreshPill() {
++        guard surface == .pill else { return }
++        pill.updateMetrics(settings.interfaceSize.metrics)
++        pill.show(
++            phase: phase, levels: levels, elapsed: elapsed, error: phase.errorMessage)
++    }
++
++    private func schedulePillDismiss() {
++        guard surface == .pill else {
++            phase = .idle
++            surface = nil
++            return
++        }
++        Task { [weak self] in
++            try? await Task.sleep(for: .seconds(1.4))
++            guard let self else { return }
++            self.pill.hide()
++            self.phase = .idle
++            self.surface = nil
++            self.removeEscapeMonitor()
++        }
++    }
++
++    private func installEscapeMonitor() {
++        removeEscapeMonitor()
++        escapeMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
++            guard event.keyCode == UInt16(kVK_Escape) else { return }
++            Task { @MainActor in self?.cancel() }
++        }
++    }
++
++    private func removeEscapeMonitor() {
++        if let escapeMonitor {
++            NSEvent.removeMonitor(escapeMonitor)
++        }
++        escapeMonitor = nil
++    }
++
++    private func probeAvailability() async {
++        availability = await transcriber.probeAvailability()
++    }
++
++    private func userMessage(for error: Error) -> String {
++        if let capture = error as? MicrophoneCapture.CaptureError {
++            return capture.errorDescription ?? "Microphone unavailable"
++        }
++        if let transcriber = error as? CodexRealtimeTranscriber.TranscriberError {
++            return transcriber.errorDescription ?? "Codex unavailable"
++        }
++        return CodexRealtimeProtocol.unavailableMessage(for: error)
++    }
++}
+diff --git a/docs/architecture.md b/docs/architecture.md
+index 0000fa5c..c3a45064 100644
+--- a/docs/architecture.md
++++ b/docs/architecture.md
+@@ -230,7 +230,7 @@ Tinycast/
+     PaletteRowIndex.swift   the flat selection index — palette-owned, so it sits at the top
+     Launcher/ Clipboard/ Calculator/ Calendar/ Emoji/ FileSearch/ MenuSearch/ Notes/
+     Quicklinks/ Snippets/ Uninstall/ SystemActions/ CustomCommands/ HotKeys/ Backup/
+-    WindowManagement/ Onboarding/ Updates/ Support/ AI/ Settings/
++    WindowManagement/ Onboarding/ Updates/ Support/ AI/ VoiceAsk/ Settings/
+     Extensions/
+         Model/      pure — the harness inputs
+         Service/    effects — stores, monitors, runners, AppKit glue
+diff --git a/docs/features/ai.md b/docs/features/ai.md
+index 2d1fee9f..511d29cd 100644
+--- a/docs/features/ai.md
++++ b/docs/features/ai.md
+@@ -635,12 +635,46 @@ app-server lifecycle and discovered account metadata. Production never sets `COD
+ server uses the same login and credential store as the user's normal Codex command. Tinycast supplies
+ only a private working directory. The server stops after ten idle minutes, when AI is switched off or
+ when the app terminates, and restarts on demand. Account state, model availability and rate-limit
+-windows come from the supported app-server protocol. A custom Codex provider can report no account
+-and `requiresOpenaiAuth: false`; Tinycast then loads its models and runs turns without inventing an
+-account or asking for `codex login`. A missing or true flag still requires sign-in. A running server
+-rereads `config.toml` at every `account/read`, but Tinycast keeps what a check found, account or
+-provider, beside the models and rate limits it read with it, until the next check; a turn that finds
+-nothing to run on leaves Codex signed out and stops the server, as a check does.
++windows come from the supported app-server protocol. Initialize advertises `experimentalApi: true` so
++Voice Ask can call `thread/realtime/*`; ordinary text turns are unchanged. A Codex CLI too old for
++realtime leaves chat working and marks Voice Ask unavailable.
++
++## Voice Ask
++
++Voice Ask is Codex realtime dictation into the existing Quick AI composer. It is not a second chat
++stack and not a local speech recognizer.
++
++- **Voice provider and chat provider stay apart.** Microphone audio goes only to Codex realtime
++  (`thread/realtime/start` with `outputModality: text`, `clientManagedHandoffs: true`,
++  `flushTranscriptTailOnSessionEnd: true`). The finished user transcript becomes the Quick AI query
++  and is answered by whatever model is selected — Claude, Codex, Grok, OpenCode, Cursor, Apple
++  Intelligence or an API connection.
++- **Three entry points share one coordinator.** The launcher header shows Quick AI + mic whenever
++  `aiEnabled` is on (icon-only in compact, label + Tab chip when expanded). The mic records into the
++  search field; the global `HotKeyAction.voiceAsk` shortcut shows a non-activating Voice Pill when the
++  palette is closed, then opens Quick AI with the transcript. One Carbon chord is both toggle
++  (shorter than `HotKeyTiming.tapWindow`) and push-to-talk (hold). Opt-in
++  **Settings → General → Hold Hyper for Voice Ask** reuses `HyperKeyTap` so a lone Hyper hold past
++  the same window starts push-to-talk only — never latch — and Hyper+key cancels dictation in favour
++  of the shortcut.
++- **Obvious voice commands launch apps directly.** `VoiceCommandRouter` classifies the final
++  transcript with a tiny deterministic layer (`Open` / `Launch` / `Открой` / `Запусти`). A confident
++  AppIndex hit runs through `LauncherCoordinator` — never Codex computer use — and skips Quick AI.
++  An unresolved name, or compound speech ("Open Safari and find…"), falls through to Quick AI; the
++  automation outcome is reserved and does not arm `features.computer_use`.
++- **Idle is free.** No microphone, no realtime session, no waveform timer and no pill until a session
++  starts. The session reuses `ChatGPTSubscriptionManager`'s app-server and participates in its idle
++  shutdown hold count.
++- **Settings → AI → Voice Ask** binds the shortcut, toggles “Send automatically after dictation”
++  (off by default), and shows realtime availability. That auto-send flag is excluded from settings
++  backups like every other AI key. Hyper-hold is configured under General → Hyper Key.
++
++A custom Codex provider can report no account and `requiresOpenaiAuth: false`; Tinycast then loads
++its models and runs turns without inventing an account or asking for `codex login`. A missing or true
++flag still requires sign-in. A running server rereads `config.toml` at every `account/read`, but
++Tinycast keeps what a check found, account or provider, beside the models and rate limits it read
++with it, until the next check; a turn that finds nothing to run on leaves Codex signed out and stops
++the server, as a check does.
+ 
+ MCP is the one thing about that server that is fixed at `exec`: its overrides and its environment
+ both are, so `CodexAppServerClient` remembers the list it was launched with and relaunches when the
+diff --git a/docs/features/hotkeys.md b/docs/features/hotkeys.md
+index f7a17487..bd20d632 100644
+--- a/docs/features/hotkeys.md
++++ b/docs/features/hotkeys.md
+@@ -15,6 +15,9 @@ the keycap rendering — only the _engine_ differs.
+ 
+ ## Invariants
+ 
++- **`HotKeyCenter` registers both press and release.** Existing shortcuts pass only `onKeyDown` and
++  behave as before. Voice Ask registers an optional `onKeyUp` so one chord can be toggle or
++  push-to-talk (`VoiceAskHotKeyPolicy.latchThreshold` shares `HotKeyTiming.tapWindow`).
+ - **Hotkeys persist as JSON strings under `hotkey.<action>` UserDefaults keys**, and
+   `HotKeyAction.defaultsKey` is the one place that computes a key — it is also the `HotKeyCenter`
+   registration id, so the two cannot drift.
+@@ -207,6 +210,21 @@ that ended the hold is still in flight a runloop turn later — so the Escape we
+ Terminals read the raw `0x1B` and did not care; a focused field editor and any exact-match keymap
+ swallowed it, which is why Quick Press worked in Ghostty but never in Zed or the palette itself.
+ 
++### Hold Hyper for Voice Ask
++
++Opt-in (`AppSettings.hyperKeyHoldVoiceAsk`, off by default). Reuses the same hold tracking —
++`hyperDownAt`, `otherKeyPressed`, and `HotKeyTiming.tapWindow` (250 ms) — without a second
++`CGEventTap`. `HyperVoiceAskHold` is the pure state machine; `HyperKeyTap` only schedules the
++threshold timer and forwards start / stop / cancel to `VoiceAskCoordinator`.
++
++- A lone Hyper release inside the tap window still fires Quick Press when configured.
++- Hyper+key before the threshold is a normal Hyper shortcut; Voice Ask never starts.
++- Holding Hyper alone past the threshold starts Voice Ask in **push-to-talk only** (no latch).
++- Releasing Hyper stops capture and delivers the transcript into Quick AI.
++- Another key while Hyper dictation is active **cancels** Voice Ask and continues as a Hyper combo —
++  the shortcut wins over dictation.
++- The dedicated Voice Ask Carbon hotkey is unchanged.
++
+ ### ✦ is the notation, not a preference
+ 
+ Any combo whose modifiers are a superset of the chord renders with the Hyper set replaced by a single
+diff --git a/docs/signing.md b/docs/signing.md
+index 59ebcc6e..50f4d4ea 100644
+--- a/docs/signing.md
++++ b/docs/signing.md
+@@ -89,6 +89,7 @@ Accessibility grant. Each entitlement in `Tinycast/Tinycast.entitlements` earns
+ | `com.apple.security.cs.allow-jit` | JavaScriptCore cannot JIT, and every extension command runs on the interpreter |
+ | `com.apple.security.automation.apple-events` | Every Apple event is refused with `-1743` and no prompt — Get Info, the Finder selection an extension reads, and the System Events–driven system actions all die silently |
+ | `com.apple.security.device.camera` | The camera prompt never appears and access resolves as denied |
++| `com.apple.security.device.audio-input` | The microphone prompt never appears and access resolves as denied |
+ | `com.apple.security.personal-information.calendars` | `requestFullAccessToEvents()` returns `false` in milliseconds with no dialog, and Tinycast never appears under System Settings › Calendars |
+ 
+ **A usage string is not enough under the hardened runtime.** `tccd` checks the matching entitlement
+diff --git a/docs/standards.md b/docs/standards.md
+index 72b98563..632c78e2 100644
+--- a/docs/standards.md
++++ b/docs/standards.md
+@@ -79,8 +79,9 @@ fit the table.
+ | `State` | Shared observable state that persists nothing itself |
+ | `Catalog` | Pure static namespace over a built-in list |
+ | `Index` | A searchable collection, rebuilt as its inputs change |
+-| `Engine` | A pure evaluator: input → output |
+-| `Policy` | A pure decision — no state, no effects |
++    | `Engine` | A pure evaluator: input → output |
++    | `Policy` | A pure decision — no state, no effects |
++    | `Router` | Pure multi-way dispatch: classify input, pick one of several outcomes |
+ 
+ `Manager` is the one worth thinking twice about. It means *lifecycle plus policy*, which is a lot for one
+ type, so there are only two: `ClipboardManager` (polls, and owns the capture policy and the paste-side
+diff --git a/Tinycast/App/AppCore.swift b/Tinycast/App/AppCore.swift
+index 72169c5d..979f6ab8 100644
+--- a/Tinycast/App/AppCore.swift
++++ b/Tinycast/App/AppCore.swift
+@@ -332,8 +332,7 @@ final class AppCore {
+                 self?.updateCoordinator.presentIfAvailable(release) ?? true
+             }
+             updateChecker.start()
+-            supportReminders.onDue = { [weak self] in self?.supportCoordinator.presentIfDue() }
+-            supportReminders.start()
++            // Support reminders stay opt-in via the Support window — no background pump.
+ 
+             hyperKeyTap.healthTicker = healthTicker
+             hotKeys.modifierTapMonitor.healthTicker = healthTicker

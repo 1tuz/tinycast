@@ -1,0 +1,518 @@
+diff --git a/Tinycast/Features/VoiceAsk/Model/CodexRealtimeProtocol.swift b/Tinycast/Features/VoiceAsk/Model/CodexRealtimeProtocol.swift
+new file mode 100644
+index 00000000..70f18540
+--- /dev/null
++++ b/Tinycast/Features/VoiceAsk/Model/CodexRealtimeProtocol.swift
+@@ -0,0 +1,133 @@
++import Foundation
++
++/// Wire shapes for Codex `thread/realtime/*`. Only user transcript is kept for Voice Ask.
++enum CodexRealtimeProtocol {
++    static let sampleRate: UInt32 = 24_000
++    static let channelCount: UInt16 = 1
++
++    static let startMethod = "thread/realtime/start"
++    static let appendAudioMethod = "thread/realtime/appendAudio"
++    static let stopMethod = "thread/realtime/stop"
++    static let listVoicesMethod = "thread/realtime/listVoices"
++
++    static let startedNotification = "thread/realtime/started"
++    static let transcriptDeltaNotification = "thread/realtime/transcript/delta"
++    static let transcriptDoneNotification = "thread/realtime/transcript/done"
++    static let errorNotification = "thread/realtime/error"
++    static let closedNotification = "thread/realtime/closed"
++
++    enum Event: Equatable, Sendable {
++        case started(sessionID: String?)
++        case userTranscriptDelta(String)
++        case userTranscriptDone(String)
++        case error(String)
++        case closed(reason: String?)
++        case ignored
++    }
++
++    static func startParams(threadID: String) -> [String: Any] {
++        [
++            "threadId": threadID,
++            "clientManagedHandoffs": true,
++            "flushTranscriptTailOnSessionEnd": true,
++            "outputModality": "text",
++            "includeStartupContext": false
++        ]
++    }
++
++    static func appendAudioParams(threadID: String, pcm: Data, samplesPerChannel: Int) -> [String: Any] {
++        [
++            "threadId": threadID,
++            "audio": [
++                "data": pcm.base64EncodedString(),
++                "sampleRate": sampleRate,
++                "numChannels": channelCount,
++                "samplesPerChannel": samplesPerChannel
++            ]
++        ]
++    }
++
++    static func stopParams(threadID: String) -> [String: Any] {
++        ["threadId": threadID]
++    }
++
++    /// Parses a server notification. Assistant transcript is ignored on purpose.
++    static func parse(method: String, params: [String: JSONValue]) -> Event {
++        switch method {
++        case startedNotification:
++            return .started(sessionID: params["realtimeSessionId"]?.stringValue)
++        case transcriptDeltaNotification:
++            guard isUser(params["role"]?.stringValue),
++                let delta = params["delta"]?.stringValue, !delta.isEmpty
++            else { return .ignored }
++            return .userTranscriptDelta(delta)
++        case transcriptDoneNotification:
++            guard isUser(params["role"]?.stringValue),
++                let text = params["text"]?.stringValue
++            else { return .ignored }
++            return .userTranscriptDone(text)
++        case errorNotification:
++            return .error(params["message"]?.stringValue ?? "Codex realtime failed.")
++        case closedNotification:
++            return .closed(reason: params["reason"]?.stringValue)
++        default:
++            return .ignored
++        }
++    }
++
++    static func isUnsupported(_ error: Error) -> Bool {
++        let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
++        let lower = message.lowercased()
++        return lower.contains("experimentalapi")
++            || lower.contains("unknown method")
++            || lower.contains("method not found")
++            || lower.contains("not supported")
++            || lower.contains("thread/realtime")
++    }
++
++    static func unavailableMessage(for error: Error) -> String {
++        if isUnsupported(error) {
++            return "Voice Ask requires a newer Codex CLI"
++        }
++        return (error as? LocalizedError)?.errorDescription ?? "Codex unavailable"
++    }
++
++    private static func isUser(_ role: String?) -> Bool {
++        role?.lowercased() == "user"
++    }
++}
++
++/// Accumulates live user transcript from delta/done notifications.
++struct VoiceAskTranscript: Equatable, Sendable {
++    private(set) var text = ""
++    private var partial = ""
++
++    var displayText: String {
++        let combined = text + partial
++        return combined.trimmingCharacters(in: .whitespacesAndNewlines)
++    }
++
++    mutating func applyDelta(_ delta: String) {
++        partial += delta
++    }
++
++    mutating func applyDone(_ finalText: String) {
++        let trimmed = finalText.trimmingCharacters(in: .whitespacesAndNewlines)
++        guard !trimmed.isEmpty else { return }
++        let live = (text + partial).trimmingCharacters(in: .whitespacesAndNewlines)
++        // A late done can lag behind newer speech already reflected in `partial`.
++        if live.count >= trimmed.count, live.hasPrefix(trimmed) || !partial.isEmpty {
++            text = live
++        } else if trimmed.hasPrefix(text) || text.isEmpty {
++            text = trimmed
++        } else if !live.contains(trimmed) {
++            text = [live, trimmed].filter { !$0.isEmpty }.joined(separator: " ")
++        }
++        partial = ""
++    }
++
++    mutating func reset() {
++        text = ""
++        partial = ""
++    }
++}
+diff --git a/Tinycast/Features/VoiceAsk/Service/CodexRealtimeTranscriber.swift b/Tinycast/Features/VoiceAsk/Service/CodexRealtimeTranscriber.swift
+new file mode 100644
+index 00000000..cea586a1
+--- /dev/null
++++ b/Tinycast/Features/VoiceAsk/Service/CodexRealtimeTranscriber.swift
+@@ -0,0 +1,193 @@
++import Foundation
++
++/// One Codex realtime session used only for user speech → transcript.
++@MainActor
++final class CodexRealtimeTranscriber {
++    enum TranscriberError: LocalizedError {
++        case unavailable(String)
++        case failed(String)
++
++        var errorDescription: String? {
++            switch self {
++            case .unavailable(let message), .failed(let message): message
++            }
++        }
++    }
++
++    /// ~100 ms at 24 kHz — aggregates small PCM taps before one appendAudio RPC.
++    static let batchSampleThreshold = RealtimeAudioBatchPolicy.sampleThreshold
++    /// Upper bound on PTT latency when buffers stay under the sample threshold.
++    static let batchFlushDelay: Duration = .milliseconds(RealtimeAudioBatchPolicy.flushDelayMilliseconds)
++
++    var onEvent: ((CodexRealtimeProtocol.Event) -> Void)?
++
++    private let subscription: ChatGPTSubscriptionManager
++    private var threadID: String?
++    private var appendChain = Task<Void, Never> {}
++    private var pendingPCM = Data()
++    private var pendingSamples = 0
++    private var flushTask: Task<Void, Never>?
++    private(set) var isActive = false
++    private var holdingServer = false
++
++    init(subscription: ChatGPTSubscriptionManager) {
++        self.subscription = subscription
++    }
++
++    /// Probes `thread/realtime/listVoices` once the app-server is up, then arms idle shutdown.
++    func probeAvailability() async -> VoiceAskAvailability {
++        do {
++            try await subscription.prepareForRealtime()
++            defer { subscription.scheduleIdleAfterProbe() }
++            _ = try await subscription.realtimeRequest(
++                method: CodexRealtimeProtocol.listVoicesMethod, timeout: .seconds(8))
++            return .available
++        } catch {
++            subscription.scheduleIdleAfterProbe()
++            return .unavailable(CodexRealtimeProtocol.unavailableMessage(for: error))
++        }
++    }
++
++    func start() async throws {
++        stop(sendStop: false)
++        try await subscription.prepareForRealtime()
++        subscription.beginRealtimeHold()
++        holdingServer = true
++        subscription.onRealtimeNotification = { [weak self] method, params in
++            self?.handle(method: method, params: params)
++        }
++        do {
++            let thread = try await subscription.realtimeRequest(
++                method: "thread/start",
++                params: [
++                    "cwd": subscription.workspacePath,
++                    "approvalPolicy": "never",
++                    "sandbox": "read-only",
++                    "ephemeral": true,
++                    "config": ["web_search": "disabled"]
++                ],
++                timeout: .seconds(20))
++            guard let id = thread["thread"]?.objectValue?["id"]?.stringValue else {
++                throw TranscriberError.failed("Codex returned no realtime thread.")
++            }
++            threadID = id
++            _ = try await subscription.realtimeRequest(
++                method: CodexRealtimeProtocol.startMethod,
++                params: CodexRealtimeProtocol.startParams(threadID: id),
++                timeout: .seconds(20))
++            isActive = true
++        } catch {
++            cleanup()
++            releaseHold()
++            if CodexRealtimeProtocol.isUnsupported(error) {
++                throw TranscriberError.unavailable(CodexRealtimeProtocol.unavailableMessage(for: error))
++            }
++            throw TranscriberError.failed(
++                (error as? LocalizedError)?.errorDescription ?? "Codex unavailable")
++        }
++    }
++
++    func appendAudio(pcm: Data, samplesPerChannel: Int) {
++        guard isActive, threadID != nil, !pcm.isEmpty, samplesPerChannel > 0 else { return }
++        pendingPCM.append(pcm)
++        pendingSamples += samplesPerChannel
++        if RealtimeAudioBatchPolicy.shouldFlushImmediately(pendingSamples: pendingSamples) {
++            flushPendingAudio()
++        } else {
++            scheduleFlush()
++        }
++    }
++
++    /// Stops the session and waits for in-flight audio appends so the tail is not dropped.
++    func finish() async {
++        guard isActive || threadID != nil else { return }
++        isActive = false
++        flushPendingAudio()
++        await appendChain.value
++        if let threadID {
++            _ = try? await subscription.realtimeRequest(
++                method: CodexRealtimeProtocol.stopMethod,
++                params: CodexRealtimeProtocol.stopParams(threadID: threadID),
++                timeout: .seconds(10))
++        }
++        cleanup()
++        releaseHold()
++    }
++
++    func cancel() {
++        guard isActive || threadID != nil || holdingServer else {
++            cleanup()
++            return
++        }
++        stop(sendStop: true)
++        releaseHold()
++    }
++
++    private func scheduleFlush() {
++        guard flushTask == nil else { return }
++        flushTask = Task { [weak self] in
++            try? await Task.sleep(for: Self.batchFlushDelay)
++            guard let self, !Task.isCancelled else { return }
++            self.flushPendingAudio()
++        }
++    }
++
++    private func flushPendingAudio() {
++        flushTask?.cancel()
++        flushTask = nil
++        guard !pendingPCM.isEmpty, let threadID else {
++            pendingPCM = Data()
++            pendingSamples = 0
++            return
++        }
++        let pcm = pendingPCM
++        let samples = pendingSamples
++        pendingPCM = Data()
++        pendingSamples = 0
++        let params = CodexRealtimeProtocol.appendAudioParams(
++            threadID: threadID, pcm: pcm, samplesPerChannel: samples)
++        appendChain = Task { [weak self, appendChain] in
++            await appendChain.value
++            guard let self else { return }
++            _ = try? await self.subscription.realtimeRequest(
++                method: CodexRealtimeProtocol.appendAudioMethod,
++                params: params,
++                timeout: .seconds(10))
++        }
++    }
++
++    private func stop(sendStop: Bool) {
++        let id = threadID
++        cleanup()
++        guard sendStop, let id else { return }
++        Task { [subscription] in
++            _ = try? await subscription.realtimeRequest(
++                method: CodexRealtimeProtocol.stopMethod,
++                params: CodexRealtimeProtocol.stopParams(threadID: id),
++                timeout: .seconds(5))
++        }
++    }
++
++    private func cleanup() {
++        isActive = false
++        threadID = nil
++        flushTask?.cancel()
++        flushTask = nil
++        pendingPCM = Data()
++        pendingSamples = 0
++        appendChain = Task {}
++        subscription.onRealtimeNotification = nil
++    }
++
++    private func releaseHold() {
++        guard holdingServer else { return }
++        holdingServer = false
++        subscription.realtimeSessionDidEnd()
++    }
++
++    private func handle(method: String, params: [String: JSONValue]) {
++        let event = CodexRealtimeProtocol.parse(method: method, params: params)
++        guard event != .ignored else { return }
++        onEvent?(event)
++    }
++}
+diff --git a/Tinycast/Features/VoiceAsk/Service/MicrophoneCapture.swift b/Tinycast/Features/VoiceAsk/Service/MicrophoneCapture.swift
+new file mode 100644
+index 00000000..b3639107
+--- /dev/null
++++ b/Tinycast/Features/VoiceAsk/Service/MicrophoneCapture.swift
+@@ -0,0 +1,174 @@
++import AVFoundation
++import Foundation
++
++/// Captures microphone PCM for Codex realtime. Lives only while a Voice Ask session is listening.
++@MainActor
++final class MicrophoneCapture {
++    enum CaptureError: LocalizedError {
++        case unavailable
++        case denied
++
++        var errorDescription: String? {
++            switch self {
++            case .unavailable: "Microphone unavailable"
++            case .denied: "Microphone unavailable"
++            }
++        }
++    }
++
++    /// Peak amplitude in 0...1 for each delivered buffer, plus the PCM payload.
++    var onBuffer: ((Data, Int, Float) -> Void)?
++
++    /// Coalesce audio-thread taps onto MainActor near waveform FPS without delaying PTT much.
++    static let coalesceInterval: Duration = .milliseconds(40)
++
++    private var engine: AVAudioEngine?
++    private var coalesceTask: Task<Void, Never>?
++    private var coalescedPCM = Data()
++    private var coalescedSamples = 0
++    private var coalescedPeak: Float = 0
++    private let targetFormat: AVAudioFormat? = AVAudioFormat(
++        commonFormat: .pcmFormatInt16,
++        sampleRate: Double(CodexRealtimeProtocol.sampleRate),
++        channels: AVAudioChannelCount(CodexRealtimeProtocol.channelCount),
++        interleaved: true)
++
++    var isRunning: Bool { engine?.isRunning == true }
++
++    func start() async throws {
++        stop()
++        switch Permissions.microphoneAccess() {
++        case .denied: throw CaptureError.denied
++        case .notDetermined:
++            guard await Permissions.requestMicrophoneAccess() else { throw CaptureError.denied }
++        case .granted: break
++        }
++
++        guard let targetFormat else { throw CaptureError.unavailable }
++        let engine = AVAudioEngine()
++        let input = engine.inputNode
++        let inputFormat = input.outputFormat(forBus: 0)
++        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
++            throw CaptureError.unavailable
++        }
++        guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
++            throw CaptureError.unavailable
++        }
++
++        let bufferSize: AVAudioFrameCount = 1_024
++        input.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) {
++            [weak self] buffer, _ in
++            // Convert on the audio thread; hop to MainActor only after coalescing.
++            guard let converted = Self.convert(buffer, with: converter, to: targetFormat) else {
++                return
++            }
++            let peak = converted.peak
++            let data = converted.data
++            let samples = converted.samples
++            Task { @MainActor in
++                self?.enqueue(data: data, samples: samples, peak: peak)
++            }
++        }
++        do {
++            try engine.start()
++        } catch {
++            input.removeTap(onBus: 0)
++            throw CaptureError.unavailable
++        }
++        self.engine = engine
++    }
++
++    func stop() {
++        coalesceTask?.cancel()
++        coalesceTask = nil
++        flushCoalesced()
++        if let engine {
++            engine.inputNode.removeTap(onBus: 0)
++            engine.stop()
++        }
++        engine = nil
++        coalescedPCM = Data()
++        coalescedSamples = 0
++        coalescedPeak = 0
++    }
++
++    private func enqueue(data: Data, samples: Int, peak: Float) {
++        coalescedPCM.append(data)
++        coalescedSamples += samples
++        coalescedPeak = max(coalescedPeak, peak)
++        guard coalesceTask == nil else { return }
++        coalesceTask = Task { [weak self] in
++            try? await Task.sleep(for: Self.coalesceInterval)
++            guard let self, !Task.isCancelled else { return }
++            self.coalesceTask = nil
++            self.flushCoalesced()
++        }
++    }
++
++    private func flushCoalesced() {
++        guard !coalescedPCM.isEmpty else { return }
++        let data = coalescedPCM
++        let samples = coalescedSamples
++        let peak = coalescedPeak
++        coalescedPCM = Data()
++        coalescedSamples = 0
++        coalescedPeak = 0
++        onBuffer?(data, samples, peak)
++    }
++
++    private nonisolated static func convert(
++        _ buffer: AVAudioPCMBuffer,
++        with converter: AVAudioConverter,
++        to targetFormat: AVAudioFormat
++    ) -> (data: Data, samples: Int, peak: Float)? {
++        let peak = Self.peak(of: buffer)
++        let ratio = targetFormat.sampleRate / buffer.format.sampleRate
++        let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 32
++        guard let converted = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: capacity)
++        else { return nil }
++        // Box avoids mutation-of-captured-var warnings in the converter input callback.
++        final class Once: @unchecked Sendable {
++            var done = false
++            let buffer: AVAudioPCMBuffer
++            init(_ buffer: AVAudioPCMBuffer) { self.buffer = buffer }
++        }
++        let once = Once(buffer)
++        var error: NSError?
++        let status = converter.convert(to: converted, error: &error) { _, outStatus in
++            if once.done {
++                outStatus.pointee = .noDataNow
++                return nil
++            }
++            once.done = true
++            outStatus.pointee = .haveData
++            return once.buffer
++        }
++        guard status != .error, converted.frameLength > 0,
++            let channels = converted.int16ChannelData
++        else { return nil }
++        let sampleCount = Int(converted.frameLength) * Int(converted.format.channelCount)
++        let data = Data(bytes: channels[0], count: sampleCount * MemoryLayout<Int16>.size)
++        return (data, Int(converted.frameLength), peak)
++    }
++
++    private nonisolated static func peak(of buffer: AVAudioPCMBuffer) -> Float {
++        let count = Int(buffer.frameLength)
++        guard count > 0 else { return 0 }
++        if let samples = buffer.floatChannelData?[0] {
++            var peak: Float = 0
++            for i in 0..<count {
++                peak = max(peak, abs(samples[i]))
++            }
++            return min(peak, 1)
++        }
++        if let samples = buffer.int16ChannelData?[0] {
++            var peak: Int16 = 0
++            for i in 0..<count {
++                let value = abs(samples[i])
++                if value > peak { peak = value }
++            }
++            return Float(peak) / Float(Int16.max)
++        }
++        return 0
++    }
++}

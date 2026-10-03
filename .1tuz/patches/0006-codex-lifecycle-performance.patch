@@ -1,0 +1,183 @@
+diff --git a/Tinycast/Features/AI/Model/CodexHelperLifetimePolicy.swift b/Tinycast/Features/AI/Model/CodexHelperLifetimePolicy.swift
+new file mode 100644
+index 00000000..c29f37ab
+--- /dev/null
++++ b/Tinycast/Features/AI/Model/CodexHelperLifetimePolicy.swift
+@@ -0,0 +1,17 @@
++import Foundation
++
++/// Pure idle rules for the Codex app-server helper used by Voice Ask and Quick AI.
++enum CodexHelperLifetimePolicy {
++    /// Matches `ChatGPTSubscriptionManager.idleShutdown`.
++    static let idleShutdownSeconds = 180
++
++    /// A probe must re-arm idle when nothing is holding the helper.
++    static func shouldArmIdleAfterProbe(realtimeHoldCount: Int, turnActive: Bool) -> Bool {
++        realtimeHoldCount == 0 && !turnActive
++    }
++
++    /// Active realtime keeps the helper alive; ending it re-arms idle when no turn is running.
++    static func shouldArmIdleAfterRealtimeEnd(realtimeHoldCount: Int, turnActive: Bool) -> Bool {
++        realtimeHoldCount == 0 && !turnActive
++    }
++}
+diff --git a/Tinycast/Features/AI/Service/ChatGPTSubscriptionManager.swift b/Tinycast/Features/AI/Service/ChatGPTSubscriptionManager.swift
+index abfb4f0f..65d29792 100644
+--- a/Tinycast/Features/AI/Service/ChatGPTSubscriptionManager.swift
++++ b/Tinycast/Features/AI/Service/ChatGPTSubscriptionManager.swift
+@@ -5,8 +5,9 @@ import Observation
+ @MainActor
+ @Observable
+ final class ChatGPTSubscriptionManager {
+-    /// Long enough to span a conversation; a relaunch costs a second, a resident server ~20 MB.
+-    private static let idleShutdown: Duration = .seconds(600)
++    /// Keep Codex warm briefly, then return its ~20 MB resident helper when the assistant is idle.
++    /// Three minutes keeps consecutive voice commands fast without paying a ten-minute idle tax.
++    private static let idleShutdown: Duration = .seconds(CodexHelperLifetimePolicy.idleShutdownSeconds)
+ 
+     private let client: CodexAppServerClient
+     let turns: CodexTurnRunner
+@@ -23,8 +24,12 @@ final class ChatGPTSubscriptionManager {
+     /// Copied from the client at each check: the client is not observed, and Settings shows this.
+     private(set) var executable: URL?
+ 
++    /// Forwarded realtime notifications; text turns keep using `turns.handle`.
++    @ObservationIgnored var onRealtimeNotification: ((String, [String: JSONValue]) -> Void)?
++
+     @ObservationIgnored private var operationTask: Task<Void, Never>?
+     @ObservationIgnored private var idleTask: Task<Void, Never>?
++    @ObservationIgnored private var realtimeHoldCount = 0
+ 
+     init(supportDirectory: URL = AppPaths.applicationSupport()) {
+         let root = supportDirectory.appending(path: "InstalledAI/Codex", directoryHint: .isDirectory)
+@@ -52,6 +57,48 @@ final class ChatGPTSubscriptionManager {
+ 
+     var isConnected: Bool { access != nil && phase == .connected }
+ 
++    /// Path handed to `thread/start` for Voice Ask's ephemeral realtime thread.
++    var workspacePath: String { client.workspace.path }
++
++    /// Brings the app-server up for Voice Ask without extending idle lifetime by itself.
++    func prepareForRealtime() async throws {
++        idleTask?.cancel()
++        try await ensureConnected(toolServers: [])
++    }
++
++    /// After a one-shot probe: return to the normal idle timer so the helper is not pinned forever.
++    func scheduleIdleAfterProbe() {
++        guard CodexHelperLifetimePolicy.shouldArmIdleAfterProbe(
++            realtimeHoldCount: realtimeHoldCount, turnActive: turns.isActive)
++        else { return }
++        scheduleIdleShutdown()
++    }
++
++    /// Holds idle shutdown for an active realtime session; pairs with `realtimeSessionDidEnd`.
++    func beginRealtimeHold() {
++        realtimeHoldCount += 1
++        idleTask?.cancel()
++    }
++
++    func realtimeSessionDidEnd() {
++        realtimeHoldCount = max(0, realtimeHoldCount - 1)
++        if realtimeHoldCount == 0, !turns.isActive {
++            scheduleIdleShutdown()
++        }
++    }
++
++    /// Test seam: whether an idle shutdown task is armed (probe / session end must leave one).
++    var hasIdleShutdownArmed: Bool { idleTask != nil }
++
++    /// Test seam: active realtime holds that keep the helper alive.
++    var realtimeHoldDepth: Int { realtimeHoldCount }
++
++    func realtimeRequest(
++        method: String, params: [String: Any] = [:], timeout: Duration = .seconds(15)
++    ) async throws -> [String: JSONValue] {
++        try await client.request(method: method, params: params, timeout: timeout)
++    }
++
+     @discardableResult
+     func refresh() -> Task<Void, Never> {
+         // A check is under way the moment it is asked for, so `.idle` can mean nobody asked.
+@@ -137,7 +184,8 @@ final class ChatGPTSubscriptionManager {
+         idleTask?.cancel()
+         idleTask = Task { [weak self] in
+             try? await Task.sleep(for: Self.idleShutdown)
+-            guard !Task.isCancelled, let self, !self.turns.isActive else { return }
++            guard !Task.isCancelled, let self, !self.turns.isActive, self.realtimeHoldCount == 0
++            else { return }
+             self.turns.reset()
+             self.client.stop()
+         }
+@@ -221,6 +269,8 @@ final class ChatGPTSubscriptionManager {
+         switch method {
+         case "account/updated":
+             runOperation { [weak self] in await self?.refreshNow() }
++        case let method where method.hasPrefix("thread/realtime/"):
++            onRealtimeNotification?(method, params)
+         default:
+             turns.handle(method: method, params: params)
+         }
+diff --git a/Tinycast/Features/AI/UI/QuickAICoordinator.swift b/Tinycast/Features/AI/UI/QuickAICoordinator.swift
+index 6c069c8c..d9c08dc2 100644
+--- a/Tinycast/Features/AI/UI/QuickAICoordinator.swift
++++ b/Tinycast/Features/AI/UI/QuickAICoordinator.swift
+@@ -34,6 +34,19 @@ final class QuickAICoordinator {
+         paletteCoordinator.showPalette(mode: .ai)
+     }
+ 
++    /// Opens Quick AI with `prompt` in the composer, without sending.
++    func compose(_ prompt: String) {
++        guard settings.aiEnabled else { return }
++        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
++        guard !trimmed.isEmpty else {
++            show()
++            return
++        }
++        applyOpenPolicy()
++        paletteCoordinator.showPalette(mode: .ai)
++        palette.query = trimmed
++    }
++
+     /// ⇥ and the AI fallback: a fresh chat that carries the question, already asked.
+     func ask(_ prompt: String) {
+         guard settings.aiEnabled else { return }
+@@ -47,6 +60,20 @@ final class QuickAICoordinator {
+         send(prompt)
+     }
+ 
++    /// Voice Ask delivery: resume or open per `AIConversationOpenPolicy`, then send.
++    /// Does not force a new chat the way `ask(_:)` does for ⇥.
++    func sendVoicePrompt(_ prompt: String) {
++        guard settings.aiEnabled else { return }
++        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
++        guard !trimmed.isEmpty else {
++            show()
++            return
++        }
++        applyOpenPolicy()
++        paletteCoordinator.showPalette(mode: .ai)
++        send(trimmed)
++    }
++
+     /// Off leaves the screen too, so the palette never shows a feature that is gone.
+     func leave() {
+         if palette.mode == .ai || palette.mode == .aiHistory { palette.prepare(mode: .launcher) }
+diff --git a/Tinycast/Features/VoiceAsk/Model/RealtimeAudioBatchPolicy.swift b/Tinycast/Features/VoiceAsk/Model/RealtimeAudioBatchPolicy.swift
+new file mode 100644
+index 00000000..113fed44
+--- /dev/null
++++ b/Tinycast/Features/VoiceAsk/Model/RealtimeAudioBatchPolicy.swift
+@@ -0,0 +1,12 @@
++import Foundation
++
++/// Pure sample aggregation for realtime appendAudio RPCs.
++enum RealtimeAudioBatchPolicy {
++    static let sampleThreshold = 2_400
++    static let flushDelayMilliseconds = 80
++
++    /// Flush now when enough PCM has landed; otherwise wait for the delay.
++    static func shouldFlushImmediately(pendingSamples: Int) -> Bool {
++        pendingSamples >= sampleThreshold
++    }
++}

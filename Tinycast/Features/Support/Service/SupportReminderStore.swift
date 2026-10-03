@@ -33,16 +33,9 @@ final class SupportReminderStore {
     deinit { pump?.cancel() }
 
     func start() {
-        // Replace rather than bail: an exited loop leaves a non-nil task that would block restart.
+        // Fork policy: never auto-present Support. Manual Support window stays available.
         pump?.cancel()
-        pump = Task { [weak self] in
-            try? await Task.sleep(for: Self.startupDelay)
-            while !Task.isCancelled {
-                // Optional-chained: the sleep must not retain the store, or nothing can release it.
-                guard let wait = self?.advance() else { return }
-                try? await Task.sleep(for: .seconds(wait))
-            }
-        }
+        pump = nil
     }
 
     /// Called on every showing, by any route: whoever just read the pitch is not asked again soon.

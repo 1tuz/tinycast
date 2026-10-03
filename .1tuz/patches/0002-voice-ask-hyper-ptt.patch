@@ -1,0 +1,326 @@
+diff --git a/Tests/hotkey-test.swift b/Tests/hotkey-test.swift
+index 518d03e9..6c688827 100644
+--- a/Tests/hotkey-test.swift
++++ b/Tests/hotkey-test.swift
+@@ -68,6 +68,7 @@ struct DoubleTapDetectorTests {
+         interruptions()
+         repeats()
+         resetting()
++        hyperHoldWatchdog()
+ 
+         print("\(passes) passed, \(failures) failed")
+         if failures > 0 { exit(1) }
+@@ -254,6 +255,12 @@ struct DoubleTapDetectorTests {
+         expect(
+             HotKeyAction.builtInActions.contains(.togglePalette),
+             "the launcher toggle is bindable without a command row of its own")
++        expect(
++            HotKeyAction.builtInActions.contains(.voiceAsk),
++            "Voice Ask is a fixed bindable action")
++        expect(
++            HotKeyAction.voiceAsk.defaultsKey == "hotkey.voiceAsk",
++            "Voice Ask persists under hotkey.voiceAsk")
+ 
+         // Every action reaches the launcher as well as a shortcut; `CommandID.init` is exhaustive.
+         expect(
+@@ -513,4 +520,16 @@ struct DoubleTapDetectorTests {
+         stuck.tap(.command, at: 0.25)
+         expect(stuck.fired, [.command], "reset clears a half-held press")
+     }
++
++    static func hyperHoldWatchdog() {
++        expect(
++            !HyperHoldWatchdog.shouldReset(hyperActive: false, physicalKeyDown: false),
++            "idle + up → no reset")
++        expect(
++            !HyperHoldWatchdog.shouldReset(hyperActive: true, physicalKeyDown: true),
++            "active + down → keep")
++        expect(
++            HyperHoldWatchdog.shouldReset(hyperActive: true, physicalKeyDown: false),
++            "stale hold → reset")
++    }
+ }
+diff --git a/Tinycast/Features/HotKeys/Model/DoubleTapDetector.swift b/Tinycast/Features/HotKeys/Model/DoubleTapDetector.swift
+index c9600b77..4af12815 100644
+--- a/Tinycast/Features/HotKeys/Model/DoubleTapDetector.swift
++++ b/Tinycast/Features/HotKeys/Model/DoubleTapDetector.swift
+@@ -2,8 +2,8 @@ import Foundation
+ 
+ /// Recognizes a double-tapped lone modifier. See docs/features/hotkeys.md#double-tap-modifiers.
+ struct DoubleTapDetector {
+-    /// Longest a press may last and still be a tap; matches `HyperKeyTap.quickPressWindow`.
+-    static let maxHold: TimeInterval = 0.25
++    /// Longest a press may last and still be a tap; same window as `HotKeyTiming.tapWindow`.
++    static let maxHold: TimeInterval = HotKeyTiming.tapWindowSeconds
+     /// Longest gap between the first tap's release and the second tap's press.
+     static let maxGap: TimeInterval = 0.30
+ 
+diff --git a/Tinycast/Features/HotKeys/Model/HotKeyAction.swift b/Tinycast/Features/HotKeys/Model/HotKeyAction.swift
+index 563a168a..4b98655e 100644
+--- a/Tinycast/Features/HotKeys/Model/HotKeyAction.swift
++++ b/Tinycast/Features/HotKeys/Model/HotKeyAction.swift
+@@ -4,6 +4,8 @@ import Foundation
+ enum HotKeyAction: Hashable, Sendable {
+     /// The one fixed action with no command row of its own.
+     case togglePalette
++    /// Global Voice Ask: Codex realtime dictation into Quick AI.
++    case voiceAsk
+     /// Parameterised over the catalog, so a new built-in command is bindable with no case here.
+     case command(CommandID)
+     case app(bundleID: String)
+@@ -25,6 +27,7 @@ enum HotKeyAction: Hashable, Sendable {
+     var defaultsKey: String {
+         switch self {
+         case .togglePalette: "hotkey.togglePalette"
++        case .voiceAsk: "hotkey.voiceAsk"
+         case .command(let id): "hotkey." + id.rawValue
+         case .app(let bundleID): "hotkey.app." + bundleID
+         case .settingsPane(let bundleID): "hotkey.pane." + bundleID
+@@ -45,5 +48,5 @@ enum HotKeyAction: Hashable, Sendable {
+ 
+     /// The fixed actions every install can bind; the per-item catalogs extend them at launch.
+     static let builtInActions: [HotKeyAction] =
+-        [.togglePalette] + CommandID.allCases.compactMap(\.hotKeyAction)
++        [.togglePalette, .voiceAsk] + CommandID.allCases.compactMap(\.hotKeyAction)
+ }
+diff --git a/Tinycast/Features/HotKeys/Model/HotKeyTiming.swift b/Tinycast/Features/HotKeys/Model/HotKeyTiming.swift
+new file mode 100644
+index 00000000..27f8d0f7
+--- /dev/null
++++ b/Tinycast/Features/HotKeys/Model/HotKeyTiming.swift
+@@ -0,0 +1,10 @@
++import Foundation
++
++/// Shared hold-vs-tap window for Hyper Quick Press, Hyper→Voice Ask, and Voice Ask latch.
++enum HotKeyTiming {
++    /// Lone press shorter than this is a tap; longer is a hold.
++    static let tapWindow: Duration = .milliseconds(250)
++
++    /// Same window as `tapWindow`, for detectors that still use `TimeInterval`.
++    static let tapWindowSeconds: TimeInterval = 0.25
++}
+diff --git a/Tinycast/Features/HotKeys/Model/HyperVoiceAskHold.swift b/Tinycast/Features/HotKeys/Model/HyperVoiceAskHold.swift
+new file mode 100644
+index 00000000..f3216a4b
+--- /dev/null
++++ b/Tinycast/Features/HotKeys/Model/HyperVoiceAskHold.swift
+@@ -0,0 +1,63 @@
++import Foundation
++
++/// Opt-in Hyper-alone hold → Voice Ask push-to-talk. Latch never applies on this path.
++struct HyperVoiceAskHold: Equatable, Sendable {
++    enum Phase: Equatable, Sendable {
++        case idle
++        case pending
++        case recording
++        case combo
++    }
++
++    enum Effect: Equatable, Sendable {
++        case none
++        case scheduleHoldCheck
++        case cancelHoldCheck
++        case start
++        case stop
++        case cancel
++    }
++
++    private(set) var phase: Phase = .idle
++    var isEnabled = false
++
++    mutating func beginHold() -> Effect {
++        guard isEnabled else { return .none }
++        phase = .pending
++        return .scheduleHoldCheck
++    }
++
++    mutating func otherKey() -> Effect {
++        guard isEnabled else { return .none }
++        switch phase {
++        case .pending:
++            phase = .combo
++            return .cancelHoldCheck
++        case .recording:
++            phase = .combo
++            return .cancel
++        case .idle, .combo:
++            return .none
++        }
++    }
++
++    mutating func holdThresholdReached() -> Effect {
++        guard isEnabled, phase == .pending else { return .none }
++        phase = .recording
++        return .start
++    }
++
++    mutating func endHold() -> Effect {
++        let previous = phase
++        phase = .idle
++        switch previous {
++        case .recording: return .stop
++        case .pending: return .cancelHoldCheck
++        case .combo, .idle: return .none
++        }
++    }
++
++    mutating func reset() {
++        phase = .idle
++    }
++}
+diff --git a/Tinycast/Features/HotKeys/Service/HotKeyCenter.swift b/Tinycast/Features/HotKeys/Service/HotKeyCenter.swift
+index 16cce398..a6fcc7c0 100644
+--- a/Tinycast/Features/HotKeys/Service/HotKeyCenter.swift
++++ b/Tinycast/Features/HotKeys/Service/HotKeyCenter.swift
+@@ -16,8 +16,9 @@ private func hotKeyCarbonEventHandler(
+         &hotKeyID
+     )
+     guard error == noErr else { return error }
++    let kind = GetEventKind(event)
+     let center = Unmanaged<HotKeyCenter>.fromOpaque(userData).takeUnretainedValue()
+-    return MainActor.assumeIsolated { center.handle(hotKeyID) }
++    return MainActor.assumeIsolated { center.handle(hotKeyID, kind: kind) }
+ }
+ 
+ /// The Carbon layer only; which shortcuts exist is `HotKeyManager`'s business.
+@@ -26,6 +27,7 @@ final class HotKeyCenter {
+     private struct Entry {
+         let shortcut: KeyShortcut
+         let onKeyDown: () -> Void
++        let onKeyUp: (() -> Void)?
+         let carbonID: UInt32
+         var ref: EventHotKeyRef?
+     }
+@@ -48,11 +50,18 @@ final class HotKeyCenter {
+     }
+ 
+     /// Registers `shortcut` under `id`, dropping any previous one so no combo leaks.
+-    func register(id: String, shortcut: KeyShortcut, onKeyDown: @escaping () -> Void) {
++    /// `onKeyUp` is optional: existing press-only shortcuts omit it and keep their old behaviour.
++    func register(
++        id: String,
++        shortcut: KeyShortcut,
++        onKeyDown: @escaping () -> Void,
++        onKeyUp: (() -> Void)? = nil
++    ) {
+         unregister(id: id)
+         nextCarbonID += 1
+         entries[id] = Entry(
+-            shortcut: shortcut, onKeyDown: onKeyDown, carbonID: nextCarbonID, ref: nil)
++            shortcut: shortcut, onKeyDown: onKeyDown, onKeyUp: onKeyUp, carbonID: nextCarbonID,
++            ref: nil)
+         idToKey[nextCarbonID] = id
+         if !isPaused { activate(id) }
+     }
+@@ -95,7 +104,9 @@ final class HotKeyCenter {
+         guard eventHandler == nil, let dispatcher = GetEventDispatcherTarget() else { return }
+         var eventTypes = [
+             EventTypeSpec(
+-                eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
++                eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
++            EventTypeSpec(
++                eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased))
+         ]
+         InstallEventHandler(
+             dispatcher,
+@@ -107,13 +118,21 @@ final class HotKeyCenter {
+         )
+     }
+ 
+-    fileprivate func handle(_ hotKeyID: EventHotKeyID) -> OSStatus {
++    fileprivate func handle(_ hotKeyID: EventHotKeyID, kind: UInt32) -> OSStatus {
+         guard
+             hotKeyID.signature == signature,
+             let key = idToKey[hotKeyID.id],
+             let entry = entries[key]
+         else { return OSStatus(eventNotHandledErr) }
+-        entry.onKeyDown()
+-        return noErr
++        switch kind {
++        case UInt32(kEventHotKeyPressed):
++            entry.onKeyDown()
++            return noErr
++        case UInt32(kEventHotKeyReleased):
++            entry.onKeyUp?()
++            return noErr
++        default:
++            return OSStatus(eventNotHandledErr)
++        }
+     }
+ }
+diff --git a/Tinycast/Features/HotKeys/Service/HotKeyManager.swift b/Tinycast/Features/HotKeys/Service/HotKeyManager.swift
+index d83956c5..53795cc9 100644
+--- a/Tinycast/Features/HotKeys/Service/HotKeyManager.swift
++++ b/Tinycast/Features/HotKeys/Service/HotKeyManager.swift
+@@ -18,6 +18,9 @@ final class HotKeyManager {
+     var onRunAppleShortcut: ((UUID) -> Void)?
+     var onExpandSnippet: ((StoredSnippet.ID) -> Void)?
+     var onRunExtensionCommand: ((String) -> Void)?
++    /// Voice Ask needs both edges of the chord for toggle vs push-to-talk.
++    var onVoiceAskKeyDown: (() -> Void)?
++    var onVoiceAskKeyUp: (() -> Void)?
+     /// Names what only the stores know; the fixed catalogs resolve here. Set in `AppCore.start()`.
+     var displayName: ((HotKeyAction) -> String?)?
+     /// Whether the action's launcher category is switched on. Set in `AppCore.start()`.
+@@ -199,7 +202,7 @@ final class HotKeyManager {
+             index(id, bound: binding != nil, key: boundSnippetKey)
+         case .extensionCommand(let entryID):
+             index(entryID, bound: binding != nil, key: boundExtensionCommandKey)
+-        case .togglePalette, .command, .systemAction, .windowCommand:
++        case .togglePalette, .voiceAsk, .command, .systemAction, .windowCommand:
+             break
+         }
+         candidateActionsCache = nil
+@@ -256,6 +259,8 @@ final class HotKeyManager {
+         switch action {
+         case .togglePalette:
+             return "App Launcher"
++        case .voiceAsk:
++            return "Voice Ask"
+         case .command(let id):
+             return id.name
+         case .app(let bundleID), .settingsPane(let bundleID):
+@@ -288,16 +293,35 @@ final class HotKeyManager {
+     /// Hands a combo to Carbon; a modifier-only binding has no per-action registration.
+     private func register(_ action: HotKeyAction) {
+         guard let shortcut = binding(for: action)?.shortcut else { return }
++        if action == .voiceAsk {
++            center.register(
++                id: action.defaultsKey, shortcut: shortcut,
++                onKeyDown: { [weak self] in self?.performVoiceAskKeyDown() },
++                onKeyUp: { [weak self] in self?.performVoiceAskKeyUp() })
++            return
++        }
+         center.register(id: action.defaultsKey, shortcut: shortcut) { [weak self] in
+             self?.perform(action)
+         }
+     }
+ 
++    private func performVoiceAskKeyDown() {
++        guard allowsAction?(.voiceAsk) ?? true else { return }
++        onVoiceAskKeyDown?()
++    }
++
++    private func performVoiceAskKeyUp() {
++        guard allowsAction?(.voiceAsk) ?? true else { return }
++        onVoiceAskKeyUp?()
++    }
++
+     /// Rebuilt wholesale, so the map can't drift from what is on disk.
+     private func syncModifierTaps() {
+         modifierTaps = [:]
+         for action in candidateActions {
+             guard let binding = binding(for: action), binding.usesModifierTapMonitor else { continue }
++            // Voice Ask needs Carbon key-up for push-to-talk; a modifier-only binding can't.
++            guard action != .voiceAsk else { continue }
+             modifierTaps[binding] = action
+         }
+         modifierTapMonitor.update(bound: Set(modifierTaps.keys))
+@@ -308,6 +332,7 @@ final class HotKeyManager {
+         guard allowsAction?(action) ?? true else { return }
+         switch action {
+         case .togglePalette: onTogglePalette?()
++        case .voiceAsk: onVoiceAskKeyDown?()
+         case .command(let id): onRunCommand?(id)
+         case .app(let bundleID): AppLauncher.toggle(bundleID: bundleID)
+         case .settingsPane(let bundleID): AppLauncher.openSettingsPane(bundleID: bundleID)

@@ -1,0 +1,169 @@
+diff --git a/Tinycast/Features/Settings/Panes/PermissionsSettingsView.swift b/Tinycast/Features/Settings/Panes/PermissionsSettingsView.swift
+index 4b5f6373..0d9e727e 100644
+--- a/Tinycast/Features/Settings/Panes/PermissionsSettingsView.swift
++++ b/Tinycast/Features/Settings/Panes/PermissionsSettingsView.swift
+@@ -5,6 +5,7 @@ struct PermissionsSettingsView: View {
+     @Environment(AppCore.self) private var core
+     @State private var accessibilityTrusted = Permissions.isAccessibilityTrusted()
+     @State private var calendarAccess = Permissions.calendarAccess()
++    @State private var microphoneAccess = Permissions.microphoneAccess()
+     private let refreshTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+ 
+     var body: some View {
+@@ -76,6 +77,47 @@ struct PermissionsSettingsView: View {
+             } header: {
+                 SettingsSectionHeader(.permissionsCalendars)
+             }
++
++            Section {
++                LabeledContent {
++                    HStack(spacing: Theme.Spacing.lg) {
++                        HStack(spacing: Theme.Spacing.xs) {
++                            Image(systemName: microphoneStatus.symbol)
++                                .accessibilityHidden(true)
++                            Text(microphoneStatus.title)
++                        }
++                        .foregroundStyle(microphoneStatus.tint)
++                        Button(microphoneNeedsPrompt ? "Grant Access…" : "Open…") {
++                            if microphoneNeedsPrompt {
++                                Task {
++                                    _ = await Permissions.requestMicrophoneAccess()
++                                    refresh()
++                                }
++                            } else {
++                                Permissions.openMicrophoneSettings()
++                            }
++                        }
++                        .help(
++                            microphoneNeedsPrompt
++                                ? "Asks macOS for microphone access for Voice Ask."
++                                : "Opens Privacy & Security › Microphone.")
++                    }
++                } label: {
++                    HStack(spacing: Theme.Spacing.lg) {
++                        PermissionSettingsIcon(
++                            path:
++                                "/System/Library/ExtensionKit/Extensions/Sound.appex"
++                        )
++                        VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
++                            SettingsRowTitle(.permissionsMicrophone, "Microphone")
++                            Text("Voice Ask sends speech to Codex for transcription.")
++                                .foregroundStyle(.secondary)
++                        }
++                    }
++                }
++            } header: {
++                SettingsSectionHeader(.permissionsMicrophone)
++            }
+         }
+         .formStyle(.grouped)
+         .settingsScrollTarget(.permissions)
+@@ -84,6 +126,7 @@ struct PermissionsSettingsView: View {
+     }
+ 
+     private var calendarNeedsPrompt: Bool { calendarAccess == .notDetermined }
++    private var microphoneNeedsPrompt: Bool { microphoneAccess == .notDetermined }
+ 
+     private var accessibilityStatus: (title: String, symbol: String, tint: Color) {
+         accessibilityTrusted
+@@ -99,11 +142,21 @@ struct PermissionsSettingsView: View {
+         }
+     }
+ 
++    private var microphoneStatus: (title: String, symbol: String, tint: Color) {
++        switch microphoneAccess {
++        case .granted: return ("Granted", "checkmark.circle.fill", .green)
++        case .notDetermined: return ("Not asked yet", "questionmark.circle.fill", .secondary)
++        case .denied: return ("Not granted", "exclamationmark.triangle.fill", .orange)
++        }
++    }
++
+     private func refresh() {
+         let trusted = Permissions.isAccessibilityTrusted()
+         if trusted != accessibilityTrusted { accessibilityTrusted = trusted }
+-        let access = Permissions.calendarAccess()
+-        if access != calendarAccess { calendarAccess = access }
++        let calendar = Permissions.calendarAccess()
++        if calendar != calendarAccess { calendarAccess = calendar }
++        let microphone = Permissions.microphoneAccess()
++        if microphone != microphoneAccess { microphoneAccess = microphone }
+     }
+ }
+ 
+diff --git a/Tinycast/Info.plist b/Tinycast/Info.plist
+index c35e694f..9f126817 100644
+--- a/Tinycast/Info.plist
++++ b/Tinycast/Info.plist
+@@ -67,6 +67,8 @@
+ 	<string>Tinycast uses automation to perform system actions you explicitly run.</string>
+ 	<key>NSCameraUsageDescription</key>
+ 	<string>Tinycast shows a camera preview so you can check yourself, and take a photo to the clipboard.</string>
++	<key>NSMicrophoneUsageDescription</key>
++	<string>Tinycast captures microphone audio only while Voice Ask is recording, and sends it to Codex for transcription.</string>
+ 	<key>NSCalendarsFullAccessUsageDescription</key>
+ 	<string>Tinycast reads today's and tomorrow's events so you can join a meeting from the palette.</string>
+ 	<key>NSRemindersFullAccessUsageDescription</key>
+diff --git a/Tinycast/Platform/MicrophoneAccess.swift b/Tinycast/Platform/MicrophoneAccess.swift
+new file mode 100644
+index 00000000..c128b629
+--- /dev/null
++++ b/Tinycast/Platform/MicrophoneAccess.swift
+@@ -0,0 +1,8 @@
++import Foundation
++
++/// TCC state for the microphone. Same three cases as camera access.
++enum MicrophoneAccess: Sendable {
++    case granted
++    case notDetermined
++    case denied
++}
+diff --git a/Tinycast/Platform/Permissions.swift b/Tinycast/Platform/Permissions.swift
+index 154b32c2..45a893ef 100644
+--- a/Tinycast/Platform/Permissions.swift
++++ b/Tinycast/Platform/Permissions.swift
+@@ -53,6 +53,18 @@ enum Permissions {
+         await AVCaptureDevice.requestAccess(for: .video)
+     }
+ 
++    static func microphoneAccess() -> MicrophoneAccess {
++        switch AVCaptureDevice.authorizationStatus(for: .audio) {
++        case .authorized: return .granted
++        case .notDetermined: return .notDetermined
++        default: return .denied
++        }
++    }
++
++    nonisolated static func requestMicrophoneAccess() async -> Bool {
++        await AVCaptureDevice.requestAccess(for: .audio)
++    }
++
+     @MainActor
+     static func openCalendarSettings() {
+         guard
+@@ -61,4 +73,13 @@ enum Permissions {
+         else { return }
+         NSWorkspace.shared.open(url)
+     }
++
++    @MainActor
++    static func openMicrophoneSettings() {
++        guard
++            let url = URL(
++                string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
++        else { return }
++        NSWorkspace.shared.open(url)
++    }
+ }
+diff --git a/Tinycast/Tinycast.entitlements b/Tinycast/Tinycast.entitlements
+index 59618274..101337ec 100644
+--- a/Tinycast/Tinycast.entitlements
++++ b/Tinycast/Tinycast.entitlements
+@@ -13,6 +13,8 @@
+ 	<!-- Undeclared, tccd refuses the prompt outright: no dialog, and the request resolves as denied. -->
+ 	<key>com.apple.security.device.camera</key>
+ 	<true/>
++	<key>com.apple.security.device.audio-input</key>
++	<true/>
+ 	<key>com.apple.security.personal-information.calendars</key>
+ 	<true/>
+ </dict>
