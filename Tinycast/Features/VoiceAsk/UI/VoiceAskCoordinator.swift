@@ -95,7 +95,13 @@ final class VoiceAskCoordinator {
             pendingHyperStop = true
             return
         }
-        Task { await stopAndDeliver() }
+        let token = generation
+        Task {
+            // Brief tail so the last spoken buffers reach the tap after key-up.
+            try? await Task.sleep(for: .milliseconds(280))
+            guard token == generation else { return }
+            await stopAndDeliver()
+        }
     }
 
     /// Other key won: drop the Hyper dictation without delivering.
@@ -195,6 +201,9 @@ final class VoiceAskCoordinator {
             refreshPill()
             if pendingHyperStop {
                 pendingHyperStop = false
+                // Tail after early release during connect — mic buffers still draining.
+                try? await Task.sleep(for: .milliseconds(320))
+                guard token == generation else { return }
                 await stopAndDeliver()
             }
         } catch {
