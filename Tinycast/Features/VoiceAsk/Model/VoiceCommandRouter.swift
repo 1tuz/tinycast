@@ -17,7 +17,8 @@ struct VoiceCommandApp: Equatable, Sendable {
 enum VoiceCommandPlan: Equatable, Sendable {
     /// "Open Zed" / "Открой Safari" — resolve through AppIndex, launch directly.
     case launchApplication(query: String)
-    /// Compound speech ("Open Safari and find…") reserved for a future automation route.
+    /// Compound speech ("Open Safari and find…") — not a local launch.
+    /// Routed to Quick AI today; not a computer_use / agent runtime.
     case automation(String)
     /// Not a local command, or a launch that could not be resolved confidently.
     case askAI(String)

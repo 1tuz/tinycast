@@ -14,11 +14,19 @@ final class CodexRealtimeTranscriber {
         }
     }
 
+    /// ~100 ms at 24 kHz — aggregates small PCM taps before one appendAudio RPC.
+    static let batchSampleThreshold = RealtimeAudioBatchPolicy.sampleThreshold
+    /// Upper bound on PTT latency when buffers stay under the sample threshold.
+    static let batchFlushDelay: Duration = .milliseconds(RealtimeAudioBatchPolicy.flushDelayMilliseconds)
+
     var onEvent: ((CodexRealtimeProtocol.Event) -> Void)?
 
     private let subscription: ChatGPTSubscriptionManager
     private var threadID: String?
     private var appendChain = Task<Void, Never> {}
+    private var pendingPCM = Data()
+    private var pendingSamples = 0
+    private var flushTask: Task<Void, Never>?
     private(set) var isActive = false
     private var holdingServer = false
 
@@ -26,14 +34,16 @@ final class CodexRealtimeTranscriber {
         self.subscription = subscription
     }
 
-    /// Probes `thread/realtime/listVoices` once the app-server is up.
+    /// Probes `thread/realtime/listVoices` once the app-server is up, then arms idle shutdown.
     func probeAvailability() async -> VoiceAskAvailability {
         do {
             try await subscription.prepareForRealtime()
+            defer { subscription.scheduleIdleAfterProbe() }
             _ = try await subscription.realtimeRequest(
                 method: CodexRealtimeProtocol.listVoicesMethod, timeout: .seconds(8))
             return .available
         } catch {
+            subscription.scheduleIdleAfterProbe()
             return .unavailable(CodexRealtimeProtocol.unavailableMessage(for: error))
         }
     }
@@ -78,16 +88,13 @@ final class CodexRealtimeTranscriber {
     }
 
     func appendAudio(pcm: Data, samplesPerChannel: Int) {
-        guard isActive, let threadID, !pcm.isEmpty else { return }
-        let params = CodexRealtimeProtocol.appendAudioParams(
-            threadID: threadID, pcm: pcm, samplesPerChannel: samplesPerChannel)
-        appendChain = Task { [weak self, appendChain] in
-            await appendChain.value
-            guard let self, self.isActive else { return }
-            try? await self.subscription.realtimeRequest(
-                method: CodexRealtimeProtocol.appendAudioMethod,
-                params: params,
-                timeout: .seconds(10))
+        guard isActive, threadID != nil, !pcm.isEmpty, samplesPerChannel > 0 else { return }
+        pendingPCM.append(pcm)
+        pendingSamples += samplesPerChannel
+        if RealtimeAudioBatchPolicy.shouldFlushImmediately(pendingSamples: pendingSamples) {
+            flushPendingAudio()
+        } else {
+            scheduleFlush()
         }
     }
 
@@ -95,6 +102,7 @@ final class CodexRealtimeTranscriber {
     func finish() async {
         guard isActive || threadID != nil else { return }
         isActive = false
+        flushPendingAudio()
         await appendChain.value
         if let threadID {
             _ = try? await subscription.realtimeRequest(
@@ -115,6 +123,39 @@ final class CodexRealtimeTranscriber {
         releaseHold()
     }
 
+    private func scheduleFlush() {
+        guard flushTask == nil else { return }
+        flushTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.batchFlushDelay)
+            guard let self, !Task.isCancelled else { return }
+            self.flushPendingAudio()
+        }
+    }
+
+    private func flushPendingAudio() {
+        flushTask?.cancel()
+        flushTask = nil
+        guard !pendingPCM.isEmpty, let threadID else {
+            pendingPCM = Data()
+            pendingSamples = 0
+            return
+        }
+        let pcm = pendingPCM
+        let samples = pendingSamples
+        pendingPCM = Data()
+        pendingSamples = 0
+        let params = CodexRealtimeProtocol.appendAudioParams(
+            threadID: threadID, pcm: pcm, samplesPerChannel: samples)
+        appendChain = Task { [weak self, appendChain] in
+            await appendChain.value
+            guard let self else { return }
+            _ = try? await self.subscription.realtimeRequest(
+                method: CodexRealtimeProtocol.appendAudioMethod,
+                params: params,
+                timeout: .seconds(10))
+        }
+    }
+
     private func stop(sendStop: Bool) {
         let id = threadID
         cleanup()
@@ -130,6 +171,10 @@ final class CodexRealtimeTranscriber {
     private func cleanup() {
         isActive = false
         threadID = nil
+        flushTask?.cancel()
+        flushTask = nil
+        pendingPCM = Data()
+        pendingSamples = 0
         appendChain = Task {}
         subscription.onRealtimeNotification = nil
     }

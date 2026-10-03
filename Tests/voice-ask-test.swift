@@ -18,10 +18,14 @@ enum VoiceAskTests {
     static func main() {
         hotKeyPolicy()
         hyperVoiceAskHold()
+        hyperHoldWatchdog()
         transcriptAccumulation()
         protocolParsing()
         phaseFlags()
         voiceCommands()
+        codexHelperLifetime()
+        realtimeAudioBatch()
+        voicePromptOpenPolicy()
         print("\(passes) passed, \(failures) failed")
         if failures > 0 { exit(1) }
     }
@@ -227,5 +231,85 @@ enum VoiceAskTests {
             VoiceCommandRouter.resolve("zed", in: apps)?.id == apps[0].id,
             "resolve is case-insensitive")
         expect(VoiceCommandRouter.resolve("Saf", in: apps) == nil, "no fuzzy guess on prefix")
+    }
+
+    static func hyperHoldWatchdog() {
+        expect(
+            !HyperHoldWatchdog.shouldReset(hyperActive: false, physicalKeyDown: false),
+            "idle + key up → no reset")
+        expect(
+            !HyperHoldWatchdog.shouldReset(hyperActive: false, physicalKeyDown: true),
+            "idle + key down → no reset")
+        expect(
+            !HyperHoldWatchdog.shouldReset(hyperActive: true, physicalKeyDown: true),
+            "hold + physical down → keep hold")
+        expect(
+            HyperHoldWatchdog.shouldReset(hyperActive: true, physicalKeyDown: false),
+            "stale hold without physical key → reset")
+    }
+
+    static func codexHelperLifetime() {
+        expect(
+            CodexHelperLifetimePolicy.idleShutdownSeconds == 180,
+            "idle shutdown is 180 seconds")
+        expect(
+            CodexHelperLifetimePolicy.shouldArmIdleAfterProbe(realtimeHoldCount: 0, turnActive: false),
+            "probe with no hold arms idle")
+        expect(
+            !CodexHelperLifetimePolicy.shouldArmIdleAfterProbe(realtimeHoldCount: 1, turnActive: false),
+            "probe during realtime hold does not arm idle")
+        expect(
+            !CodexHelperLifetimePolicy.shouldArmIdleAfterProbe(realtimeHoldCount: 0, turnActive: true),
+            "probe during an active turn does not arm idle")
+        expect(
+            CodexHelperLifetimePolicy.shouldArmIdleAfterRealtimeEnd(
+                realtimeHoldCount: 0, turnActive: false),
+            "realtime end with zero holds arms idle")
+        expect(
+            !CodexHelperLifetimePolicy.shouldArmIdleAfterRealtimeEnd(
+                realtimeHoldCount: 1, turnActive: false),
+            "nested realtime hold keeps helper alive")
+    }
+
+    static func realtimeAudioBatch() {
+        expect(
+            RealtimeAudioBatchPolicy.sampleThreshold == 2_400,
+            "batch ~100 ms at 24 kHz")
+        expect(
+            RealtimeAudioBatchPolicy.flushDelayMilliseconds == 80,
+            "flush delay stays under a frame of PTT lag")
+        expect(
+            !RealtimeAudioBatchPolicy.shouldFlushImmediately(pendingSamples: 1_024),
+            "single 1024-frame tap waits")
+        expect(
+            RealtimeAudioBatchPolicy.shouldFlushImmediately(pendingSamples: 2_400),
+            "threshold flushes immediately")
+        expect(
+            RealtimeAudioBatchPolicy.shouldFlushImmediately(pendingSamples: 4_800),
+            "over-threshold flushes immediately")
+    }
+
+    static func voicePromptOpenPolicy() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        expect(
+            AIConversationOpenPolicy.decide(
+                opensTo: .recent, newAfter: .tenMinutes,
+                lastActiveAt: now.addingTimeInterval(-60), now: now) == .resume,
+            "voice into recent chat resumes within window")
+        expect(
+            AIConversationOpenPolicy.decide(
+                opensTo: .recent, newAfter: .twoMinutes,
+                lastActiveAt: now.addingTimeInterval(-180), now: now) == .startNew,
+            "voice into stale chat starts new per policy")
+        expect(
+            AIConversationOpenPolicy.decide(
+                opensTo: .newConversation, newAfter: .never,
+                lastActiveAt: now, now: now) == .startNew,
+            "opensTo newConversation always starts new")
+        expect(
+            VoiceCommandRouter.route(
+                transcript: "Open Safari and find Kubernetes", apps: [])
+                == .automation("Open Safari and find Kubernetes"),
+            "automation stays explicit compound outcome (Quick AI path, not agent runtime)")
     }
 }

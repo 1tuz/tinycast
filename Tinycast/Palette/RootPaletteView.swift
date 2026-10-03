@@ -696,6 +696,8 @@ struct RootPaletteView: View {
             }
             if !isCollapsed, vm.mode == .ai {
                 headerGutter(width: metrics.spacing.md)
+                voiceAskButton
+                headerGutter(width: metrics.spacing.md)
                 AIModelButton(
                     title: core.aiChatCoordinator.selectedModelTitle(for: quickAI),
                     icon: core.aiChatCoordinator.selectedModelIcon(for: quickAI),
@@ -781,24 +783,11 @@ struct RootPaletteView: View {
     }
 
     private var voiceAskButton: some View {
-        let recording = core.voiceAskCoordinator.isRecording
-            && core.voiceAskCoordinator.surface == .palette
-        return BarButton(chrome: .rounded, action: { core.voiceAskCoordinator.toggleFromPalette() }) {
-            Group {
-                if recording {
-                    VoiceWaveformView(
-                        levels: core.voiceAskCoordinator.levels, isActive: true
-                    )
-                    .frame(width: 28, height: 14)
-                } else {
-                    Image(systemName: "mic.fill")
-                        .font(metrics.typography.bar)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                }
-            }
-            .frame(width: 28, height: 16)
-        }
-        .help(recording ? "Stop Voice Ask" : "Dictate with Voice Ask")
+        VoiceAskMicButton(
+            isRecording: core.voiceAskCoordinator.isRecording
+                && core.voiceAskCoordinator.surface == .palette,
+            levels: core.voiceAskCoordinator.levels,
+            action: { core.voiceAskCoordinator.toggleFromPalette() })
     }
 
     /// AI + mic on the launcher when AI is on — compact and expanded.

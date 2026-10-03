@@ -1,24 +1,34 @@
 import AppKit
 import SwiftUI
 
-/// Tiny floating Voice Ask pill: non-activating, glass, waveform + timer.
+/// Tiny floating Voice Ask pill: non-activating, glass, waveform + timer, cancel on hover.
 @MainActor
 final class VoicePillController {
     var onCancel: (() -> Void)?
 
     private var panel: HUDPanel?
     private var host: NSHostingView<VoicePillView>?
+    private var metrics = InterfaceMetrics.standard
+
+    func updateMetrics(_ metrics: InterfaceMetrics) {
+        self.metrics = metrics
+    }
 
     func show(phase: VoiceAskPhase, levels: [CGFloat], elapsed: Duration, error: String?) {
-        let view = VoicePillView(phase: phase, levels: levels, elapsed: elapsed, error: error)
+        let size = VoicePillView.preferredSize(metrics)
+        let view = VoicePillView(
+            phase: phase, levels: levels, elapsed: elapsed, error: error,
+            onCancel: onCancel, metrics: metrics)
         if let host {
             host.rootView = view
+            host.frame.size = size
+            panel?.setContentSize(size)
         } else {
             let host = NSHostingView(rootView: view)
-            host.frame = NSRect(origin: .zero, size: VoicePillView.preferredSize)
+            host.frame = NSRect(origin: .zero, size: size)
             let panel = HUDPanel(acceptsMouseEvents: true)
             panel.contentView = host
-            panel.setContentSize(VoicePillView.preferredSize)
+            panel.setContentSize(size)
             self.host = host
             self.panel = panel
         }
@@ -51,7 +61,7 @@ final class VoicePillController {
     private func position(_ panel: NSPanel) {
         guard let screen = NSScreen.underCursor ?? NSScreen.main else { return }
         let visible = screen.visibleFrame
-        let size = VoicePillView.preferredSize
+        let size = VoicePillView.preferredSize(metrics)
         panel.setFrame(
             NSRect(
                 x: visible.midX - size.width / 2,
@@ -67,36 +77,81 @@ struct VoicePillView: View {
     let levels: [CGFloat]
     let elapsed: Duration
     let error: String?
+    var onCancel: (() -> Void)?
+    var metrics: InterfaceMetrics = .standard
+    @State private var hovered = false
 
-    static let preferredSize = NSSize(width: 220, height: 44)
+    static func preferredSize(_ metrics: InterfaceMetrics) -> NSSize {
+        // Scales with Interface Size: ~220×44 at standard.
+        NSSize(
+            width: metrics.scaled(220),
+            height: max(metrics.size.menuButton, metrics.scaled(44)))
+    }
 
     var body: some View {
-        HStack(spacing: Theme.Spacing.md) {
+        Group {
+            if let onCancel {
+                Button(action: onCancel) { content }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Cancel Voice Ask")
+            } else {
+                content
+            }
+        }
+        .onHover { isHovered in
+            if onCancel != nil {
+                withAnimation(.easeOut(duration: Theme.Duration.hover)) {
+                    hovered = isHovered
+                }
+            }
+        }
+    }
+
+    private var content: some View {
+        HStack(spacing: metrics.spacing.md) {
+            mark
             if let error {
                 Text(error)
-                    .font(Theme.Typography.keyCap)
+                    .font(metrics.typography.bar)
                     .foregroundStyle(Theme.Colors.textSecondary)
                     .lineLimit(1)
             } else {
                 VoiceWaveformView(levels: levels, isActive: phase == .listening)
-                    .frame(maxWidth: .infinity, maxHeight: 22)
+                    .frame(maxWidth: .infinity, maxHeight: metrics.scaled(22))
                 Text(timerText)
-                    .font(Theme.Typography.keyCap.monospacedDigit())
+                    .font(metrics.typography.keyCap.monospacedDigit())
                     .foregroundStyle(Theme.Colors.textSecondary)
-                    .frame(minWidth: 36, alignment: .trailing)
+                    .frame(minWidth: metrics.scaled(36), alignment: .trailing)
             }
         }
-        .padding(.horizontal, Theme.Spacing.lg)
-        .padding(.vertical, Theme.Spacing.md)
-        .frame(width: Self.preferredSize.width, height: Self.preferredSize.height)
-        .background {
-            RoundedRectangle(cornerRadius: Theme.Radius.dialog, style: .continuous)
-                .fill(.ultraThinMaterial)
-                .overlay {
-                    RoundedRectangle(cornerRadius: Theme.Radius.dialog, style: .continuous)
-                        .strokeBorder(Theme.Colors.border, lineWidth: Theme.Size.hairline)
-                }
-                .shadow(color: .black.opacity(0.28), radius: 16, y: 8)
+        .padding(.horizontal, metrics.spacing.lg)
+        .padding(.vertical, metrics.spacing.md)
+        .frame(
+            width: Self.preferredSize(metrics).width,
+            height: Self.preferredSize(metrics).height)
+        .background(hovered ? Theme.Colors.controlHover : Theme.Colors.panelScrim)
+        .background(GlassEffectView())
+        .clipShape(Capsule())
+        .overlay {
+            Capsule().strokeBorder(Theme.Colors.border, lineWidth: Theme.Size.hairline)
+        }
+    }
+
+    private var mark: some View {
+        Group {
+            if hovered, onCancel != nil {
+                Image(systemName: "xmark")
+                    .font(metrics.typography.menuIcon.weight(.semibold))
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .frame(width: metrics.size.menuIcon, height: metrics.size.menuIcon)
+                    .transition(.opacity)
+            } else {
+                Image(systemName: phase == .listening ? "mic.fill" : "waveform")
+                    .font(metrics.typography.menuIcon)
+                    .foregroundStyle(Theme.Colors.progress)
+                    .frame(width: metrics.size.menuIcon, height: metrics.size.menuIcon)
+                    .transition(.opacity)
+            }
         }
     }
 
@@ -131,5 +186,30 @@ struct VoiceWaveformView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+    }
+}
+
+/// Shared mic control for launcher header and Quick AI header.
+struct VoiceAskMicButton: View {
+    @Environment(\.metrics) private var metrics
+    let isRecording: Bool
+    let levels: [CGFloat]
+    let action: () -> Void
+
+    var body: some View {
+        BarButton(chrome: .rounded, action: action) {
+            Group {
+                if isRecording {
+                    VoiceWaveformView(levels: levels, isActive: true)
+                        .frame(width: metrics.scaled(28), height: metrics.scaled(14))
+                } else {
+                    Image(systemName: "mic.fill")
+                        .font(metrics.typography.bar)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                }
+            }
+            .frame(width: metrics.scaled(28), height: metrics.scaled(16))
+        }
+        .help(isRecording ? "Stop Voice Ask" : "Dictate with Voice Ask")
     }
 }
