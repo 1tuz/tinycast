@@ -29,6 +29,8 @@ final class CodexRealtimeTranscriber {
     private var flushTask: Task<Void, Never>?
     private(set) var isActive = false
     private var holdingServer = false
+    private var settleContinuation: CheckedContinuation<Void, Never>?
+    private var settleTask: Task<Void, Never>?
 
     init(subscription: ChatGPTSubscriptionManager) {
         self.subscription = subscription
@@ -98,7 +100,7 @@ final class CodexRealtimeTranscriber {
         }
     }
 
-    /// Stops the session and waits for in-flight audio appends so the tail is not dropped.
+    /// Stops the session, drains in-flight appends, then waits for the final transcript.
     func finish() async {
         guard isActive || threadID != nil else { return }
         isActive = false
@@ -110,11 +112,14 @@ final class CodexRealtimeTranscriber {
                 params: CodexRealtimeProtocol.stopParams(threadID: threadID),
                 timeout: .seconds(10))
         }
+        // stop returns before transcript/done — keep the handler until settled.
+        await waitForTranscriptSettled(timeout: .seconds(2.5))
         cleanup()
         releaseHold()
     }
 
     func cancel() {
+        finishSettle()
         guard isActive || threadID != nil || holdingServer else {
             cleanup()
             return
@@ -176,6 +181,10 @@ final class CodexRealtimeTranscriber {
         pendingPCM = Data()
         pendingSamples = 0
         appendChain = Task {}
+        settleTask?.cancel()
+        settleTask = nil
+        settleContinuation?.resume()
+        settleContinuation = nil
         subscription.onRealtimeNotification = nil
     }
 
@@ -185,9 +194,32 @@ final class CodexRealtimeTranscriber {
         subscription.realtimeSessionDidEnd()
     }
 
+    private func waitForTranscriptSettled(timeout: Duration) async {
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            settleContinuation = cont
+            settleTask = Task { [weak self] in
+                try? await Task.sleep(for: timeout)
+                await MainActor.run { self?.finishSettle() }
+            }
+        }
+    }
+
+    private func finishSettle() {
+        settleTask?.cancel()
+        settleTask = nil
+        settleContinuation?.resume()
+        settleContinuation = nil
+    }
+
     private func handle(method: String, params: [String: JSONValue]) {
         let event = CodexRealtimeProtocol.parse(method: method, params: params)
         guard event != .ignored else { return }
         onEvent?(event)
+        switch event {
+        case .userTranscriptDone, .closed, .error:
+            finishSettle()
+        case .started, .userTranscriptDelta, .ignored:
+            break
+        }
     }
 }
