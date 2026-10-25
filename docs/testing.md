@@ -10,7 +10,7 @@ The mechanical bar, in one place so it cannot drift. All five pass before a chan
 | Check | Command |
 | --- | --- |
 | The harnesses | `./Scripts/run-tests.sh` |
-| Lint, settings search and translations | `./Scripts/lint.sh` |
+| Lint, settings search, translations and migrations | `./Scripts/lint.sh` |
 | Pure-layer purity | `grep -rln 'import AppKit\|import SwiftUI\|import Cocoa' Tinycast/Features/*/Model/` |
 | A clean build | `xcodebuild … -configuration Debug CODE_SIGNING_ALLOWED=NO`, zero **new** warnings |
 | Docs still true | any doc your change made wrong, fixed in the same commit |
@@ -133,6 +133,7 @@ If a change touches anything in the right column, the harness on the left is man
 | `emoji-search-test` | `Emoji/Service/EmojiIndex.swift`, `FrequentEmojiStore.swift`, `Scripts/gen-emoji.js`'s keyword format, multilingual search |
 | `command-escape-tap-test` | `Palette/CommandEscapeTap.swift` — dedicated run-loop dispatch while main is blocked, timeout recovery, stale actions, installation cancellation and teardown; private ports and unposted events only |
 | `palette-navigation-test` | `Palette/PaletteState.swift`'s screen motions — `prepare`, `replace`, `push`, `pop` — and hover arming, pointer drift, scroll disarming and highlight tokens |
+| `compact-bar-test` | Compact shortcut order, selection boundaries, zero-to-four slots, identifiers, isolated preferences and invalid settings-file rejection |
 | `palette-selection-test` | `Features/PaletteRowIndex.swift` |
 | `interface-size-test` | `DesignSystem/InterfaceMetrics.swift`, `Features/Settings/InterfaceSize.swift`, `Extensions/Model/ExtensionFormMetrics.swift` |
 | `form-input-test` | Native field/textarea sizing, editing alignment, placeholders, Tab, Unicode selection, undo and code fonts |
@@ -179,6 +180,7 @@ If a change touches anything in the right column, the harness on the left is man
 | `text-diff-test` | `QuickActions/Model/TextDiffEngine.swift` — exact chunks, coalescing, Unicode, ties, token-cap boundaries and fast paths |
 | `settings-backup-test` | `Settings/AppSettingsKey.swift`, `Backup/Model/SettingsBackupCoverage.swift` |
 | `settings-file-test` | `Settings/Model/` and `Settings/Service/` — key paths, value tokens, the printer and parser, and the repository's import, replace, save, reload and symlink handling on a scratch folder |
+| `compact-favorites-migration-test` | `Migrations/CompactFavoritesMigration.swift` — strips the retired key and keeps every other value, and leaves a file with other problems to the import |
 | `window-file-test` | `WindowManagement/Model/WindowManagementFileFormat.swift` — command shortcuts, custom sizes, layouts and rooms as settings.json spells them, hand edits and bad records |
 | `launcher-settings-file-test` | Launcher settings application — invalid records, partial edits, deferred bundles, shortcut moves and records outside search scopes; isolated preferences and in-memory scan/Carbon effects |
 | `backup-archive-test` | all of `Backup/Model/`, plus `Backup/Service/BackupStaging.swift` |
@@ -261,6 +263,9 @@ The script then runs `Scripts/check-settings-search.js`, one check SwiftLint can
 `SettingsAnchor` must be claimed by a section, and every row in `SettingsSearchCatalog` must be
 marked by a `SettingsRowTitle`. Either gap compiles and reads fine, and fails only at runtime as a
 search result that navigates and then sits there.
+
+Last, `Scripts/check-migrations.sh` fails once a stable release has shipped a migration, which is the
+cue to delete it. See [migrations.md](migrations.md).
 
 ## Performance measurement
 
@@ -430,15 +435,34 @@ caches, TCC grants and login item, so this cannot disturb an installed copy.
   still does whatever macOS does with it. Open a menu or dialog over the palette and verify ⌘esc
   passes through while the palette is not key; after dismissing it, the palette chord works again
 - A bare ⌫ in an empty field walks the same path Escape does
-- General ▸ Escape Key Behavior set to `Close window and pop to root`: Escape on any screen closes
+- General ▸ Escape Key Behavior set to `Close window and pop to root`: Escape on sub-screens closes
   the window, and reopening lands on the root search whatever Pop to Root Search says
 - Reopening focuses the search field with an empty query, in the same position and at the same size
 - Compact mode: typing expands it, and the search bar does **not** shift vertically during the swap
+- Compact mode: the opening frames show no shortcut fill beneath the query before the buttons emerge
+- Compact mode: configure zero through four unique shortcuts, replace/remove them and move them up/down;
+  disabling a feature hides its button without losing its configured position
+- Compact mode: Left/Right traverses Search and the visible buttons without wrapping; Down expands
+  Search or opens a selected shortcut, Return opens only a shortcut, and typing/pasting starts Search
+- Compact mode: Escape at expanded root clears text, then collapses, then closes under both preferences
+- Compact mode: a round button per enabled configured shortcut; the
+  capsule fills the rest, the whole width with none on. Each summon and each cleared query buds them out
+  of the capsule's end, the last one never clipped at the window's edge; with Show animations off they
+  appear in place. Mouse and keyboard activation open the command immediately, without a fuse,
+  delayed reveal or shortcut shapes beneath the expanded panel. Show Notes opens its window
+- Compact mode: keyboard selection has a medium gray fill in Light, a brighter fill in Dark, and a white
+  monochrome glyph in both, without a ring;
+  Emoji & Symbols uses the same outlined glyph as the launcher in both Light and Dark
+- Verify compact selection in the live glass compositor in both appearances; an offscreen view bitmap
+  omits the material and cannot prove selection contrast
+- Compact Shortcuts settings: command names sit beside their icons; replacement menus and borderless
+  move/remove controls work without stretching the labels across the row
+- The expanded header leaves even room above the query and below it, before the first section
 - With a CJK IME: the placeholder clears as soon as composition starts and the composing text never
   overlaps it; cancelling composition brings the placeholder back, and the list filters only once the
   candidate is committed — check on a second summon too, where first responder never moved
 - Typing filters instantly; ↑/↓ move the highlight and scroll it into view without yanking the list
-- ⌃N/⌃P move the highlight as ↓/↑ do; ⌃F/⌃B step the emoji grid's selection, and the caret elsewhere
+- ⌃N/⌃P move the highlight as ↓/↑ do; ⌃F/⌃B step compact shortcuts or the emoji grid's selection, and the caret elsewhere
 - The highlight always sits on the row the footer pill describes
 - With a calculation typed, the calculator card is first and is selected first
 - ⌘↵ on a number, unit or money card puts the answer in the search bar with the caret after it, so
