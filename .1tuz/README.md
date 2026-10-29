@@ -26,4 +26,4 @@ Everything that makes this fork differ from [abue-ammar/tinycast](https://github
 - **`fork-sync.yml`** — once daily (and `workflow_dispatch`) checks upstream `main`. On a new commit it rebuilds `main` = upstream + patches on macOS, runs `gate.sh`, and `--force-with-lease` pushes `main`. On failure nothing is pushed.
 - Upstream `release.yml` stays **manual** (`workflow_dispatch` only). Homebrew tap / website / Discord steps are skipped on this fork.
 
-Secrets: `SIGNING_P12_BASE64`, `SIGNING_P12_PASSWORD` (stable identity — do not rotate casually), and `FORK_PUSH_TOKEN` (Contents + Workflows write) for sync pushes that touch workflows.
+The sync job uses the built-in `GITHUB_TOKEN` with Contents and Workflows write permissions declared in the workflow. Release signing still needs `SIGNING_P12_BASE64` and `SIGNING_P12_PASSWORD` (stable identity — do not rotate casually).
