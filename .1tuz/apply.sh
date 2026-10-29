@@ -8,7 +8,12 @@ failed=""
 for patch in .1tuz/patches/*.patch; do
   name="${patch##*/}"
   echo "applying $name"
-  if ! git apply --3way --whitespace=nowarn "$patch"; then
+  apply_args=(--3way --whitespace=nowarn)
+  if [ "$name" = "0016-fork-readme-install-guide.patch" ]; then
+    # The README replacement ignores Markdown hard-break trailing spaces.
+    apply_args=(--unidiff-zero --ignore-whitespace --whitespace=nowarn)
+  fi
+  if ! git apply "${apply_args[@]}" "$patch"; then
     failed="$name"
     echo "::error::patch failed: $name"
     exit 1
@@ -22,8 +27,9 @@ done
   rm -f "$file.bak"
 done
 
-# The fork does not publish the upstream website.
+# The fork has no website source or publishing workflow.
 rm -f .github/workflows/website.yml .github/workflows/website-media.yml
+rm -rf website
 
 # A patch that adds a source file needs it in the Xcode project.
 if [ -n "$(git status --porcelain --untracked-files=all -- Tinycast | grep -E '^(\?\?|A ) ' || true)" ]; then

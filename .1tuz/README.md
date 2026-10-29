@@ -18,7 +18,8 @@ Everything that makes this fork differ from [abue-ammar/tinycast](https://github
 | `patches/0011-transcript-settle-pill-stable.patch` | Wait for transcript/done after stop; stop pill setFrame flicker |
 | `patches/0012-remove-website-link.patch` | Removes the upstream Website link from About |
 | `patches/0013-curl-installer.patch` | Adds the one-line local installer and guide |
-| `patches/0014-no-homebrew-release-notes.patch` | Removes Homebrew instructions from generated release notes |
+| `patches/0014-no-homebrew-release-notes.patch` | Uses the local install guide in generated release notes |
+| `patches/0016-fork-readme-install-guide.patch` | Replaces upstream website and package-manager install text in the root README |
 | `apply.sh` | Applies patches, removes website publishing workflows, rewrites release links, regenerates XcodeGen project with a checksum-pinned binary |
 | `gate.sh` | Fast validation: apply already done; Release smoke build + Voice Ask / Hyper / updater-focused harnesses |
 | `UPSTREAM` | Upstream commit SHA `main` was last built from |
@@ -27,6 +28,6 @@ Everything that makes this fork differ from [abue-ammar/tinycast](https://github
 ## Automation
 
 - **`fork-sync.yml`** — once daily (and `workflow_dispatch`) checks upstream `main`. On a new commit it rebuilds the source tree from upstream plus `.1tuz/patches`, preserves this fork's workflow files, runs `gate.sh`, and fast-forward pushes `main`. On failure nothing is pushed.
-- GitHub Actions uses its built-in `GITHUB_TOKEN`; no extra push token is needed. Website publishing workflows are removed from the fork.
+- GitHub Actions uses its built-in `GITHUB_TOKEN`; no extra push token is needed. Website source and publishing workflows are removed from the fork.
 - `INSTALL.md` documents the one-line source installer. It needs Xcode 26 and a persistent code-signing identity. GitHub Releases must use that same identity for in-app updates.
 - `release.yml` stays manual (`workflow_dispatch` only). Release signing still needs `SIGNING_P12_BASE64` and `SIGNING_P12_PASSWORD` (stable identity — do not rotate casually).

@@ -1,0 +1,86 @@
+diff --git a/README.md b/README.md
+index 1d5d506ad2ea95519ffcbac39babaf161dea530f..41f3a03cf30b669459af82bec621ca5bdfe64e19 100644
+--- a/README.md
++++ b/README.md
+@@ -7 +7 @@ RAM.**
+-  <a href="https://github.com/abue-ammar/tinycast/releases/latest">
++  <a href="https://github.com/1tuz/tinycast/releases/latest">
+@@ -9 +9 @@ RAM.**
+-         src="https://img.shields.io/github/v/release/abue-ammar/tinycast?sort=semver&style=flat&label=release&color=1F6FEB"></a>
++         src="https://img.shields.io/github/v/release/1tuz/tinycast?sort=semver&style=flat&label=release&color=1F6FEB"></a>
+@@ -68 +68 @@ For anything private, email [iabueammar@gmail.com](mailto:iabueammar@gmail.com).
+-First, add the tap:
++Run this in Terminal. It builds the fork source with Xcode 26 and installs the app in `~/Applications`:
+@@ -71,2 +71 @@ First, add the tap:
+-brew trust --tap abue-ammar/tinycast   # required for third-party taps
+-brew tap abue-ammar/tinycast
++curl -fsSL https://raw.githubusercontent.com/1tuz/tinycast/main/Scripts/install.sh | /bin/bash
+@@ -75,12 +74 @@ brew tap abue-ammar/tinycast
+-Then run the one line that matches your Mac:
+-
+-| Your Mac                         | Install                                  |
+-| -------------------------------- | ---------------------------------------- |
+-| Apple silicon, macOS 26 or newer | `brew install --cask tinycast`           |
+-| Intel, macOS 26                  | `brew install --cask tinycast-universal` |
+-
+-Not sure which Mac you have? **Apple menu → About This Mac.**
+-
+-- **Early builds:** `brew install --cask tinycast@beta` installs `Tinycast Beta.app` beside the stable app.
+-- **DMG from [Releases](https://github.com/abue-ammar/tinycast/releases)?** It's self-signed, so run
+-  `xattr -dr com.apple.quarantine "/Applications/Tinycast.app"` once.
++See [INSTALL.md](INSTALL.md) for the signing identity requirement and options.
+@@ -90,52 +78,2 @@ Not sure which Mac you have? **Apple menu → About This Mac.**
+-See **[docs/development.md](docs/development.md)** for the toolchain, build, packaging, release and
+-website workflows. **[docs/](docs/README.md)** indexes everything else — architecture, engineering
+-standards, the design system and one document per feature.
+-
+-## Support
+-
+-Tinycast is **free, and it stays that way**. If you enjoy it, you can support it with crypto: scan a
+-code with your wallet, or copy an address. Send only on the network named for that address. If yours
+-isn't listed, [email me](mailto:iabueammar@gmail.com?subject=Supporting%20Tinycast).
+-
+-<table>
+-  <tr>
+-    <td align="center">
+-      <img width="160" alt="Bitcoin address QR code" src="website/public/wallets/bitcoin-qr.svg"><br>
+-      <b>Bitcoin</b>
+-    </td>
+-    <td align="center">
+-      <img width="160" alt="Ethereum, Base and BNB Smart Chain address QR code" src="website/public/wallets/ethereum-qr.svg"><br>
+-      <b>Ethereum, Base, BNB Smart Chain</b>
+-    </td>
+-    <td align="center">
+-      <img width="160" alt="Solana address QR code" src="website/public/wallets/solana-qr.svg"><br>
+-      <b>Solana</b>
+-    </td>
+-  </tr>
+-</table>
+-
+-**Bitcoin**
+-
+-```text
+-bc1qpfxtjpuhm2cm8kg4lqgu3ffjch7vcjf678arwn
+-```
+-
+-**Ethereum, Base and BNB Smart Chain** (one address for all three)
+-
+-```text
+-0x22A00612bc0bf1Dc73AAC75e8De1BA4e81fF0810
+-```
+-
+-**Solana**
+-
+-```text
+-4EH7JDXZxkJiahas1xgPyC1iBW9pfCVUXxVtpqvwAz6T
+-```
+-
+-Prefer a card? Buy the wallpaper pack and get a Discord role.
+-
+-<p align="center">
+-  <a href="https://tinycast.dev/support">
+-    <img alt="Support Tinycast" width="188" height="44" src="docs/support-button.svg"></a><br>
+-  <sub>Card payments are handled securely by <a href="https://polar.sh">Polar.sh</a>.</sub>
+-</p>
++See [INSTALL.md](INSTALL.md) for the local build and install command. **[docs/](docs/README.md)**
++indexes architecture, engineering standards, the design system and feature guides.
