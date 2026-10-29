@@ -22,10 +22,23 @@ done
   rm -f "$file.bak"
 done
 
+# The fork does not publish the upstream website.
+rm -f .github/workflows/website.yml .github/workflows/website-media.yml
+
 # A patch that adds a source file needs it in the Xcode project.
 if [ -n "$(git status --porcelain --untracked-files=all -- Tinycast | grep -E '^(\?\?|A ) ' || true)" ]; then
-  command -v xcodegen > /dev/null || brew install --quiet xcodegen
   echo "regenerating the Xcode project for added sources"
+  if ! command -v xcodegen > /dev/null; then
+    version=2.46.0
+    checksum=4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806
+    workdir="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/xcodegen.XXXXXX")"
+    trap 'rm -rf "$workdir"' EXIT
+    archive="$workdir/xcodegen.zip"
+    curl -fsSL "https://github.com/yonaskolb/XcodeGen/releases/download/$version/xcodegen.zip" -o "$archive"
+    printf '%s  %s\n' "$checksum" "$archive" | shasum -a 256 -c -
+    /usr/bin/unzip -q "$archive" -d "$workdir"
+    export PATH="$workdir/xcodegen/bin:$PATH"
+  fi
   xcodegen generate --quiet
 fi
 

@@ -1,0 +1,85 @@
+diff --git a/INSTALL.md b/INSTALL.md
+new file mode 100644
+index 0000000..5c0eeb9
+--- /dev/null
++++ b/INSTALL.md
+@@ -0,0 +1,15 @@
++# Install Tinycast from the fork
++
++Run this in Terminal:
++
++```sh
++curl -fsSL https://raw.githubusercontent.com/1tuz/tinycast/main/Scripts/install.sh | /bin/bash
++```
++
++The script builds `main` with Xcode 26 and installs `~/Applications/Tinycast.app`. It uses the first
++valid code-signing identity in Keychain. Set `TINYCAST_SIGNING_IDENTITY` before running the command
++to select another identity. It needs Git, Xcode 26 and a persistent signing identity. It does not
++install packages or change system settings.
++
++In-app updates check stable releases from `1tuz/tinycast`. Each update must be published with the
++same signing identity used for this local build.
+diff --git a/Scripts/install.sh b/Scripts/install.sh
+new file mode 100755
+index 0000000..1d5b2b2
+--- /dev/null
++++ b/Scripts/install.sh
+@@ -0,0 +1,58 @@
++#!/bin/bash
++set -euo pipefail
++
++repo="https://github.com/1tuz/tinycast.git"
++install_root="${TINYCAST_INSTALL_DIR:-$HOME/Applications}"
++destination="$install_root/Tinycast.app"
++workdir="$(mktemp -d "${TMPDIR:-/tmp}/tinycast-install.XXXXXX")"
++staged="$install_root/.Tinycast.app.new.$$"
++backup="$install_root/.Tinycast.app.backup.$$"
++
++cleanup() {
++    rm -rf "$workdir" "$staged"
++}
++trap cleanup EXIT
++
++fail() {
++    printf 'Tinycast install failed: %s\n' "$1" >&2
++    exit 1
++}
++
++command -v git >/dev/null || fail "Git is required."
++command -v xcodebuild >/dev/null || fail "Install Xcode 26 first."
++xcode_version="$(xcodebuild -version | awk '/^Xcode / { print $2; exit }')"
++case "$xcode_version" in
++    26.*) ;;
++    *) fail "Xcode 26 is required; found ${xcode_version:-unknown}." ;;
++esac
++signing_identity="${TINYCAST_SIGNING_IDENTITY:-$(
++    security find-identity -v -p codesigning \
++        | awk -F '"' '/^[[:space:]]*[0-9]+\)/ { print $2; exit }'
++)}"
++[ -n "$signing_identity" ] || fail "A persistent code-signing identity is required."
++
++git clone --depth 1 --branch main "$repo" "$workdir/source"
++xcodebuild \
++    -project "$workdir/source/Tinycast.xcodeproj" \
++    -scheme Tinycast \
++    -configuration Release \
++    -derivedDataPath "$workdir/DerivedData" \
++    CODE_SIGN_STYLE=Manual \
++    CODE_SIGN_IDENTITY="$signing_identity" \
++    OTHER_CODE_SIGN_FLAGS="--timestamp=none" \
++    build
++
++app="$workdir/DerivedData/Build/Products/Release/Tinycast.app"
++[ -d "$app" ] || fail "The build did not produce Tinycast.app."
++mkdir -p "$install_root"
++ditto "$app" "$staged"
++
++if [ -e "$destination" ]; then
++    mv "$destination" "$backup"
++fi
++if ! mv "$staged" "$destination"; then
++    [ ! -e "$backup" ] || mv "$backup" "$destination"
++    fail "Could not place the app in $install_root."
++fi
++rm -rf "$backup"
++printf 'Installed %s\n' "$destination"

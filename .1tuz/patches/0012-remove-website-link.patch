@@ -1,0 +1,11 @@
+diff --git a/Tinycast/Windows/About/AboutView.swift b/Tinycast/Windows/About/AboutView.swift
+index b8a0929..e76cff2 100644
+--- a/Tinycast/Windows/About/AboutView.swift
++++ b/Tinycast/Windows/About/AboutView.swift
+@@ -145,6 +145,2 @@ private struct AboutLink: Identifiable {
+     static let all: [AboutLink] = [
+-        AboutLink(
+-            id: "website", glyph: .symbol("globe"), title: "Website",
+-            detail: "tinycast.dev",
+-            url: URL(string: "https://tinycast.dev/")!),
+         AboutLink(

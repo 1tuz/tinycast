@@ -49,17 +49,15 @@ jobs:
           CHANNEL="${{ github.event.inputs.channel }}"
           BASE_VERSION="${{ github.event.inputs.version }}"
           # Each channel is a distinct, side-by-side app: its own display name + bundle id.
-          # This fork does not publish to abue-ammar/homebrew-tinycast.
           case "$CHANNEL" in
-            beta)   SUFFIX="-beta.${GITHUB_RUN_NUMBER}";  DISPLAY="Tinycast Beta";  BUNDLE="com.tinycast.app.beta";  CASK="tinycast@beta";  PRERELEASE=true ;;
-            stable) SUFFIX="";                            DISPLAY="Tinycast";       BUNDLE="com.tinycast.app";       CASK="tinycast";       PRERELEASE=false ;;
+            beta)   SUFFIX="-beta.${GITHUB_RUN_NUMBER}";  DISPLAY="Tinycast Beta";  BUNDLE="com.tinycast.app.beta";  PRERELEASE=true ;;
+            stable) SUFFIX="";                            DISPLAY="Tinycast";       BUNDLE="com.tinycast.app";       PRERELEASE=false ;;
           esac
           FULL="${BASE_VERSION}${SUFFIX}"
           {
             echo "full_version=${FULL}"
             echo "display_name=${DISPLAY}"
             echo "bundle_id=${BUNDLE}"
-            echo "cask_name=${CASK}"
             echo "dmg_file=Tinycast-${FULL}.dmg"
             echo "zip_file=Tinycast-${FULL}.zip"
             echo "prerelease=${PRERELEASE}"
@@ -128,8 +126,7 @@ jobs:
           DISPLAY_NAME: ${{ steps.meta.outputs.display_name }}
         run: ./Scripts/verify-signature.sh "$RUNNER_TEMP/DerivedData/Build/Products/Release/${DISPLAY_NAME}.app"
 
-      # Two artifacts from one build: the DMG people download and the cask installs, and the zip
-      # the in-app updater installs — it expands with `ditto` instead of mounting a volume.
+      # The DMG is for manual installation; the ZIP is for the in-app updater.
       - name: Package DMG and ZIP
         env:
           DISPLAY_NAME: ${{ steps.meta.outputs.display_name }}
@@ -163,7 +160,6 @@ jobs:
           VERSION: ${{ steps.meta.outputs.full_version }}
           DISPLAY_NAME: ${{ steps.meta.outputs.display_name }}
           BUNDLE_ID: ${{ steps.meta.outputs.bundle_id }}
-          CASK: ${{ steps.meta.outputs.cask_name }}
         run: ./Scripts/release-notes.sh "$RUNNER_TEMP/notes.md" "$RUNNER_TEMP/changelog.md"
 
       - name: Publish GitHub Release
@@ -192,7 +188,6 @@ jobs:
       VERSION: ${{ needs.build.outputs.full_version }}
       DISPLAY_NAME: ${{ needs.build.outputs.display_name }}
       BUNDLE_ID: ${{ needs.build.outputs.bundle_id }}
-      CASK: tinycast-universal
     steps:
       - uses: actions/checkout@v7
 
