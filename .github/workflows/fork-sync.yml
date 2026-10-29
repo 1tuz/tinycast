@@ -47,16 +47,22 @@ jobs:
   sync:
     needs: check
     if: needs.check.outputs.go == 'true'
-    permissions:
-      contents: write
-      workflows: write
     runs-on: macos-26
     timeout-minutes: 60
     steps:
+      - name: Require workflow-write token
+        env:
+          FORK_PUSH_TOKEN: ${{ secrets.FORK_PUSH_TOKEN }}
+        run: |
+          if [ -z "$FORK_PUSH_TOKEN" ]; then
+            echo "::error::Add repository secret FORK_PUSH_TOKEN with Contents and Workflows write access for 1tuz/tinycast."
+            exit 1
+          fi
+
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          token: ${{ github.token }}
+          token: ${{ secrets.FORK_PUSH_TOKEN }}
 
       - name: Select Xcode 26
         run: |
