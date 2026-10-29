@@ -18,9 +18,9 @@ Everything that makes this fork differ from [abue-ammar/tinycast](https://github
 | `patches/0011-transcript-settle-pill-stable.patch` | Wait for transcript/done after stop; stop pill setFrame flicker |
 | `patches/0012-remove-website-link.patch` | Removes the upstream Website link from About |
 | `patches/0013-curl-installer.patch` | Adds the one-line local installer and guide |
-| `patches/0014-no-homebrew-release-notes.patch` | Uses the local install guide in generated release notes |
+| `patches/0014-release-notes-install-guide.patch` | Uses the local install guide in generated release notes |
 | `patches/0016-fork-readme-install-guide.patch` | Replaces upstream website and package-manager install text in the root README |
-| `apply.sh` | Applies patches, removes website publishing workflows, rewrites release links, regenerates XcodeGen project with a checksum-pinned binary |
+| `apply.sh` | Applies patches, removes website source and publishing workflows, rewrites release links, regenerates XcodeGen project with a checksum-pinned binary |
 | `gate.sh` | Fast validation: apply already done; Release smoke build + Voice Ask / Hyper / updater-focused harnesses |
 | `UPSTREAM` | Upstream commit SHA `main` was last built from |
 | `VOICE_AGENT_INTEGRATION.md` | Voice Agent wiring notes for this fork |
