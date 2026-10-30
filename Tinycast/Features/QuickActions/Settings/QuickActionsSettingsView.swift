@@ -47,6 +47,7 @@ struct QuickActionsSettingsView: View {
 
             Group {
                 actionsSection
+                developerSection
                 modelSection
                 languageSection
             }
@@ -55,6 +56,9 @@ struct QuickActionsSettingsView: View {
         .formStyle(.grouped)
         .settingsScrollTarget(.quickActions)
         .onReceive(refreshTimer) { _ in isTrusted = Permissions.isAccessibilityTrusted() }
+        .onChange(of: appSettings.developerQuickActionsEnabled) {
+            core.quickActionCoordinator.applyEnabled()
+        }
         .settingsEditorPanel(item: $editingAction) { action in
             InstructionsEditorPanel(
                 action: action,
@@ -90,7 +94,7 @@ struct QuickActionsSettingsView: View {
 
     private var actionsSection: some View {
         Section {
-            ForEach(BuiltInQuickAction.allCases, content: builtInRow)
+            ForEach(BuiltInQuickAction.allCases.filter(\.requiresAI), content: builtInRow)
             ForEach(customActions.actions) { action in
                 SettingsRow(title: action.name, subtitle: subtitle(for: .custom(action))) {
                     SymbolImage(name: action.symbol, size: Theme.Size.quickActionHeaderIcon)
@@ -119,16 +123,29 @@ struct QuickActionsSettingsView: View {
         }
     }
 
+    private var developerSection: some View {
+        @Bindable var appSettings = appSettings
+        return Section {
+            Toggle(isOn: $appSettings.developerQuickActionsEnabled) {
+                SettingsRowTitle(.quickActionsDeveloper, "Enable developer actions")
+                Text("Transform text locally without an AI provider.")
+            }
+            ForEach(BuiltInQuickAction.allCases.filter { !$0.requiresAI }, content: builtInRow)
+                .settingsEnabled(appSettings.developerQuickActionsEnabled)
+        } header: {
+            SettingsSectionHeader(.quickActionsDeveloper)
+        }
+    }
+
     private func builtInRow(_ action: BuiltInQuickAction) -> some View {
         let entry = CommandCatalog.entry(for: CommandID(action))
         return SettingsRow(title: action.title, subtitle: subtitle(for: .builtIn(action))) {
             Image(systemName: action.symbol)
                 .frame(width: Theme.Size.settingsRowIcon)
         } trailing: {
-            if !action.usesTranslationFramework {
+            if action.requiresAI, !action.usesTranslationFramework {
                 editButton(title: action.title) { editingAction = action }
             }
-            // The four left the Commands pane with their kind, and its alias field with it.
             if let entry { AliasField(entry: entry) }
             ShortcutRecorder(action: .command(CommandID(action)), isQuiet: true)
             resultPicker(title: action.title, selection: previewBinding(action))
@@ -207,7 +224,7 @@ struct QuickActionsSettingsView: View {
 
     private func subtitle(for action: QuickAction) -> String? {
         let details = [
-            action.alwaysPreviews ? "Always shown in a panel" : nil,
+            action.alwaysPreviews ? String(localized: "Always shown in a panel") : nil,
             store.modelOverride(for: action).map(routeTitle)
         ].compactMap(\.self)
         return details.isEmpty ? nil : details.joined(separator: " · ")

@@ -10,7 +10,7 @@ index 1d5d506ad2ea95519ffcbac39babaf161dea530f..41f3a03cf30b669459af82bec621ca5b
 +         src="https://img.shields.io/github/v/release/1tuz/tinycast?sort=semver&style=flat&label=release&color=1F6FEB"></a>
 @@ -68 +68 @@ For anything private, email [iabueammar@gmail.com](mailto:iabueammar@gmail.com).
 -First, add the tap:
-+Run this in Terminal. It builds the fork source with Xcode 26 and installs the app in `~/Applications`:
++Run this in Terminal. It builds the fork source with Xcode 26 or 27 and installs the app in `~/Applications`:
 @@ -71,2 +71 @@ First, add the tap:
 -brew trust --tap abue-ammar/tinycast   # required for third-party taps
 -brew tap abue-ammar/tinycast

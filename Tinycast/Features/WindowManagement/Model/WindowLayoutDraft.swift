@@ -15,6 +15,7 @@ final class WindowLayoutDraft {
     var name: String
     var iconSymbol: String?
     var usesPreferredGap: Bool
+    private(set) var autoApplyBundleID: String?
     private(set) var entries: [WindowLayoutEntry]
     private var frontmostEntryID: UUID?
     /// Identity, never an index: removing an entry must not strand a field's binding.
@@ -27,6 +28,7 @@ final class WindowLayoutDraft {
         name = layout?.name ?? ""
         iconSymbol = layout?.iconSymbol
         usesPreferredGap = layout?.usesPreferredGap ?? true
+        autoApplyBundleID = layout?.autoApplyBundleID
         entries = layout?.entries ?? []
         frontmostEntryID = layout?.frontmostEntryID
         selectedEntryID = entries.first?.id
@@ -40,6 +42,12 @@ final class WindowLayoutDraft {
 
     var selectedEntry: WindowLayoutEntry? {
         entries.first { $0.id == selectedEntryID }
+    }
+
+    var autoApplyBundleIDs: [String] { Array(Set(entries.map(\.bundleID))).sorted() }
+
+    func setAutoApplyBundleID(_ bundleID: String?) {
+        autoApplyBundleID = bundleID.flatMap { autoApplyBundleIDs.contains($0) ? $0 : nil }
     }
 
     /// Marking a second entry moves the mark, so a layout never names two.
@@ -97,6 +105,9 @@ final class WindowLayoutDraft {
         guard let id = selectedEntryID else { return }
         entries.removeAll { $0.id == id }
         if frontmostEntryID == id { frontmostEntryID = nil }
+        if let autoApplyBundleID, !autoApplyBundleIDs.contains(autoApplyBundleID) {
+            self.autoApplyBundleID = nil
+        }
         selectedEntryID =
             selectedDisplayUUID.flatMap { entries(onDisplay: $0).first?.id }
             ?? entries.first?.id
@@ -137,7 +148,8 @@ final class WindowLayoutDraft {
     var previewLayout: WindowLayout {
         WindowLayout(
             id: existingID ?? UUID(), name: name, iconSymbol: iconSymbol,
-            usesPreferredGap: usesPreferredGap, entries: entries,
+            usesPreferredGap: usesPreferredGap, autoApplyBundleID: autoApplyBundleID,
+            entries: entries,
             frontmostEntryID: frontmostEntryID)
     }
 

@@ -81,6 +81,13 @@ final class WindowLayoutStore {
         value.name = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
         value.iconSymbol = draft.iconSymbol?.trimmingCharacters(in: .whitespacesAndNewlines)
         value.sanitizeEntries()
+        value.autoApplyBundleID = value.autoApplyBundleID?.trimmingCharacters(
+            in: .whitespacesAndNewlines)
+        if value.autoApplyBundleID?.isEmpty == true
+            || value.autoApplyBundleID.map({ id in !value.entries.contains { $0.bundleID == id } }) == true
+        {
+            value.autoApplyBundleID = nil
+        }
         guard !value.name.isEmpty else { throw .emptyName }
         guard !value.name.contains("\0") else { throw .invalidCharacter }
         guard !value.entries.isEmpty else { throw .noEntries }
@@ -90,6 +97,12 @@ final class WindowLayoutStore {
                     && $0.name.compare(value.name, options: .caseInsensitive) == .orderedSame
             })
         else { throw .duplicateName }
+        guard
+            value.autoApplyBundleID == nil
+                || !layouts.contains(where: {
+                    $0.id != value.id && $0.autoApplyBundleID == value.autoApplyBundleID
+                })
+        else { throw .duplicateAutoApplyApp }
         return value
     }
 
@@ -109,7 +122,7 @@ final class WindowLayoutStore {
     /// "Office" → "Office Copy" → "Office Copy 2", so a duplicate never fails validation.
     private static func uniqueName(from name: String, among existing: [WindowLayout]) -> String {
         let taken = Set(existing.map { $0.name.lowercased() })
-        let base = name + " Copy"
+        let base = String(localized: "\(name) Copy")
         guard taken.contains(base.lowercased()) else { return base }
         var index = 2
         while taken.contains("\(base) \(index)".lowercased()) { index += 1 }
@@ -119,6 +132,7 @@ final class WindowLayoutStore {
     private static func sanitized(_ values: [WindowLayout]) -> [WindowLayout] {
         var ids = Set<UUID>()
         var names = Set<String>()
+        var autoApplyBundleIDs = Set<String>()
         var result: [WindowLayout] = []
         for value in values {
             // Copy-and-clean rather than rebuild, so a new field can never be dropped on import.
@@ -126,10 +140,23 @@ final class WindowLayoutStore {
             cleaned.name = value.name.trimmingCharacters(in: .whitespacesAndNewlines)
             cleaned.iconSymbol = value.iconSymbol?.trimmingCharacters(in: .whitespacesAndNewlines)
             cleaned.sanitizeEntries()
+            cleaned.autoApplyBundleID = value.autoApplyBundleID?.trimmingCharacters(
+                in: .whitespacesAndNewlines)
+            if cleaned.autoApplyBundleID?.isEmpty == true
+                || cleaned.autoApplyBundleID.map({ id in !cleaned.entries.contains { $0.bundleID == id } })
+                    == true
+            {
+                cleaned.autoApplyBundleID = nil
+            }
             let foldedName = cleaned.name.folding(options: [.caseInsensitive], locale: .current)
             guard !cleaned.name.isEmpty, !cleaned.name.contains("\0"), !cleaned.entries.isEmpty,
                 ids.insert(cleaned.id).inserted, names.insert(foldedName).inserted
             else { continue }
+            if let trigger = cleaned.autoApplyBundleID,
+                !autoApplyBundleIDs.insert(trigger).inserted
+            {
+                cleaned.autoApplyBundleID = nil
+            }
             result.append(cleaned)
         }
         return result.sorted(by: WindowLayout.precedes)

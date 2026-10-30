@@ -1,33 +1,24 @@
 # .1tuz
 
 Everything that makes this fork differ from [abue-ammar/tinycast](https://github.com/abue-ammar/tinycast).
-`main` is regenerated as *upstream main + these patches* — do not hand-edit `main` outside this folder.
+`main` uses the upstream `main` tree plus these patches. Each sync commit keeps the previous fork `main` as its first parent, so publishing is a normal fast-forward push.
 
 | File | What it does |
 | --- | --- |
-| `patches/0001-voice-ask-core.patch` | Voice Ask core: coordinator, settings, AppCore wiring, docs, harness |
-| `patches/0002-voice-ask-hyper-ptt.patch` | Hyper hold → Voice Ask PTT models + hotkey wiring |
-| `patches/0003-voice-ask-ui.patch` | Voice Pill, shared mic button, Quick AI / launcher header |
-| `patches/0004-voice-ask-permissions.patch` | Microphone TCC strings, entitlements, Permissions UI |
-| `patches/0005-codex-realtime.patch` | Codex realtime transcription + microphone capture |
-| `patches/0006-codex-lifecycle-performance.patch` | Codex idle 180s, probe idle re-arm, audio batching, `sendVoicePrompt` |
-| `patches/0007-hyper-stability.patch` | Hyper `keyState` watchdog, Caps Lock wake/terminate |
-| `patches/0008-fork-updater.patch` | In-app updater + About GitHub → `1tuz/tinycast` |
-| `patches/0009-disable-support-reminders.patch` | No automatic Support reminder pump |
-| `patches/0010-mic-isolation-early-ptt.patch` | Mic tap off MainActor; early PCM + pending Hyper-stop during Codex connect |
-| `patches/0011-transcript-settle-pill-stable.patch` | Wait for transcript/done after stop; stop pill setFrame flicker |
+| `patches/0008-fork-updater.patch` | In-app updater and About link to `1tuz/tinycast` |
+| `patches/0009-disable-support-reminders.patch` | Disables automatic Support reminders |
 | `patches/0012-remove-website-link.patch` | Removes the upstream Website link from About |
 | `patches/0013-curl-installer.patch` | Adds the one-line local installer and guide |
 | `patches/0014-release-notes-install-guide.patch` | Uses the local install guide in generated release notes |
-| `patches/0016-fork-readme-install-guide.patch` | Replaces upstream website and package-manager install text in the root README |
-| `apply.sh` | Applies patches, removes website source and publishing workflows, rewrites release links, regenerates XcodeGen project with a checksum-pinned binary |
-| `gate.sh` | Fast validation: apply already done; Release smoke build + Voice Ask / Hyper / updater-focused harnesses |
-| `UPSTREAM` | Upstream commit SHA `main` was last built from |
-| `VOICE_AGENT_INTEGRATION.md` | Voice Agent wiring notes for this fork |
+| `patches/0016-fork-readme-install-guide.patch` | Replaces upstream website and package-manager install text in README |
+| `patches/0017-roadmap-features.patch` | Carries local roadmap features and removes Dictation/microphone capture |
+| `apply.sh` | Applies patches, removes website source and publishing workflows, rewrites release links, regenerates the XcodeGen project |
+| `gate.sh` | Checks that voice input and microphone capture are absent, then runs a Release build and focused harnesses |
+| `UPSTREAM` | Upstream commit SHA used for the last rebuild |
 
 ## Automation
 
-- **`fork-sync.yml`** — once daily (and `workflow_dispatch`) checks upstream `main`. On a new commit it rebuilds the source tree from upstream plus `.1tuz/patches`, preserves this fork's workflow files, runs `gate.sh`, and fast-forward pushes `main`. On failure nothing is pushed.
-- GitHub Actions uses its built-in `GITHUB_TOKEN`; no extra push token is needed. Website source and publishing workflows are removed from the fork.
-- `INSTALL.md` documents the one-line source installer. It needs Xcode 26 and a persistent code-signing identity. GitHub Releases must use that same identity for in-app updates.
-- `release.yml` stays manual (`workflow_dispatch` only). Release signing still needs `SIGNING_P12_BASE64` and `SIGNING_P12_PASSWORD` (stable identity — do not rotate casually).
+- `fork-sync.yml` checks upstream `main` daily and on manual dispatch. It rebuilds the fork from upstream plus `.1tuz/patches`, preserves this fork's workflows, runs `gate.sh`, then pushes `main` as a fast-forward merge of the previous fork tree and upstream. Failed gates do not publish a new tree.
+- GitHub Actions uses its built-in `GITHUB_TOKEN`; no extra push token is needed. The fork does not contain the website source or publishing workflow.
+- `INSTALL.md` documents the one-line source installer. It needs Xcode 26 or 27 and a persistent code-signing identity. GitHub Releases must use that same identity for in-app updates.
+- `release.yml` is manual. Release signing needs `SIGNING_P12_BASE64` and `SIGNING_P12_PASSWORD` for the same stable identity.

@@ -1,6 +1,6 @@
 name: "Fork · sync upstream"
 
-# main = upstream main + .1tuz/patches, rebuilt once a day (or on manual dispatch).
+# main = upstream main + .1tuz/patches, published daily as a fast-forward merge.
 # Cheap Linux check first; macOS build only when upstream moved or force=true.
 on:
   schedule:
@@ -86,9 +86,10 @@ jobs:
             exit 1
           fi
           git add -A
-          if ! git diff --cached --quiet; then
-            git commit -q -m "1tuz: Voice Ask fork on upstream ${UP:0:7}"
-          fi
+          TREE=$(git write-tree)
+          SYNC=$(printf '1tuz: Tinycast fork on upstream %s\n' "${UP:0:7}" \
+            | git commit-tree "$TREE" -p "$OLD" -p "$UP")
+          git reset --hard "$SYNC"
           {
             echo "OLD=$OLD"
             echo "UP=$UP"
@@ -100,7 +101,7 @@ jobs:
       - name: Publish main
         run: |
           git push origin HEAD:main
-          echo "Published main from upstream ${UP:0:7} (based on $OLD)"
+          echo "Published main from upstream ${UP:0:7} as a fast-forward of $OLD"
 
       - name: Failure summary
         if: failure()

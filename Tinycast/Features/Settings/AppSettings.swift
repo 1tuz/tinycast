@@ -12,7 +12,8 @@ enum PopToRootTimeout: Int, CaseIterable, Identifiable, Sendable {
     var id: Int { rawValue }
 
     var title: String {
-        self == .immediately ? "Immediately" : "After \(rawValue) seconds"
+        self == .immediately
+            ? String(localized: "Immediately") : String(localized: "After \(rawValue) seconds")
     }
 
     var interval: TimeInterval { TimeInterval(rawValue) }
@@ -28,7 +29,7 @@ enum JoinWindow: Int, CaseIterable, Identifiable, Sendable {
 
     var id: Int { rawValue }
 
-    var title: String { rawValue == 1 ? "1 minute" : "\(rawValue) minutes" }
+    var title: String { String(localized: "\(rawValue) minutes") }
 }
 
 /// How early the calendar item picks the next event up. Zero, which `integer(forKey:)` also
@@ -42,7 +43,9 @@ enum MenuBarEvents: Int, CaseIterable, Identifiable, Sendable {
 
     var id: Int { rawValue }
 
-    var title: String { self == .today ? "Today" : "\(rawValue) minutes before" }
+    var title: String {
+        self == .today ? String(localized: "Today") : String(localized: "\(rawValue) minutes before")
+    }
 }
 
 /// The calendar's independent menu-bar presence. Zero matches an unset preference.
@@ -55,14 +58,13 @@ enum CalendarMenuBarDisplay: Int, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .disabled: "Disabled"
-        case .meetingIcon: "Meeting Icon"
-        case .meetingTitle: "Meeting Title"
+        case .disabled: String(localized: "Disabled")
+        case .meetingIcon: String(localized: "Meeting Icon")
+        case .meetingTitle: String(localized: "Meeting Title")
         }
     }
 }
 
-/// How long a started event holds the menu bar. Zero, the default, means it goes as it starts.
 enum CalendarLauncherLimit: Int, CaseIterable, Identifiable, Sendable {
     case one = 1
     case three = 3
@@ -73,10 +75,8 @@ enum CalendarLauncherLimit: Int, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .one: "1 next"
-        case .three: "3 next"
-        case .five: "5 next"
-        case .all: "All"
+        case .one, .three, .five: String(localized: "\(rawValue) next")
+        case .all: String(localized: "All")
         }
     }
 
@@ -95,9 +95,9 @@ enum HideCurrentEvent: Int, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .dontHide: "Keep visible — show time left"
-        case .automatically: "Automatically"
-        default: "After \(rawValue) minutes"
+        case .dontHide: String(localized: "Keep visible — show time left")
+        case .automatically: String(localized: "Automatically")
+        default: String(localized: "After \(rawValue) minutes")
         }
     }
 
@@ -120,6 +120,15 @@ final class AppSettings {
         didSet {
             defaults.set(launcherShowsSuggestions, forKey: Key.launcherShowsSuggestions.rawValue)
         }
+    }
+
+    /// Recent command ids are held by the launcher ranking store; this switch controls display.
+    var commandHistoryEnabled: Bool {
+        didSet { defaults.set(commandHistoryEnabled, forKey: Key.commandHistoryEnabled.rawValue) }
+    }
+
+    var commandHistoryLimit: Int {
+        didSet { defaults.set(commandHistoryLimit, forKey: Key.commandHistoryLimit.rawValue) }
     }
 
     /// How loose a fuzzy root-search hit may be and still show.
@@ -166,12 +175,18 @@ final class AppSettings {
         didSet { defaults.set(showInMenuBar, forKey: Key.showInMenuBar.rawValue) }
     }
 
-    /// The physical key remapped to the Hyper chord; `HyperKeyTap` reacts via its observer.
+    var automaticallyCheckForUpdates: Bool {
+        didSet {
+            defaults.set(
+                automaticallyCheckForUpdates, forKey: Key.automaticallyCheckForUpdates.rawValue)
+        }
+    }
+
+    /// The physical key remapped to the Hyper chord; `HyperKeyManager` reacts via its observer.
     var hyperKey: HyperKeyPhysicalKey {
         didSet { defaults.set(hyperKey.rawValue, forKey: Key.hyperKey.rawValue) }
     }
 
-    /// Whether Hyper is ⌃⌥⇧⌘ (on) or ⌃⌥⌘ (off).
     var hyperKeyIncludesShift: Bool {
         didSet { defaults.set(hyperKeyIncludesShift, forKey: Key.hyperKeyIncludesShift.rawValue) }
     }
@@ -182,9 +197,12 @@ final class AppSettings {
         }
     }
 
-    /// Opt-in: hold Hyper alone past the tap window to dictate with Voice Ask (push-to-talk).
-    var hyperKeyHoldVoiceAsk: Bool {
-        didSet { defaults.set(hyperKeyHoldVoiceAsk, forKey: Key.hyperKeyHoldVoiceAsk.rawValue) }
+    var hyperKeySecureInputCompatibility: Bool {
+        didSet {
+            defaults.set(
+                hyperKeySecureInputCompatibility,
+                forKey: Key.hyperKeySecureInputCompatibility.rawValue)
+        }
     }
 
     /// Preferred skin tone applied to modifier-capable emoji at render and copy time.
@@ -202,7 +220,6 @@ final class AppSettings {
         didSet { defaults.set(popToRootTimeout.rawValue, forKey: Key.popToRootTimeout.rawValue) }
     }
 
-    /// Whether Escape walks back through the screens the palette opened, or just closes it.
     var escapeKeyBehavior: EscapeKeyBehavior {
         didSet { defaults.set(escapeKeyBehavior.rawValue, forKey: Key.escapeKeyBehavior.rawValue) }
     }
@@ -210,6 +227,11 @@ final class AppSettings {
     /// Follow macOS, or pin Tinycast to one appearance. Applied by `AppCore.applyAppearance()`.
     var appearance: AppAppearance {
         didSet { defaults.set(appearance.rawValue, forKey: Key.appearance.rawValue) }
+    }
+
+    /// The per-app key System Settings writes too, so the two never disagree.
+    var language: AppLanguage {
+        didSet { defaults.set([language.rawValue], forKey: Key.language.rawValue) }
     }
 
     /// Which separators the calculator reads and writes; `.system` follows Language & Region.
@@ -236,12 +258,8 @@ final class AppSettings {
         didSet { defaults.set(compactMode, forKey: Key.compactMode.rawValue) }
     }
 
-    /// Pin favorite app icons to the right of the compact search bar (⌘1–⌘5 to launch).
-    var showFavoritesInCompactMode: Bool {
-        didSet {
-            defaults.set(
-                showFavoritesInCompactMode, forKey: Key.showFavoritesInCompactMode.rawValue)
-        }
+    var compactBarCommands: [CommandID] {
+        didSet { defaults.set(compactBarCommands.map(\.rawValue), forKey: Key.compactBarCommands.rawValue) }
     }
 
     /// Summon the palette on the display under the pointer instead of the one holding the menu bar.
@@ -262,6 +280,11 @@ final class AppSettings {
     /// Lets the panel be dragged by its top edge; off by default, so most launches never grab it.
     var paletteDraggable: Bool {
         didSet { defaults.set(paletteDraggable, forKey: Key.paletteDraggable.rawValue) }
+    }
+
+    /// Off, every surface changes at once; on, Reduce Motion still trims movement where it did.
+    var animationsEnabled: Bool {
+        didSet { defaults.set(animationsEnabled, forKey: Key.animationsEnabled.rawValue) }
     }
 
     /// Where a drag left the panel's top-left, per display and relative to it.
@@ -311,6 +334,25 @@ final class AppSettings {
         }
     }
 
+    var fileSearchRemovedDefaultPatterns: [String] {
+        didSet {
+            defaults.set(
+                fileSearchRemovedDefaultPatterns,
+                forKey: Key.fileSearchRemovedDefaultPatterns.rawValue)
+        }
+    }
+
+    var fileSearchEffectiveIgnorePatterns: [String] {
+        FileSearchIgnoreList.patterns(
+            added: fileSearchIgnorePatterns, removedDefaults: fileSearchRemovedDefaultPatterns)
+    }
+
+    var fileSearchShowInLauncher: Bool {
+        didSet {
+            defaults.set(fileSearchShowInLauncher, forKey: Key.fileSearchShowInLauncher.rawValue)
+        }
+    }
+
     var notesEnabled: Bool {
         didSet { defaults.set(notesEnabled, forKey: Key.notesEnabled.rawValue) }
     }
@@ -321,6 +363,10 @@ final class AppSettings {
 
     var notesShowsFormattingBar: Bool {
         didSet { defaults.set(notesShowsFormattingBar, forKey: Key.notesShowsFormattingBar.rawValue) }
+    }
+
+    var notesShowsInMenuBar: Bool {
+        didSet { defaults.set(notesShowsInMenuBar, forKey: Key.notesShowsInMenuBar.rawValue) }
     }
 
     /// The notes folder as the user wrote it, `~` allowed; nil keeps it in Application Support.
@@ -334,6 +380,17 @@ final class AppSettings {
     }
     var aiEnabled: Bool {
         didSet { defaults.set(aiEnabled, forKey: Key.aiEnabled.rawValue) }
+    }
+
+    /// Enables local workflow triggers that run while Tinycast is open.
+    var workflowsEnabled: Bool {
+        didSet { defaults.set(workflowsEnabled, forKey: Key.workflowsEnabled.rawValue) }
+    }
+
+    var ephemeralSnippetsEnabled: Bool {
+        didSet {
+            defaults.set(ephemeralSnippetsEnabled, forKey: Key.ephemeralSnippetsEnabled.rawValue)
+        }
     }
 
     var customCommandsEnabled: Bool {
@@ -358,6 +415,13 @@ final class AppSettings {
         didSet { defaults.set(quickActionsEnabled, forKey: Key.quickActionsEnabled.rawValue) }
     }
 
+    /// Local developer transforms share the Quick Actions consent switch, without using an AI model.
+    var developerQuickActionsEnabled: Bool {
+        didSet {
+            defaults.set(developerQuickActionsEnabled, forKey: Key.developerQuickActionsEnabled.rawValue)
+        }
+    }
+
     var snippetsShowInLauncher: Bool {
         didSet { defaults.set(snippetsShowInLauncher, forKey: Key.snippetsShowInLauncher.rawValue) }
     }
@@ -371,7 +435,6 @@ final class AppSettings {
         didSet { defaults.set(navigationEnabled, forKey: Key.navigationEnabled.rawValue) }
     }
 
-    /// Bundle IDs whose menu bar Search Menu Bar Items refuses to read at all.
     var menuSearchDisabledApps: [String] {
         didSet { defaults.set(menuSearchDisabledApps, forKey: Key.menuSearchDisabledApps.rawValue) }
     }
@@ -443,6 +506,13 @@ final class AppSettings {
 
     var autoJoinConfirms: Bool {
         didSet { defaults.set(autoJoinConfirms, forKey: Key.autoJoinConfirms.rawValue) }
+    }
+
+    var autoJoinNamedProvidersOnly: Bool {
+        didSet {
+            defaults.set(
+                autoJoinNamedProvidersOnly, forKey: Key.autoJoinNamedProvidersOnly.rawValue)
+        }
     }
 
     /// Doubles as camera consent, so only the Calendar pane's switch writes it.
@@ -552,12 +622,10 @@ final class AppSettings {
         }
     }
 
-    /// What `{selection}` does when there is no readable selection to pass.
-    var quicklinkSelectionFallback: QuicklinkSelectionFallback {
+    var quicklinkPassesSelectedText: Bool {
         didSet {
             defaults.set(
-                quicklinkSelectionFallback.rawValue,
-                forKey: Key.quicklinkSelectionFallback.rawValue)
+                quicklinkPassesSelectedText, forKey: Key.quicklinkPassesSelectedText.rawValue)
         }
     }
 
@@ -576,6 +644,19 @@ final class AppSettings {
     /// Whether settings.json mirrors these settings; `AppCore` starts and stops the mirror.
     var settingsFileEnabled: Bool {
         didSet { defaults.set(settingsFileEnabled, forKey: Key.settingsFileEnabled.rawValue) }
+    }
+
+    /// With no per-app list the bundle follows macOS's languages, so this runs before any lookup.
+    static func pinLanguage() {
+        UserDefaults.standard.set([storedLanguage.rawValue], forKey: Key.language.rawValue)
+    }
+
+    /// The app's own domain only: a plain read falls through to the global list.
+    private static var storedLanguage: AppLanguage {
+        AppLanguage(
+            storedPreferences: Bundle.main.bundleIdentifier
+                .flatMap(UserDefaults.standard.persistentDomain(forName:))?[Key.language.rawValue]
+                as? [String], systemPreferences: SystemLanguages.preferred)
     }
 
     init() {
@@ -599,9 +680,12 @@ final class AppSettings {
         showInMenuBar =
             defaults.object(forKey: Key.showInMenuBar.rawValue) == nil
             || defaults.bool(forKey: Key.showInMenuBar.rawValue)
+        automaticallyCheckForUpdates =
+            defaults.object(forKey: Key.automaticallyCheckForUpdates.rawValue) == nil
+            || defaults.bool(forKey: Key.automaticallyCheckForUpdates.rawValue)
         hyperKey =
             defaults.string(forKey: Key.hyperKey.rawValue).flatMap(HyperKeyPhysicalKey.init)
-            ?? .none
+            ?? .capsLock
         // Defaults to true, so absence must be distinguished from a stored `false`.
         hyperKeyIncludesShift =
             defaults.object(forKey: Key.hyperKeyIncludesShift.rawValue) == nil
@@ -610,7 +694,8 @@ final class AppSettings {
             defaults.string(forKey: Key.hyperKeyQuickPress.rawValue)
             .flatMap(HyperKeyQuickPress.init)
             ?? .none
-        hyperKeyHoldVoiceAsk = defaults.bool(forKey: Key.hyperKeyHoldVoiceAsk.rawValue)
+        hyperKeySecureInputCompatibility = defaults.bool(
+            forKey: Key.hyperKeySecureInputCompatibility.rawValue)
         emojiSkinTone =
             defaults.string(forKey: Key.emojiSkinTone.rawValue).flatMap(EmojiSkinTone.init) ?? .none
         emojiGridColumns =
@@ -624,23 +709,31 @@ final class AppSettings {
             ?? .navigateBackOrClose
         appearance =
             defaults.string(forKey: Key.appearance.rawValue).flatMap(AppAppearance.init) ?? .system
+        language = Self.storedLanguage
         calcNumberStyle =
             defaults.string(forKey: Key.calcNumberStyle.rawValue).flatMap(CalcNumberStyle.init)
             ?? .system
         interfaceSize =
             defaults.string(forKey: Key.interfaceSize.rawValue).flatMap(InterfaceSize.init)
             ?? .standard
-        compactMode = defaults.bool(forKey: Key.compactMode.rawValue)
-        // Defaults to true, so absence must be distinguished from a stored `false`.
-        showFavoritesInCompactMode =
-            defaults.object(forKey: Key.showFavoritesInCompactMode.rawValue) == nil
-            || defaults.bool(forKey: Key.showFavoritesInCompactMode.rawValue)
+        compactMode =
+            defaults.object(forKey: Key.compactMode.rawValue) == nil
+            || defaults.bool(forKey: Key.compactMode.rawValue)
+        compactBarCommands =
+            defaults.stringArray(forKey: Key.compactBarCommands.rawValue)
+            .flatMap(CommandID.compactBarCommands(from:)) ?? CommandID.defaultCompactBarCommands
         // Unset seeds the defaults; a stored empty array is a deliberately cleared list.
         searchScopes =
             defaults.stringArray(forKey: Key.searchScopes.rawValue) ?? SearchScopes.defaults
         launcherShowsSuggestions =
             defaults.object(forKey: Key.launcherShowsSuggestions.rawValue) == nil
             || defaults.bool(forKey: Key.launcherShowsSuggestions.rawValue)
+        commandHistoryEnabled =
+            defaults.object(forKey: Key.commandHistoryEnabled.rawValue) == nil
+            || defaults.bool(forKey: Key.commandHistoryEnabled.rawValue)
+        let savedCommandHistoryLimit = defaults.integer(forKey: Key.commandHistoryLimit.rawValue)
+        commandHistoryLimit = [10, 20, 50].contains(savedCommandHistoryLimit)
+            ? savedCommandHistoryLimit : 20
         rootSearchSensitivity =
             defaults.string(forKey: Key.rootSearchSensitivity.rawValue)
             .flatMap(SearchSensitivity.init) ?? .default
@@ -649,6 +742,9 @@ final class AppSettings {
             || defaults.bool(forKey: Key.openOnCursorScreen.rawValue)
         autoSwitchInputSourceID = defaults.string(forKey: Key.autoSwitchInputSource.rawValue)
         paletteDraggable = defaults.bool(forKey: Key.paletteDraggable.rawValue)
+        animationsEnabled =
+            defaults.object(forKey: Key.animationsEnabled.rawValue) == nil
+            || defaults.bool(forKey: Key.animationsEnabled.rawValue)
         palettePositions =
             defaults.dictionary(forKey: Key.palettePosition.rawValue)
             as? [String: [Double]] ?? [:]
@@ -661,6 +757,9 @@ final class AppSettings {
             ?? FileSearchScope.defaultScopes
         fileSearchIgnorePatterns =
             defaults.stringArray(forKey: Key.fileSearchIgnorePatterns.rawValue) ?? []
+        fileSearchRemovedDefaultPatterns =
+            defaults.stringArray(forKey: Key.fileSearchRemovedDefaultPatterns.rawValue) ?? []
+        fileSearchShowInLauncher = defaults.bool(forKey: Key.fileSearchShowInLauncher.rawValue)
         notesEnabled = defaults.bool(forKey: Key.notesEnabled.rawValue)
         notesRendersMarkdown =
             defaults.object(forKey: Key.notesRendersMarkdown.rawValue) == nil
@@ -668,8 +767,11 @@ final class AppSettings {
         notesShowsFormattingBar =
             defaults.object(forKey: Key.notesShowsFormattingBar.rawValue) == nil
             || defaults.bool(forKey: Key.notesShowsFormattingBar.rawValue)
+        notesShowsInMenuBar = defaults.bool(forKey: Key.notesShowsInMenuBar.rawValue)
         notesFolder = defaults.string(forKey: Key.notesFolder.rawValue)
         aiEnabled = defaults.bool(forKey: Key.aiEnabled.rawValue)
+        workflowsEnabled = defaults.bool(forKey: Key.workflowsEnabled.rawValue)
+        ephemeralSnippetsEnabled = defaults.bool(forKey: Key.ephemeralSnippetsEnabled.rawValue)
         mcpEnabled = defaults.bool(forKey: Key.mcpEnabled.rawValue)
         customCommandsEnabled = defaults.bool(forKey: Key.customCommandsEnabled.rawValue)
         // These default on, so absence must be distinguished from a stored `false`.
@@ -678,6 +780,10 @@ final class AppSettings {
             || defaults.bool(forKey: Key.customCommandsShowInLauncher.rawValue)
         snippetsEnabled = defaults.bool(forKey: Key.snippetsEnabled.rawValue)
         quickActionsEnabled = defaults.bool(forKey: Key.quickActionsEnabled.rawValue)
+        // The local actions are opt-in through Quick Actions, but available once enabled.
+        developerQuickActionsEnabled =
+            defaults.object(forKey: Key.developerQuickActionsEnabled.rawValue) == nil
+            || defaults.bool(forKey: Key.developerQuickActionsEnabled.rawValue)
         snippetsShowInLauncher =
             defaults.object(forKey: Key.snippetsShowInLauncher.rawValue) == nil
             || defaults.bool(forKey: Key.snippetsShowInLauncher.rawValue)
@@ -711,6 +817,7 @@ final class AppSettings {
         autoJoinConfirms =
             defaults.object(forKey: Key.autoJoinConfirms.rawValue) == nil
             || defaults.bool(forKey: Key.autoJoinConfirms.rawValue)
+        autoJoinNamedProvidersOnly = defaults.bool(forKey: Key.autoJoinNamedProvidersOnly.rawValue)
         cameraPreview = defaults.bool(forKey: Key.cameraPreview.rawValue)
         meetingBrowserBundleID = defaults.string(forKey: Key.meetingBrowser.rawValue)
         // Both default to their zero case, so an unset key needs no presence check.
@@ -753,9 +860,8 @@ final class AppSettings {
             || defaults.bool(forKey: Key.quicklinksShowInLauncher.rawValue)
         appleShortcutsEnabled = defaults.bool(forKey: Key.appleShortcutsEnabled.rawValue)
         quicklinkOpensNewWindow = defaults.bool(forKey: Key.quicklinkOpensNewWindow.rawValue)
-        quicklinkSelectionFallback =
-            defaults.string(forKey: Key.quicklinkSelectionFallback.rawValue)
-            .flatMap(QuicklinkSelectionFallback.init) ?? .ask
+        quicklinkPassesSelectedText = defaults.bool(
+            forKey: Key.quicklinkPassesSelectedText.rawValue)
         quicklinkConfirmsBeforeDelete =
             defaults.object(forKey: Key.quicklinkConfirmsBeforeDelete.rawValue) == nil
             || defaults.bool(forKey: Key.quicklinkConfirmsBeforeDelete.rawValue)

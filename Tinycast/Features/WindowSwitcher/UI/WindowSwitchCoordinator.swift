@@ -1,4 +1,5 @@
 import AppKit
+@preconcurrency import ApplicationServices
 
 @MainActor
 final class WindowSwitchCoordinator {
@@ -8,6 +9,7 @@ final class WindowSwitchCoordinator {
     private let palette: PaletteState
     private let paletteCoordinator: PaletteCoordinator
     private unowned let core: AppCore
+    private var activationObserver: NotificationToken?
     /// Armed by a repeat press with its modifiers held: letting go switches, as ⌘Tab does.
     private var releaseMonitor: Any?
     private static let chordModifiers: NSEvent.ModifierFlags = [.command, .option, .control, .shift]
@@ -25,28 +27,30 @@ final class WindowSwitchCoordinator {
     }
 
     func applyEnabled() {
-        appIndex.setCommandsVisible([.switchWindows], settings.navigationEnabled)
+        appIndex.setCommandsVisible(
+            [.switchWindows, .switchWindowsBackwards], settings.navigationEnabled)
+        updateActivationObserver()
         guard !settings.navigationEnabled else { return }
         session.reset()
         if palette.mode == .switchWindows { palette.prepare(mode: .launcher) }
     }
 
-    func show() {
-        guard settings.navigationEnabled else { return }
-        guard Permissions.ensureAccessibility() else {
-            Task { await self.reportPermissionFailure() }
-            return
-        }
-        if paletteCoordinator.isShowing(.switchWindows) { return step() }
+    func applyWindowManagementGate() {
+        updateActivationObserver()
+    }
+
+    func show(backwards: Bool = false) {
+        guard settings.navigationEnabled, hasAccessibility() else { return }
+        if paletteCoordinator.isShowing(.switchWindows) { return step(by: backwards ? -1 : 1) }
         disarmSwitchOnRelease()
         paletteCoordinator.togglePalette(mode: .switchWindows)
     }
 
     /// The first step lands on the window behind the current one, which the list opens on.
-    private func step() {
+    private func step(by offset: Int) {
         let count = session.filtered.count
         guard count > 0 else { return }
-        palette.selection = (palette.selection + 1) % count
+        palette.selection = (palette.selection + offset + count) % count
         palette.followToken = UUID()
         armSwitchOnRelease()
     }
@@ -78,22 +82,21 @@ final class WindowSwitchCoordinator {
 
     /// Every open sweeps anew, a restore included: hiding dropped the last snapshot.
     func load() {
-        guard Permissions.ensureAccessibility() else {
-            Task { await self.reportPermissionFailure() }
-            return
-        }
-        session.present(WindowSwitchSweep.snapshot(ranks: WindowZOrder.appRanks()))
+        guard hasAccessibility() else { return }
+        session.present(
+            WindowSwitchSweep.snapshot(ranks: WindowZOrder.appRanks()),
+            usesRecentHistory: settings.navigationEnabled && settings.windowManagementEnabled)
     }
 
     func activate(_ entry: WindowSwitchEntry) {
-        guard Permissions.ensureAccessibility() else {
-            Task { await self.reportPermissionFailure() }
-            return
-        }
+        guard hasAccessibility() else { return }
         // Resolved before the hide: hiding resets the session, which drops the element table.
-        guard let element = session.element(for: entry.handle), !element.app.isTerminated else {
+        guard let element = liveElement(for: entry) else {
             Task { await self.reportGone(entry) }
             return
+        }
+        if settings.navigationEnabled && settings.windowManagementEnabled {
+            session.rememberActiveWindow(entry)
         }
         // Restoring focus reactivates the displaced app, which races the raise below.
         paletteCoordinator.hidePalette(restoreFocus: false)
@@ -101,20 +104,92 @@ final class WindowSwitchCoordinator {
         AXWindowAccess.focus(element.window, in: element.application, of: element.app)
     }
 
+    /// A full-screen window can't minimize, so its row must not join the minimized ones.
+    func minimize(_ entry: WindowSwitchEntry) {
+        guard !entry.isMinimized, hasAccessibility(), let element = liveElement(for: entry),
+            !AXWindowAccess.isFullScreen(element.window), AXWindowAccess.minimize(element.window)
+        else { return }
+        session.markMinimized(entry.handle)
+    }
+
+    func hideApplication(_ entry: WindowSwitchEntry) {
+        guard hasAccessibility(), let element = liveElement(for: entry) else { return }
+        // Restoring focus would reactivate, and so unhide, an app hidden from in front.
+        paletteCoordinator.hidePalette(restoreFocus: false)
+        if !element.app.hide() {
+            AXWindowAccess.setHidden(true, application: element.application)
+        }
+    }
+
+    /// Rows leave when the app exits, so a quit refused by a save sheet keeps them.
+    func quitApplication(_ entry: WindowSwitchEntry) {
+        liveElement(for: entry)?.app.terminate()
+    }
+
+    private func liveElement(for entry: WindowSwitchEntry) -> WindowSwitchSweep.Element? {
+        guard let element = session.element(for: entry.handle), !element.app.isTerminated
+        else { return nil }
+        return element
+    }
+
+    private func rememberActiveWindow(bundleID: String?, processIdentifier: pid_t?) {
+        // shortcut: app notifications miss same-app switches; add AX focus observers if needed.
+        guard settings.navigationEnabled, settings.windowManagementEnabled,
+            Permissions.isAccessibilityTrusted(), let bundleID, let processIdentifier,
+            processIdentifier != NSRunningApplication.current.processIdentifier
+        else { return }
+        let application = AXWindowAccess.application(for: processIdentifier, timeout: 0.2)
+        guard let window = AXWindowAccess.element(application, kAXFocusedWindowAttribute) else {
+            return
+        }
+        session.rememberActiveWindow(
+            bundleID: bundleID, title: AXWindowAccess.string(window, kAXTitleAttribute) ?? "")
+    }
+
+    private func updateActivationObserver() {
+        guard settings.navigationEnabled && settings.windowManagementEnabled else {
+            activationObserver = nil
+            return
+        }
+        guard activationObserver == nil else { return }
+        let center = NSWorkspace.shared.notificationCenter
+        let token = center.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] notification in
+            let app =
+                notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+                as? NSRunningApplication
+            let bundleID = app?.bundleIdentifier
+            let processIdentifier = app?.processIdentifier
+            MainActor.assumeIsolated {
+                self?.rememberActiveWindow(bundleID: bundleID, processIdentifier: processIdentifier)
+            }
+        }
+        activationObserver = NotificationToken(token, center: center)
+    }
+
+    private func hasAccessibility() -> Bool {
+        guard Permissions.ensureAccessibility() else {
+            Task { await self.reportPermissionFailure() }
+            return false
+        }
+        return true
+    }
+
     // MARK: - Reporting
 
     private func reportPermissionFailure() async {
         let openSettings = await core.reportFailure(
-            title: "Tinycast Needs Accessibility Access",
-            message: "Switching windows reads and raises other apps' windows.",
-            symbol: "macwindow.on.rectangle", recovery: "Open Settings")
+            title: String(localized: "Tinycast Needs Accessibility Access"),
+            message: String(localized: "Switching windows reads and raises other apps' windows."),
+            symbol: "macwindow.on.rectangle", recovery: String(localized: "Open Settings"))
         if openSettings { Permissions.openAccessibilitySettings() }
     }
 
     private func reportGone(_ entry: WindowSwitchEntry) async {
         await core.showNotice(
-            title: "Couldn’t Switch to “\(entry.displayTitle)”",
-            message: "It closed before the switch landed. Search again and retry.",
+            title: String(localized: "Couldn’t Switch to “\(entry.displayTitle)”"),
+            message: String(localized: "It closed before the switch landed. Search again and retry."),
             symbol: "macwindow.on.rectangle", tone: .danger)
     }
 }

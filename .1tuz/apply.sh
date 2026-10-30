@@ -9,9 +9,15 @@ for patch in .1tuz/patches/*.patch; do
   name="${patch##*/}"
   echo "applying $name"
   apply_args=(--3way --whitespace=nowarn)
-  if [ "$name" = "0016-fork-readme-install-guide.patch" ]; then
+  if [ "$name" = "0012-remove-website-link.patch" ]; then
+    # This removes a different AboutLink from the file changed by the updater patch.
+    apply_args=(--whitespace=nowarn)
+  elif [ "$name" = "0016-fork-readme-install-guide.patch" ]; then
     # The README replacement ignores Markdown hard-break trailing spaces.
     apply_args=(--unidiff-zero --ignore-whitespace --whitespace=nowarn)
+  elif [ "$name" = "0017-roadmap-features.patch" ]; then
+    # This patch builds on the installer changes applied earlier in the queue.
+    apply_args=(--whitespace=nowarn)
   fi
   if ! git apply "${apply_args[@]}" "$patch"; then
     failed="$name"
@@ -31,9 +37,9 @@ done
 rm -f .github/workflows/website.yml .github/workflows/website-media.yml
 rm -rf website
 
-# A patch that adds a source file needs it in the Xcode project.
-if [ -n "$(git status --porcelain --untracked-files=all -- Tinycast | grep -E '^(\?\?|A ) ' || true)" ]; then
-  echo "regenerating the Xcode project for added sources"
+# Source additions or removals change the Xcode project.
+if [ -n "$(git status --porcelain --untracked-files=all -- Tinycast | grep -E '^(\?\?|A | D|D )' || true)" ]; then
+  echo "regenerating the Xcode project for source changes"
   if ! command -v xcodegen > /dev/null; then
     version=2.46.0
     checksum=4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806

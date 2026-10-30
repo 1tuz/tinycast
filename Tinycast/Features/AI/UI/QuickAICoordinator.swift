@@ -34,19 +34,6 @@ final class QuickAICoordinator {
         paletteCoordinator.showPalette(mode: .ai)
     }
 
-    /// Opens Quick AI with `prompt` in the composer, without sending.
-    func compose(_ prompt: String) {
-        guard settings.aiEnabled else { return }
-        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            show()
-            return
-        }
-        applyOpenPolicy()
-        paletteCoordinator.showPalette(mode: .ai)
-        palette.query = trimmed
-    }
-
     /// ⇥ and the AI fallback: a fresh chat that carries the question, already asked.
     func ask(_ prompt: String) {
         guard settings.aiEnabled else { return }
@@ -58,23 +45,6 @@ final class QuickAICoordinator {
         chat.startNewChat()
         paletteCoordinator.showPalette(mode: .ai)
         send(prompt)
-    }
-
-    /// Voice Ask delivery: resume or open per `AIConversationOpenPolicy`, then send.
-    /// Does not force a new chat the way `ask(_:)` does for ⇥.
-    func sendVoicePrompt(_ prompt: String) {
-        guard settings.aiEnabled else { return }
-        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            show()
-            return
-        }
-        applyOpenPolicy()
-        paletteCoordinator.showPalette(mode: .ai)
-        if send(trimmed) {
-            // Match AIScreen's Return path: do not leave the sent text sitting in the composer.
-            palette.query = ""
-        }
     }
 
     /// Off leaves the screen too, so the palette never shows a feature that is gone.

@@ -33,6 +33,9 @@ For anything private, email [iabueammar@gmail.com](mailto:iabueammar@gmail.com).
 - **App launcher** — fuzzy-search and launch anything, pin favorites, see what's running, quit an app
   or every app at once.
 - **Global hotkey** — one shortcut summons the palette from anywhere.
+- **Compact launcher shortcuts** — Clipboard History, Emoji & Symbols, Search Files and Search
+  Quicklinks sit beside the search field. Choose up to four in Settings → General → Appearance →
+  Compact Shortcuts.
 - **Per-app hotkeys** — bind a key to an app; press it to toggle (focus/hide).
 - **Search Files** — open files and folders from the folders you choose, through Spotlight, with no
   index of our own.
@@ -60,12 +63,20 @@ For anything private, email [iabueammar@gmail.com](mailto:iabueammar@gmail.com).
   longer conversations in the AI Chat window, with a searchable, pinnable history. Off out of the box,
   like every AI feature.
 - **Quick Actions** — fix grammar, rewrite, translate or summarize the selected text in any app.
+- **Command history and developer tools** — reopen recent launcher commands, or run 15 local utilities
+  for JSON, encoding, hashes, UUIDs and text conversion.
+- **Smart launcher** — recent and context-aware apps, plus project workspaces.
+- **Saved file searches** — keep reusable folders and choose how matching files open.
+- **Calendar tools** — create events, block focus time and manage meeting notes.
+- **Visual clipboard history** — find copied images with OCR text and local annotations.
+- **Local workflows** — run hotkey, schedule, clipboard or folder triggers. Workflows start off.
+- **AI response snippets** — keep completed answers locally for 24 hours, up to 100 items.
 - **Raycast extensions** — run the ones you already have natively, rendered as SwiftUI.
 - **Backup and import** — export your settings to a file, or import your setup from Raycast.
 
 ## Install
 
-Run this in Terminal. It builds the fork source with Xcode 26 and installs the app in `~/Applications`:
+Run this in Terminal. It builds the fork source with Xcode 26 or 27 and replaces the existing app in `/Applications` or installs it in `~/Applications`:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/1tuz/tinycast/main/Scripts/install.sh | /bin/bash

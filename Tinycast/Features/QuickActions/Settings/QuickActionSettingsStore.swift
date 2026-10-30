@@ -50,11 +50,13 @@ final class QuickActionSettingsStore {
     }
 
     func modelOverride(for action: QuickAction) -> AIModelSelection? {
-        modelOverrides[action.id]
+        action.requiresAI ? modelOverrides[action.id] : nil
     }
 
     func setModelOverride(_ selection: AIModelSelection?, for action: QuickAction) {
-        guard !action.usesTranslationFramework, modelOverrides[action.id] != selection else { return }
+        guard action.requiresAI, !action.usesTranslationFramework,
+            modelOverrides[action.id] != selection
+        else { return }
         modelOverrides[action.id] = selection
     }
 

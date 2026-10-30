@@ -28,31 +28,70 @@ final class LauncherRankingStore {
     /// Past this since the last open, an entry's search terms stop steering the ranking.
     nonisolated static let termWindow: TimeInterval = 408 * 3_600
     nonisolated static let termLimit = 3
+    private nonisolated static let commandHistoryKey = "launcherCommandHistory"
+    private nonisolated static let commandHistoryMaximum = 50
     /// `exp` overflows a `Double` just past this.
     private nonisolated static let exponentCeiling = 709.78
     /// Caps pasted input, so one visit cannot store a paragraph as a term.
     private static let queryLimit = 64
 
     private let fileURL: URL
+    private let defaults: UserDefaults
     private let now: () -> Date
 
     private(set) var visits: [String: LauncherVisit]
+    /// Stable command ids only; search text and argument values never enter this list.
+    private(set) var recentCommandIDs: [String]
     /// Part of `AppIndex`'s cache key, invalidating a result after a visit or a reset.
     private(set) var revision = 0
 
     /// The in-flight persist, awaited by the next one so a burst can't land out of order.
     @ObservationIgnored private var writeTask: Task<Void, Never>?
 
-    init(fileURL: URL? = nil, now: @escaping () -> Date = Date.init) {
+    init(
+        fileURL: URL? = nil, defaults: UserDefaults = .standard,
+        now: @escaping () -> Date = Date.init
+    ) {
         self.fileURL = fileURL ?? Self.defaultFileURL()
+        self.defaults = defaults
         self.now = now
         let decoded =
             (try? Data(contentsOf: self.fileURL))
             .flatMap { try? JSONDecoder().decode([String: LauncherVisit].self, from: $0) } ?? [:]
         visits = Self.live(decoded, at: now())
+        var seenCommandIDs = Set<String>()
+        recentCommandIDs = Array(
+            (defaults.stringArray(forKey: Self.commandHistoryKey) ?? [])
+                .filter { !$0.isEmpty && seenCommandIDs.insert($0).inserted }
+                .prefix(Self.commandHistoryMaximum))
     }
 
     var isEmpty: Bool { visits.isEmpty }
+
+    func recordCommand(_ id: String, limit: Int) {
+        guard !id.isEmpty else { return }
+        let boundedLimit = min(max(limit, 1), Self.commandHistoryMaximum)
+        var updated = recentCommandIDs.filter { $0 != id }
+        updated.insert(id, at: 0)
+        updated = Array(updated.prefix(boundedLimit))
+        guard updated != recentCommandIDs else { return }
+        recentCommandIDs = updated
+        defaults.set(updated, forKey: Self.commandHistoryKey)
+    }
+
+    func trimCommandHistory(to limit: Int) {
+        let boundedLimit = min(max(limit, 1), Self.commandHistoryMaximum)
+        let updated = Array(recentCommandIDs.prefix(boundedLimit))
+        guard updated != recentCommandIDs else { return }
+        recentCommandIDs = updated
+        defaults.set(updated, forKey: Self.commandHistoryKey)
+    }
+
+    func clearCommandHistory() {
+        guard !recentCommandIDs.isEmpty else { return }
+        recentCommandIDs = []
+        defaults.removeObject(forKey: Self.commandHistoryKey)
+    }
 
     /// Awaits the pending persist. The launcher never needs it; reading the file back does.
     func flush() async {

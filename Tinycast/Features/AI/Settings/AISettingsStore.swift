@@ -16,6 +16,9 @@ final class AISettingsStore {
     var webSearchEnabled: Bool {
         didSet { defaults.set(webSearchEnabled, forKey: AppSettingsKey.aiWebSearch.rawValue) }
     }
+    var choicesEnabled: Bool {
+        didSet { defaults.set(choicesEnabled, forKey: AppSettingsKey.aiChoices.rawValue) }
+    }
     /// Appended to `AIInstructions.preamble` on every turn, so it is billed on every turn.
     var systemPrompt: String {
         didSet { defaults.set(systemPrompt, forKey: AppSettingsKey.aiSystemPrompt.rawValue) }
@@ -40,14 +43,6 @@ final class AISettingsStore {
     }
     var toolRounds: AIToolRounds {
         didSet { defaults.set(toolRounds.rawValue, forKey: AppSettingsKey.aiToolRounds.rawValue) }
-    }
-    /// Off by default: dictation fills Quick AI; Enter still sends.
-    var voiceAskSendAutomatically: Bool {
-        didSet {
-            defaults.set(
-                voiceAskSendAutomatically,
-                forKey: AppSettingsKey.aiVoiceAskSendAutomatically.rawValue)
-        }
     }
     /// Per route, the models its picker lists; no entry lists all it offers, later ones too.
     private(set) var shownModels: [String: [String]] {
@@ -97,6 +92,8 @@ final class AISettingsStore {
             defaults.data(forKey: AppSettingsKey.aiDefaultModel.rawValue))
         webSearchEnabled =
             defaults.object(forKey: AppSettingsKey.aiWebSearch.rawValue) as? Bool ?? false
+        choicesEnabled =
+            defaults.object(forKey: AppSettingsKey.aiChoices.rawValue) as? Bool ?? true
         systemPrompt = defaults.string(forKey: AppSettingsKey.aiSystemPrompt.rawValue) ?? ""
         systemPromptEnabled =
             defaults.object(forKey: AppSettingsKey.aiSystemPromptEnabled.rawValue) as? Bool ?? true
@@ -114,9 +111,6 @@ final class AISettingsStore {
         toolRounds =
             AIToolRounds(rawValue: defaults.integer(forKey: AppSettingsKey.aiToolRounds.rawValue))
             ?? .twentyFive
-        voiceAskSendAutomatically =
-            defaults.object(forKey: AppSettingsKey.aiVoiceAskSendAutomatically.rawValue) as? Bool
-            ?? false
         shownModels =
             defaults.dictionary(forKey: AppSettingsKey.aiShownModels.rawValue) as? [String: [String]]
             ?? [:]

@@ -65,9 +65,23 @@ final class LauncherCoordinator {
     func launch(
         _ app: AppEntry, searchQuery: String? = nil, arguments: [String: String] = [:]
     ) {
+        let isCommandLike: Bool = switch app.kind {
+        case .command, .quickAction, .customCommand, .systemAction, .windowCommand,
+            .windowLayout, .projectWorkspace, .windowRoom, .quicklink, .extensionCommand:
+            true
+        case .application, .systemSettings, .snippet, .appleShortcut, .meeting:
+            false
+        }
+        if core.settings.commandHistoryEnabled, isCommandLike,
+            !CommandCatalog.isQueryDriven(app)
+        {
+            ranking.recordCommand(app.id, limit: core.settings.commandHistoryLimit)
+        }
         // A category word is no search for the row: learning it would rank the row under "s".
         if !CommandCatalog.isQueryDriven(app) {
-            let term = searchQuery.flatMap { AppEntry.Kind.named(by: $0) == nil ? $0 : nil }
+            let term = searchQuery.flatMap {
+                AppEntry.Kind.matching(by: LauncherOrder.CategoryQuery($0)).contains(app.kind) ? nil : $0
+            }
             ranking.visit(itemKey: app.preferenceKey, query: term)
         }
         // Commands dispatch before the palette hides: mode-switching commands keep it open.
@@ -116,7 +130,7 @@ final class LauncherCoordinator {
             core.roomCoordinator.enterRoom(id: id)
             return
         }
-        if app.kind == .windowLayout {
+        if app.kind == .windowLayout || app.kind == .projectWorkspace {
             // The coordinator hides the palette itself: a layout must not restore focus first.
             guard let id = WindowLayout.id(fromEntryID: app.id) else { return }
             windowLayoutCoordinator.runWindowLayout(id: id)
@@ -147,7 +161,7 @@ final class LauncherCoordinator {
         paletteCoordinator.hidePalette(restoreFocus: false)
         switch app.kind {
         case .application:
-            AppLauncher.launch(app.url)
+            AppLauncher.launch(app.url, allowsRunningApplicationSubstitution: false)
         case .systemSettings:
             guard let bundleID = app.bundleID else { return }
             AppLauncher.openSettingsPane(bundleID: bundleID)
@@ -155,7 +169,7 @@ final class LauncherCoordinator {
             guard let snippetID = StoredSnippet.id(fromEntryID: app.id) else { return }
             snippetCoordinator.expandSnippet(id: snippetID, target: previous)
         case .command, .quickAction, .customCommand, .systemAction, .windowCommand, .windowLayout,
-            .windowRoom, .quicklink, .appleShortcut, .extensionCommand, .meeting:
+            .projectWorkspace, .windowRoom, .quicklink, .appleShortcut, .extensionCommand, .meeting:
             break  // handled above
         }
     }
@@ -167,7 +181,7 @@ final class LauncherCoordinator {
             core.quickAICoordinator.show()
         case .aiChat:
             dismissPalette()
-            core.aiChatCoordinator.showWindow()
+            core.aiChatCoordinator.toggleWindow()
         case .fixGrammar:
             core.quickActionCoordinator.run(.fixGrammar)
         case .rewrite:
@@ -176,6 +190,11 @@ final class LauncherCoordinator {
             core.quickActionCoordinator.run(.translate)
         case .summarize:
             core.quickActionCoordinator.run(.summarize)
+        case .base64Encode, .base64Decode, .formatJSON, .minifyJSON, .hashMD5, .hashSHA256,
+            .hexEncode, .hexDecode, .urlEncode, .urlDecode, .generateUUID, .timestampToDate,
+            .convertColor, .generateLoremIpsum, .convertCase:
+            guard let action = id.builtInQuickAction else { return }
+            core.quickActionCoordinator.run(.builtIn(action))
         case .calculatorHistory:
             paletteCoordinator.togglePalette(mode: .calculatorHistory)
         case .clipboardHistory:
@@ -190,6 +209,8 @@ final class LauncherCoordinator {
             menuSearchCoordinator.show()
         case .switchWindows:
             windowSwitchCoordinator.show()
+        case .switchWindowsBackwards:
+            windowSwitchCoordinator.show(backwards: true)
         case .openCamera:
             dismissPalette()
             Task { await core.cameraCoordinator.show() }
@@ -207,6 +228,8 @@ final class LauncherCoordinator {
             calendarCoordinator.openNextMeetingInCalendar()
         case .createEvent:
             calendarCoordinator.createEvent()
+        case .focusTime:
+            calendarCoordinator.focusTime()
         case .showNotes:
             dismissPalette()
             notesCoordinator.toggle()
@@ -221,7 +244,6 @@ final class LauncherCoordinator {
         case .searchSnippets:
             snippetCoordinator.showSnippets()
         case .createSnippet:
-            dismissPalette()
             snippetCoordinator.editSnippet(nil)
         case .createWindowLayout:
             dismissPalette()
@@ -234,8 +256,11 @@ final class LauncherCoordinator {
         case .createRoom:
             core.roomCoordinator.createRoom()
         case .createQuicklink:
-            dismissPalette()
             quicklinkCoordinator.editQuicklink(nil)
+        case .createCustomCommand:
+            customCommandCoordinator.editCustomCommand(nil)
+        case .searchCustomCommands:
+            customCommandCoordinator.showCustomCommands()
         case .importQuicklinks:
             dismissPalette()
             Task { await quicklinkCoordinator.importQuicklinks() }
@@ -296,8 +321,10 @@ final class LauncherCoordinator {
     func quit(_ app: AppEntry, force: Bool = false) {
         guard app.kind == .application, let bundleID = app.bundleID else { return }
         // Nothing here takes focus, so hand it back unless that app is on its way out.
-        let quittingPreviousApp = windowController.previousApp?.bundleIdentifier == bundleID
-        guard AppLauncher.quit(bundleID: bundleID, force: force) else { return }
+        let quittingPreviousApp =
+            windowController.previousApp?.bundleURL?.resolvingSymlinksInPath().standardizedFileURL.path
+            == app.id
+        guard AppLauncher.quit(bundleID: bundleID, url: app.url, force: force) else { return }
         paletteCoordinator.hidePalette(restoreFocus: !quittingPreviousApp)
     }
 }

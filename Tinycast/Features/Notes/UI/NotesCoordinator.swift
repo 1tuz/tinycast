@@ -19,6 +19,7 @@ final class NotesCoordinator {
         coordinator: self)
     @ObservationIgnored private lazy var headingMenuController = NoteHeadingMenuWindowController(
         coordinator: self)
+    @ObservationIgnored private var menuBarController: NotesMenuBarController?
     @ObservationIgnored private var loadTask: Task<Void, Never>?
     @ObservationIgnored private var issueTask: Task<Void, Never>?
     @ObservationIgnored private var operationTask: Task<Void, Never>?
@@ -69,7 +70,7 @@ final class NotesCoordinator {
     var hasActiveNote: Bool { store.activeID != nil }
     /// UTF-16 units, straight off the text storage: the only length TextKit hands back in O(1).
     var characterCountLabel: String {
-        characterCount == 1 ? "1 character" : "\(characterCount) characters"
+        String(localized: "\(characterCount) characters")
     }
 
     var searchQueryBinding: Binding<String> {
@@ -98,6 +99,7 @@ final class NotesCoordinator {
         enablementGeneration &+= 1
         let generation = enablementGeneration
         appIndex.setCommandsVisible([.showNotes, .createNote, .searchNotes], settings.notesEnabled)
+        applyMenuBarItem()
         guard !settings.notesEnabled else { return }
         presentationGeneration &+= 1
         pendingPresentation = nil
@@ -115,12 +117,18 @@ final class NotesCoordinator {
         }
     }
 
+    func applyMenuBarItem() {
+        let shows = settings.notesEnabled && settings.notesShowsInMenuBar
+        guard shows != (menuBarController != nil) else { return }
+        menuBarController?.remove()
+        menuBarController = shows ? NotesMenuBarController(coordinator: self) : nil
+    }
+
     /// Quit waits on this so the 300 ms autosave debounce cannot swallow the last edit.
     func prepareForTermination() async {
         await store.flush()
     }
 
-    /// The command is a toggle, like every other surface: a second press puts the panel away.
     func toggle() {
         if windowController.isVisible {
             hide()
@@ -131,6 +139,35 @@ final class NotesCoordinator {
 
     func createNote() {
         request(.create)
+    }
+
+    func createMeetingNote(_ meeting: MeetingEvent) {
+        guard settings.notesEnabled else { return }
+        let displayTitle = meeting.title
+            .replacingOccurrences(of: "/", with: " – ")
+            .replacingOccurrences(of: "\0", with: "")
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let safeTitle = String((displayTitle.isEmpty ? "Notes" : displayTitle).prefix(80))
+        let title = "Meeting - \(safeTitle)"
+        let source = """
+            # \(displayTitle.isEmpty ? "Meeting" : displayTitle)
+
+            - Starts: \(meeting.start.formatted(date: .long, time: .shortened))
+            - Ends: \(meeting.end.formatted(date: .omitted, time: .shortened))
+            - Calendar: \(meeting.calendarName)
+
+            ## Notes
+
+            """
+        runOperation { [weak self] generation in
+            guard let self, await store.create(title: title, source: source),
+                settings.notesEnabled, !Task.isCancelled,
+                generation == presentationGeneration
+            else { return }
+            closeSwitcher()
+            windowController.show(focusEditor: true)
+        }
     }
 
     func searchNotes() {
@@ -278,10 +315,10 @@ final class NotesCoordinator {
         runOperation { [weak self] generation in
             guard let self else { return }
             let confirmed = await core.confirm(
-                title: "Move “\(title)” to Trash?",
-                message: "You can recover it from the Trash in Finder.",
+                title: String(localized: "Move “\(title)” to Trash?"),
+                message: String(localized: "You can recover it from the Trash in Finder."),
                 symbol: nil,
-                confirmTitle: "Move to Trash")
+                confirmTitle: String(localized: "Move to Trash"))
             guard confirmed, settings.notesEnabled, !Task.isCancelled else { return }
             let switcherOrder = visibleNotes.map(\.id)
             let removed = await store.trash(id)
@@ -304,7 +341,7 @@ final class NotesCoordinator {
     func chooseNotesFolder() {
         guard
             let url = FolderPicker.choose(
-                message: "Choose the folder your notes are kept in.",
+                message: String(localized: "Choose the folder your notes are kept in."),
                 startingAt: store.notesDirectory)
         else { return }
         settings.notesFolder = AppPaths.contentFolderSetting(for: url, named: "Notes")
@@ -319,7 +356,7 @@ final class NotesCoordinator {
             NSWorkspace.shared.open(store.notesDirectory)
             return
         }
-        NSWorkspace.shared.activateFileViewerSelecting([fileURL])
+        AppLauncher.showInFinder(fileURL)
     }
 
     func moveToTopRight() {
@@ -466,21 +503,21 @@ final class NotesCoordinator {
             switch issue {
             case .load(let failure):
                 let retry = await core.reportFailure(
-                    title: "Couldn't Open Note",
+                    title: String(localized: "Couldn't Open Note"),
                     message: failure.localizedDescription,
                     symbol: "text.page",
-                    recovery: "Retry")
+                    recovery: String(localized: "Retry"))
                 if retry { _ = await store.reload() }
             case .save(let failure):
                 let retry = await core.reportFailure(
-                    title: "Couldn't Save Note",
+                    title: String(localized: "Couldn't Save Note"),
                     message: failure.localizedDescription,
                     symbol: "text.page",
-                    recovery: "Retry")
+                    recovery: String(localized: "Retry"))
                 if retry { await store.retrySave() }
             case .operation(let failure):
                 _ = await core.reportFailure(
-                    title: "Couldn't Update Note",
+                    title: String(localized: "Couldn't Update Note"),
                     message: failure.localizedDescription,
                     symbol: "text.page",
                     recovery: nil)

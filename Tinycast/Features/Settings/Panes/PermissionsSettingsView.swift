@@ -1,11 +1,12 @@
+import AVFoundation
 import Combine
 import SwiftUI
 
 struct PermissionsSettingsView: View {
     @Environment(AppCore.self) private var core
     @State private var accessibilityTrusted = Permissions.isAccessibilityTrusted()
+    @State private var fullDiskAccess = Permissions.hasFullDiskAccess()
     @State private var calendarAccess = Permissions.calendarAccess()
-    @State private var microphoneAccess = Permissions.microphoneAccess()
     private let refreshTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -32,13 +33,44 @@ struct PermissionsSettingsView: View {
                         )
                         VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
                             SettingsRowTitle(.permissionsAccessibility, "Accessibility")
-                            Text("Pastes into the app you were using.")
+                            Text("Allows pasting and window management.")
                                 .foregroundStyle(.secondary)
                         }
                     }
                 }
             } header: {
                 SettingsSectionHeader(.permissionsAccessibility)
+            }
+
+            Section {
+                LabeledContent {
+                    HStack(spacing: Theme.Spacing.lg) {
+                        HStack(spacing: Theme.Spacing.xs) {
+                            Image(systemName: fullDiskAccessStatus.symbol)
+                                .accessibilityHidden(true)
+                            Text(fullDiskAccessStatus.title)
+                        }
+                        .foregroundStyle(fullDiskAccessStatus.tint)
+                        Button(fullDiskAccess ? "Open…" : "Grant Access…") {
+                            Permissions.openFullDiskAccessSettings()
+                        }
+                        .help("Opens Privacy & Security › Full Disk Access.")
+                    }
+                } label: {
+                    HStack(spacing: Theme.Spacing.lg) {
+                        Image(systemName: "internaldrive.fill")
+                            .font(.system(size: SettingsListMetrics.iconSize - Theme.Spacing.xs))
+                            .frame(width: SettingsListMetrics.iconSize)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
+                            SettingsRowTitle(.permissionsFullDiskAccess, "Full Disk Access")
+                            Text("Allows File Search and finding protected app leftovers.")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            } header: {
+                SettingsSectionHeader(.permissionsFullDiskAccess)
             }
 
             Section {
@@ -69,7 +101,7 @@ struct PermissionsSettingsView: View {
                             path: "/System/Applications/Calendar.app")
                         VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
                             SettingsRowTitle(.permissionsCalendars, "Calendars")
-                            Text("Finds the join link for your next meeting.")
+                            Text("Allows joining your next meeting.")
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -78,46 +110,6 @@ struct PermissionsSettingsView: View {
                 SettingsSectionHeader(.permissionsCalendars)
             }
 
-            Section {
-                LabeledContent {
-                    HStack(spacing: Theme.Spacing.lg) {
-                        HStack(spacing: Theme.Spacing.xs) {
-                            Image(systemName: microphoneStatus.symbol)
-                                .accessibilityHidden(true)
-                            Text(microphoneStatus.title)
-                        }
-                        .foregroundStyle(microphoneStatus.tint)
-                        Button(microphoneNeedsPrompt ? "Grant Access…" : "Open…") {
-                            if microphoneNeedsPrompt {
-                                Task {
-                                    _ = await Permissions.requestMicrophoneAccess()
-                                    refresh()
-                                }
-                            } else {
-                                Permissions.openMicrophoneSettings()
-                            }
-                        }
-                        .help(
-                            microphoneNeedsPrompt
-                                ? "Asks macOS for microphone access for Voice Ask."
-                                : "Opens Privacy & Security › Microphone.")
-                    }
-                } label: {
-                    HStack(spacing: Theme.Spacing.lg) {
-                        PermissionSettingsIcon(
-                            path:
-                                "/System/Library/ExtensionKit/Extensions/Sound.appex"
-                        )
-                        VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
-                            SettingsRowTitle(.permissionsMicrophone, "Microphone")
-                            Text("Voice Ask sends speech to Codex for transcription.")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            } header: {
-                SettingsSectionHeader(.permissionsMicrophone)
-            }
         }
         .formStyle(.grouped)
         .settingsScrollTarget(.permissions)
@@ -126,37 +118,40 @@ struct PermissionsSettingsView: View {
     }
 
     private var calendarNeedsPrompt: Bool { calendarAccess == .notDetermined }
-    private var microphoneNeedsPrompt: Bool { microphoneAccess == .notDetermined }
 
     private var accessibilityStatus: (title: String, symbol: String, tint: Color) {
-        accessibilityTrusted
-            ? ("Granted", "checkmark.circle.fill", .green)
-            : ("Not granted", "exclamationmark.triangle.fill", .orange)
+        grantStatus(accessibilityTrusted)
+    }
+
+    private var fullDiskAccessStatus: (title: String, symbol: String, tint: Color) {
+        grantStatus(fullDiskAccess)
+    }
+
+    private func grantStatus(_ granted: Bool) -> (title: String, symbol: String, tint: Color) {
+        granted
+            ? (String(localized: "Granted"), "checkmark.circle.fill", .green)
+            : (String(localized: "Not granted"), "exclamationmark.triangle.fill", .orange)
     }
 
     private var calendarStatus: (title: String, symbol: String, tint: Color) {
         switch calendarAccess {
-        case .granted: return ("Granted", "checkmark.circle.fill", .green)
-        case .notDetermined: return ("Not asked yet", "questionmark.circle.fill", .secondary)
-        case .denied: return ("Not granted", "exclamationmark.triangle.fill", .orange)
-        }
-    }
-
-    private var microphoneStatus: (title: String, symbol: String, tint: Color) {
-        switch microphoneAccess {
-        case .granted: return ("Granted", "checkmark.circle.fill", .green)
-        case .notDetermined: return ("Not asked yet", "questionmark.circle.fill", .secondary)
-        case .denied: return ("Not granted", "exclamationmark.triangle.fill", .orange)
+        case .granted: return (String(localized: "Granted"), "checkmark.circle.fill", .green)
+        case .notDetermined:
+            return (String(localized: "Not asked yet"), "questionmark.circle.fill", .secondary)
+        case .denied: return (String(localized: "Not granted"), "exclamationmark.triangle.fill", .orange)
         }
     }
 
     private func refresh() {
         let trusted = Permissions.isAccessibilityTrusted()
         if trusted != accessibilityTrusted { accessibilityTrusted = trusted }
-        let calendar = Permissions.calendarAccess()
-        if calendar != calendarAccess { calendarAccess = calendar }
-        let microphone = Permissions.microphoneAccess()
-        if microphone != microphoneAccess { microphoneAccess = microphone }
+        let diskAccess = Permissions.hasFullDiskAccess()
+        if diskAccess != fullDiskAccess {
+            fullDiskAccess = diskAccess
+            core.fileIndexer.refreshAccess()
+        }
+        let access = Permissions.calendarAccess()
+        if access != calendarAccess { calendarAccess = access }
     }
 }
 

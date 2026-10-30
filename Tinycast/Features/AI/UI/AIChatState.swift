@@ -84,7 +84,8 @@ final class AIChatState {
     ) {
         let request = AIRequest(
             instructions: instructions,
-            messages: session.requestMessages(textBudget: contextBudget), webSearch: webSearch)
+            messages: session.requestMessages(textBudget: contextBudget), webSearch: webSearch,
+            conversationID: session.id)
         session.append(ChatMessage(role: .assistant, text: "", state: .streaming))
         isStreaming = true
         isThinking = false
@@ -104,7 +105,8 @@ final class AIChatState {
                 guard let self, !Task.isCancelled, self.replyGeneration == generation,
                     self.isStreaming
                 else { return }
-                self.finishLast(state: .failed, fallback: "The response ended unexpectedly.")
+                self.finishLast(
+                    state: .failed, fallback: String(localized: "The response ended unexpectedly."))
             } catch {
                 guard let self, !Task.isCancelled, self.replyGeneration == generation,
                     self.isStreaming
@@ -161,7 +163,7 @@ final class AIChatState {
             discardPendingText()
             return
         }
-        finishLast(state: .failed, fallback: "Cancelled")
+        finishLast(state: .failed, fallback: String(localized: "Cancelled"))
     }
 
     func startNewChat() {
@@ -198,16 +200,21 @@ final class AIChatState {
         session.messages.last { $0.role == .assistant && $0.usage != nil }?.usage
     }
 
-    /// True when this state is the one showing `id`; an empty chat holds nothing yet.
     func holds(_ id: UUID) -> Bool {
         session.id == id && !session.messages.isEmpty
     }
 
-    /// The line shown in the empty streaming bubble while nothing has arrived yet.
-    var liveStatus: String? { isThinking ? "Thinking…" : nil }
+    var liveStatus: String? { isThinking ? String(localized: "Thinking…") : nil }
 
     var lastAssistantText: String? {
         session.messages.last(where: { $0.role == .assistant && !$0.text.isEmpty })?.text
+    }
+
+    var lastCompletedAssistantMessage: ChatMessage? {
+        session.messages.last {
+            $0.role == .assistant && $0.state == .complete
+                && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
     }
 
     private func receive(_ event: AIStreamEvent) {
@@ -264,7 +271,7 @@ final class AIChatState {
             message.usage = usage
             session.replaceLast(with: message)
         case .finished:
-            finishLast(state: .complete, fallback: "No response")
+            finishLast(state: .complete, fallback: String(localized: "No response"))
         }
     }
 
@@ -316,13 +323,17 @@ final class AIChatState {
     private func finishLast(state: ChatMessage.State, fallback: String) {
         flushPendingText()
         discardPendingText()
-        guard var message = session.messages.last, message.role == .assistant else { return }
-        if state == .failed, !message.text.isEmpty {
+        guard var message = session.messages.last, message.role == .assistant,
+            message.state == .streaming
+        else { return }
+        let hasText = !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let completedReply = state == .complete && hasText
+        if state == .failed, hasText {
             message.text += "\n\n\(fallback)"
-        } else if message.text.isEmpty {
+        } else if !hasText {
             message.text = fallback
         }
-        message.state = state
+        message.state = state == .complete && !hasText ? .failed : state
         closeReasoning(in: &message)
         message.searches = message.searches.map { Self.completed($0) }
         // A call still running when the turn ends never reported back, whatever ended the turn.
@@ -332,7 +343,7 @@ final class AIChatState {
         isStreaming = false
         isThinking = false
         replyTask = nil
-        if state == .complete { onReplyFinished?(self) }
+        if completedReply { onReplyFinished?(self) }
     }
 
     /// Thinking after answer text is a new stretch, pinned where the answer paused for it.
@@ -388,18 +399,20 @@ enum ChatAttachmentRefusal: Equatable, Sendable {
     var message: String {
         switch self {
         case .count:
-            return "\(AIAttachmentBudget.maxCount) attachments is all one message can carry."
-        case .size: return "That file is too big for this message — send these first."
+            return String(
+                localized: "\(AIAttachmentBudget.maxCount) attachments is all one message can carry.")
+        case .size: return String(localized: "This file is too large to attach.")
         case .textTooLong:
             let limit = AIAttachmentBudget.maxInlinedTextBytes / 1_024
-            return "That text file is too big to attach — \(limit) KB is the limit."
-        case .undecodable: return "That file isn't text Tinycast can read."
-        case .unreadable: return "That file could not be read."
+            return String(localized: "That text file is too big to attach — \(limit) KB is the limit.")
+        case .undecodable: return String(localized: "That file isn't text Tinycast can read.")
+        case .unreadable: return String(localized: "That file could not be read.")
         case .unsupported(let ext):
-            return "Tinycast can attach images, PDFs and text files, not .\(ext) files."
-        case .imagesUnsupported: return "This model can't read images. Switch model to attach one."
+            return String(localized: "Can't attach .\(ext) files — only images, PDFs and text.")
+        case .imagesUnsupported:
+            return String(localized: "This model can't read images. Switch model to attach one.")
         case .documentsUnsupported:
-            return "This model can't read PDFs. Switch model, or paste the text instead."
+            return String(localized: "This model can't read PDFs. Switch model or paste the text.")
         }
     }
 }

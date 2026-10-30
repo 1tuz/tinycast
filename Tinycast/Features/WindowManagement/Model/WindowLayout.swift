@@ -87,7 +87,6 @@ struct WindowLayoutEntry: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
-/// A saved arrangement: these apps, at these sizes, at these positions, on these displays.
 struct WindowLayout: Codable, Hashable, Identifiable, Sendable {
     static let entryIDPrefix = "window-layout:"
     /// One glyph for every layout, and never the menu bar's own, which reads as the app itself.
@@ -98,36 +97,37 @@ struct WindowLayout: Codable, Hashable, Identifiable, Sendable {
     var iconSymbol: String?
     /// Opts the layout into the global `windowGap`, the way the tiling commands use it.
     var usesPreferredGap: Bool
+    /// A single app launch that opts this layout into automatic application.
+    var autoApplyBundleID: String?
     var entries: [WindowLayoutEntry]
     /// The one entry whose window ends a run frontmost; an ID rather than a flag, so it is one.
     var frontmostEntryID: UUID?
 
     init(
         id: UUID = UUID(), name: String, iconSymbol: String? = nil,
-        usesPreferredGap: Bool = true, entries: [WindowLayoutEntry] = [],
+        usesPreferredGap: Bool = true, autoApplyBundleID: String? = nil,
+        entries: [WindowLayoutEntry] = [],
         frontmostEntryID: UUID? = nil
     ) {
         self.id = id
         self.name = name
         self.iconSymbol = iconSymbol
         self.usesPreferredGap = usesPreferredGap
+        self.autoApplyBundleID = autoApplyBundleID
         self.entries = entries
         self.frontmostEntryID = frontmostEntryID
     }
 
-    /// The glyph every surface draws for this layout.
     var symbol: String { iconSymbol ?? Self.sfSymbol }
 
-    /// The settings row's subtitle: what this layout actually does, in one line.
     var summary: String {
         let displays = Set(entries.map(\.display.uuid)).count
-        let windows = entries.count == 1 ? "1 window" : "\(entries.count) windows"
-        return displays > 1 ? "\(windows) · \(displays) displays" : windows
+        guard displays > 1 else { return String(localized: "\(entries.count) windows") }
+        return String(localized: "\(entries.count) windows · \(displays) displays")
     }
 
     var entryID: String { Self.entryIDPrefix + id.uuidString.lowercased() }
 
-    /// Cleans every entry, then drops a frontmost mark whose entry did not survive.
     mutating func sanitizeEntries() {
         entries = WindowLayoutEntry.sanitized(entries)
         if !entries.contains(where: { $0.id == frontmostEntryID }) { frontmostEntryID = nil }
@@ -147,7 +147,7 @@ struct WindowLayout: Codable, Hashable, Identifiable, Sendable {
 
     // Hand-written, so an added field keeps stored layouts and older backups readable.
     private enum CodingKeys: String, CodingKey {
-        case id, name, iconSymbol, usesPreferredGap, entries, frontmostEntryID
+        case id, name, iconSymbol, usesPreferredGap, autoApplyBundleID, entries, frontmostEntryID
     }
 
     init(from decoder: Decoder) throws {
@@ -157,6 +157,7 @@ struct WindowLayout: Codable, Hashable, Identifiable, Sendable {
         iconSymbol = try container.decodeIfPresent(String.self, forKey: .iconSymbol)
         usesPreferredGap =
             try container.decodeIfPresent(Bool.self, forKey: .usesPreferredGap) ?? true
+        autoApplyBundleID = try container.decodeIfPresent(String.self, forKey: .autoApplyBundleID)
         entries = try container.decodeIfPresent([WindowLayoutEntry].self, forKey: .entries) ?? []
         frontmostEntryID = try container.decodeIfPresent(UUID.self, forKey: .frontmostEntryID)
     }
@@ -173,15 +174,17 @@ extension String {
 enum WindowLayoutValidationError: LocalizedError, Equatable {
     case emptyName
     case duplicateName
+    case duplicateAutoApplyApp
     case noEntries
     case invalidCharacter
 
     var errorDescription: String? {
         switch self {
-        case .emptyName: return "Enter a name for the layout."
-        case .duplicateName: return "A window layout with this name already exists."
-        case .noEntries: return "Add at least one app to the layout."
-        case .invalidCharacter: return "Names cannot contain null characters."
+        case .emptyName: return String(localized: "Enter a name for the layout.")
+        case .duplicateName: return String(localized: "A window layout with this name already exists.")
+        case .duplicateAutoApplyApp: return String(localized: "An app can trigger only one automatic layout.")
+        case .noEntries: return String(localized: "Add at least one app to the layout.")
+        case .invalidCharacter: return String(localized: "Names cannot contain null characters.")
         }
     }
 }

@@ -53,5 +53,14 @@ enum QuickAction: Hashable, Identifiable, Sendable {
 
     var showsDiff: Bool { builtInAction?.showsDiff ?? false }
 
+    var rendersMarkdown: Bool { builtInAction.map { $0 == .summarize } ?? true }
+
     var usesTranslationFramework: Bool { builtInAction?.usesTranslationFramework ?? false }
+
+    var requiresAI: Bool {
+        switch self {
+        case .builtIn(let action): return action.requiresAI
+        case .custom: return true
+        }
+    }
 }

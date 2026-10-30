@@ -28,29 +28,35 @@ struct SettingsBackup: Codable {
         var hyperKey: String?
         var hyperKeyIncludesShift: Bool?
         var hyperKeyQuickPress: String?
-        var hyperKeyHoldVoiceAsk: Bool?
+        var hyperKeySecureInputCompatibility: Bool?
         var emojiSkinTone: String?
         var emojiGridColumns: Int?
         var showInMenuBar: Bool?
+        var automaticallyCheckForUpdates: Bool?
         var popToRootSeconds: Int?
         var escapeKeyBehavior: String?
         var appearance: String?
+        var language: String?
         var calcNumberStyle: String?
         var interfaceSize: String?
         var compactMode: Bool?
-        var showFavoritesInCompactMode: Bool?
+        var compactBarCommands: [String]?
         var searchScopes: [String]?
         var launcherShowsSuggestions: Bool?
         var rootSearchSensitivity: String?
         var openOnCursorScreen: Bool?
         // Safe to carry: it grants no permission class, just repositions the window.
         var paletteDraggable: Bool?
+        var animationsEnabled: Bool?
         var fileSearchEnabled: Bool?
         var fileSearchScopes: [String]?
         var fileSearchIgnorePatterns: [String]?
+        var fileSearchRemovedDefaultPatterns: [String]?
+        var fileSearchShowInLauncher: Bool?
         var notesEnabled: Bool?
         var notesRendersMarkdown: Bool?
         var notesShowsFormattingBar: Bool?
+        var notesShowsInMenuBar: Bool?
         // `snippetsEnabled` is absent: an import must not enable keystroke listening.
         var customCommandsEnabled: Bool?
         var customCommandsShowInLauncher: Bool?
@@ -70,7 +76,7 @@ struct SettingsBackup: Codable {
         var quicklinksShowInLauncher: Bool?
         var extensionsShowInLauncher: Bool?
         var quicklinkOpensNewWindow: Bool?
-        var quicklinkSelectionFallback: String?
+        var quicklinkPassesSelectedText: Bool?
         var quicklinkConfirmsBeforeDelete: Bool?
         // Carried like quicklinks: running a shortcut the user built grants no permission class.
         var appleShortcutsEnabled: Bool?
@@ -82,6 +88,7 @@ struct SettingsBackup: Codable {
         var joinWindowMinutes: Int?
         // `autoJoinMeetings` and `cameraPreview` are absent: an import must arm neither.
         var autoJoinConfirms: Bool?
+        var autoJoinNamedProvidersOnly: Bool?
         var menuBarEvents: Int?
         var calendarMenuBarDisplay: Int?
         var menuBarLinkedEventsOnly: Bool?
@@ -91,11 +98,9 @@ struct SettingsBackup: Codable {
         var supportReminders: Bool?
     }
 
-    /// One entry per bindable action. docs/features/hotkeys.md#persistence
     struct HotkeyBackup: Codable {
         /// Named apart from `commands`: the launcher toggle is the one action with no command row.
         var togglePalette: HotKeyBinding?
-        var voiceAsk: HotKeyBinding?
         var commands: [String: HotKeyBinding]?
         var apps: [String: HotKeyBinding]?
         var panes: [String: HotKeyBinding]?
@@ -108,7 +113,6 @@ struct SettingsBackup: Codable {
         var customWindowSizes: [String: HotKeyBinding]?
     }
 
-    /// A tally of what an import touched, for user-facing confirmation.
     struct ApplySummary {
         var settingsFields = 0
         var hotkeys = 0
@@ -140,28 +144,34 @@ extension SettingsBackup {
             hyperKey: s.hyperKey.rawValue,
             hyperKeyIncludesShift: s.hyperKeyIncludesShift,
             hyperKeyQuickPress: s.hyperKeyQuickPress.rawValue,
-            hyperKeyHoldVoiceAsk: s.hyperKeyHoldVoiceAsk,
+            hyperKeySecureInputCompatibility: s.hyperKeySecureInputCompatibility,
             emojiSkinTone: s.emojiSkinTone.rawValue,
             emojiGridColumns: s.emojiGridColumns.rawValue,
             showInMenuBar: s.showInMenuBar,
+            automaticallyCheckForUpdates: s.automaticallyCheckForUpdates,
             popToRootSeconds: s.popToRootTimeout.rawValue,
             escapeKeyBehavior: s.escapeKeyBehavior.rawValue,
             appearance: s.appearance.rawValue,
+            language: s.language.rawValue,
             calcNumberStyle: s.calcNumberStyle.rawValue,
             interfaceSize: s.interfaceSize.rawValue,
             compactMode: s.compactMode,
-            showFavoritesInCompactMode: s.showFavoritesInCompactMode,
+            compactBarCommands: s.compactBarCommands.map(\.rawValue),
             searchScopes: s.searchScopes,
             launcherShowsSuggestions: s.launcherShowsSuggestions,
             rootSearchSensitivity: s.rootSearchSensitivity.rawValue,
             openOnCursorScreen: s.openOnCursorScreen,
             paletteDraggable: s.paletteDraggable,
+            animationsEnabled: s.animationsEnabled,
             fileSearchEnabled: s.fileSearchEnabled,
             fileSearchScopes: s.fileSearchScopes,
             fileSearchIgnorePatterns: s.fileSearchIgnorePatterns,
+            fileSearchRemovedDefaultPatterns: s.fileSearchRemovedDefaultPatterns,
+            fileSearchShowInLauncher: s.fileSearchShowInLauncher,
             notesEnabled: s.notesEnabled,
             notesRendersMarkdown: s.notesRendersMarkdown,
             notesShowsFormattingBar: s.notesShowsFormattingBar,
+            notesShowsInMenuBar: s.notesShowsInMenuBar,
             customCommandsEnabled: s.customCommandsEnabled,
             customCommandsShowInLauncher: s.customCommandsShowInLauncher,
             snippetsShowInLauncher: s.snippetsShowInLauncher,
@@ -178,7 +188,7 @@ extension SettingsBackup {
             quicklinksShowInLauncher: s.quicklinksShowInLauncher,
             extensionsShowInLauncher: s.extensionsShowInLauncher,
             quicklinkOpensNewWindow: s.quicklinkOpensNewWindow,
-            quicklinkSelectionFallback: s.quicklinkSelectionFallback.rawValue,
+            quicklinkPassesSelectedText: s.quicklinkPassesSelectedText,
             quicklinkConfirmsBeforeDelete: s.quicklinkConfirmsBeforeDelete,
             appleShortcutsEnabled: s.appleShortcutsEnabled,
             calendarShowInLauncher: s.calendarShowInLauncher,
@@ -186,6 +196,7 @@ extension SettingsBackup {
             calendarSpan: s.calendarSpan.rawValue,
             joinWindowMinutes: s.joinWindowMinutes.rawValue,
             autoJoinConfirms: s.autoJoinConfirms,
+            autoJoinNamedProvidersOnly: s.autoJoinNamedProvidersOnly,
             menuBarEvents: s.menuBarEvents.rawValue,
             calendarMenuBarDisplay: s.calendarMenuBarDisplay.rawValue,
             menuBarLinkedEventsOnly: s.menuBarLinkedEventsOnly,
@@ -196,7 +207,6 @@ extension SettingsBackup {
         let hk = core.hotKeys
         var hotkeys = HotkeyBackup()
         hotkeys.togglePalette = hk.binding(for: .togglePalette)
-        hotkeys.voiceAsk = hk.binding(for: .voiceAsk)
         hotkeys.commands = Dictionary(
             uniqueKeysWithValues: CommandID.allCases.compactMap { id in
                 id.hotKeyAction.flatMap(hk.binding(for:)).map { (id.rawValue, $0) }
@@ -333,8 +343,8 @@ extension SettingsBackup {
             settings.hyperKeyQuickPress = quick
             count += 1
         }
-        if let flag = s.hyperKeyHoldVoiceAsk {
-            settings.hyperKeyHoldVoiceAsk = flag
+        if let flag = s.hyperKeySecureInputCompatibility {
+            settings.hyperKeySecureInputCompatibility = flag
             count += 1
         }
         if let raw = s.emojiSkinTone, let tone = EmojiSkinTone(rawValue: raw) {
@@ -347,6 +357,10 @@ extension SettingsBackup {
         }
         if let show = s.showInMenuBar {
             settings.showInMenuBar = show
+            count += 1
+        }
+        if let automaticallyCheck = s.automaticallyCheckForUpdates {
+            settings.automaticallyCheckForUpdates = automaticallyCheck
             count += 1
         }
         if let secs = s.popToRootSeconds, let timeout = PopToRootTimeout(rawValue: secs) {
@@ -365,6 +379,10 @@ extension SettingsBackup {
             settings.appearance = appearance
             count += 1
         }
+        if let raw = s.language, let language = AppLanguage(rawValue: raw) {
+            settings.language = language
+            count += 1
+        }
         if let raw = s.calcNumberStyle, let style = CalcNumberStyle(rawValue: raw) {
             settings.calcNumberStyle = style
             count += 1
@@ -373,8 +391,10 @@ extension SettingsBackup {
             settings.compactMode = flag
             count += 1
         }
-        if let flag = s.showFavoritesInCompactMode {
-            settings.showFavoritesInCompactMode = flag
+        if let identifiers = s.compactBarCommands,
+            let commands = CommandID.compactBarCommands(from: identifiers)
+        {
+            settings.compactBarCommands = commands
             count += 1
         }
         if let scopes = s.searchScopes {
@@ -397,6 +417,10 @@ extension SettingsBackup {
             settings.paletteDraggable = flag
             count += 1
         }
+        if let flag = s.animationsEnabled {
+            settings.animationsEnabled = flag
+            count += 1
+        }
         // Writing through AppSettings is enough; AppCore's sinks re-project the rest.
         if let flag = s.fileSearchEnabled {
             settings.fileSearchEnabled = flag
@@ -410,6 +434,14 @@ extension SettingsBackup {
             settings.fileSearchIgnorePatterns = patterns
             count += 1
         }
+        if let patterns = s.fileSearchRemovedDefaultPatterns {
+            settings.fileSearchRemovedDefaultPatterns = patterns
+            count += 1
+        }
+        if let flag = s.fileSearchShowInLauncher {
+            settings.fileSearchShowInLauncher = flag
+            count += 1
+        }
         if let flag = s.notesEnabled {
             settings.notesEnabled = flag
             count += 1
@@ -420,6 +452,10 @@ extension SettingsBackup {
         }
         if let flag = s.notesShowsFormattingBar {
             settings.notesShowsFormattingBar = flag
+            count += 1
+        }
+        if let flag = s.notesShowsInMenuBar {
+            settings.notesShowsInMenuBar = flag
             count += 1
         }
         if let flag = s.customCommandsEnabled {
@@ -490,10 +526,8 @@ extension SettingsBackup {
             settings.quicklinkOpensNewWindow = flag
             count += 1
         }
-        if let raw = s.quicklinkSelectionFallback,
-            let fallback = QuicklinkSelectionFallback(rawValue: raw)
-        {
-            settings.quicklinkSelectionFallback = fallback
+        if let flag = s.quicklinkPassesSelectedText {
+            settings.quicklinkPassesSelectedText = flag
             count += 1
         }
         if let flag = s.quicklinkConfirmsBeforeDelete {
@@ -518,6 +552,10 @@ extension SettingsBackup {
         }
         if let flag = s.autoJoinConfirms {
             settings.autoJoinConfirms = flag
+            count += 1
+        }
+        if let flag = s.autoJoinNamedProvidersOnly {
+            settings.autoJoinNamedProvidersOnly = flag
             count += 1
         }
         if let raw = s.menuBarEvents, let lead = MenuBarEvents(rawValue: raw) {
@@ -559,7 +597,6 @@ extension SettingsBackup {
             count += 1
         }
         if let b = hotkeys.togglePalette { apply(b, .togglePalette) }
-        if let b = hotkeys.voiceAsk { apply(b, .voiceAsk) }
         for (rawID, b) in hotkeys.commands ?? [:] {
             guard let action = CommandID(rawValue: rawID)?.hotKeyAction else { continue }
             apply(b, action)

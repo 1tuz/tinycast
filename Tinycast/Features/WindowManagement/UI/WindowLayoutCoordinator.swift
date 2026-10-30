@@ -17,6 +17,9 @@ final class WindowLayoutCoordinator {
     private unowned let core: AppCore
     /// One run at a time: a held shortcut must not stack two passes over the same windows.
     private var run: Task<Void, Never>?
+    private var runID: UUID?
+    private var autoApplyRun: Task<Void, Never>?
+    private var launchObserver: NotificationToken?
 
     init(
         store: WindowLayoutStore, settings: AppSettings, appIndex: AppIndex,
@@ -41,6 +44,7 @@ final class WindowLayoutCoordinator {
     // MARK: - Feature presence
 
     func applyWindowLayoutsPresence() {
+        updateLaunchObserver()
         let visible = settings.windowManagementEnabled && settings.windowLayoutsShowInLauncher
         appIndex.setWindowLayouts(visible ? store.layouts : [])
         let commands: Set<CommandID> = [.createWindowLayout, .captureWindowLayout]
@@ -50,22 +54,66 @@ final class WindowLayoutCoordinator {
 
     // MARK: - Running
 
-    /// The one funnel for a palette row, a global shortcut and the pane's Apply alike.
     func runWindowLayout(id: UUID) {
         guard settings.windowManagementEnabled, let layout = store.layout(id: id) else { return }
+        autoApplyRun?.cancel()
         // Never restoreFocus: an opened app activates itself, and handing focus back races that.
         if paletteCoordinator.isVisible { paletteCoordinator.hidePalette(restoreFocus: false) }
         let gap = CGFloat(settings.windowGap)
         run?.cancel()
+        let runID = UUID()
+        self.runID = runID
         run = Task { [weak self] in
             let outcome = await WindowLayoutRunner.run(layout, gap: gap)
-            await self?.report(outcome, for: layout)
+            guard let self else { return }
+            await self.report(outcome, for: layout)
+            guard self.runID == runID else { return }
+            self.run = nil
+            self.runID = nil
         }
     }
 
     func prepareForTermination() {
         run?.cancel()
         run = nil
+        runID = nil
+        autoApplyRun?.cancel()
+        autoApplyRun = nil
+        launchObserver = nil
+    }
+
+    private func updateLaunchObserver() {
+        guard settings.windowManagementEnabled else {
+            launchObserver = nil
+            autoApplyRun?.cancel()
+            return
+        }
+        guard launchObserver == nil else { return }
+        let center = NSWorkspace.shared.notificationCenter
+        let token = center.addObserver(
+            forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main
+        ) { [weak self] notification in
+            let bundleID =
+                (notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+                as? NSRunningApplication)?.bundleIdentifier
+            MainActor.assumeIsolated { self?.applyLayoutForLaunch(bundleID: bundleID) }
+        }
+        launchObserver = NotificationToken(token, center: center)
+    }
+
+    private func applyLayoutForLaunch(bundleID: String?) {
+        guard settings.windowManagementEnabled, run == nil, autoApplyRun == nil,
+            Permissions.isAccessibilityTrusted(), let bundleID,
+            let layout = store.layouts.first(where: { $0.autoApplyBundleID == bundleID })
+        else { return }
+
+        let gap = CGFloat(settings.windowGap)
+        autoApplyRun = Task { [weak self] in
+            _ = await WindowLayoutRunner.run(
+                layout, gap: gap, promptForAccessibility: false)
+            guard let self else { return }
+            self.autoApplyRun = nil
+        }
     }
 
     // MARK: - Library
@@ -118,7 +166,7 @@ final class WindowLayoutCoordinator {
     func captureWindowLayout() {
         let (entries, frontmostEntryID) = WindowLayoutRunner.captureCurrentWindows()
         guard !entries.isEmpty else {
-            core.showMessage("No windows to capture", tone: .neutral)
+            core.showMessage(String(localized: "No windows to capture"), tone: .neutral)
             return
         }
         // Gapless by construction, so a later change to `windowGap` can't move every window.
@@ -134,9 +182,9 @@ final class WindowLayoutCoordinator {
     private func report(_ outcome: WindowLayoutRunner.Outcome, for layout: WindowLayout) async {
         if outcome.isBlockedOnPermission {
             let openSettings = await core.reportFailure(
-                title: "Tinycast Needs Accessibility Access",
-                message: "Arranging windows uses the same permission as pasting.",
-                symbol: layout.symbol, recovery: "Open Settings")
+                title: String(localized: "Tinycast Needs Accessibility Access"),
+                message: String(localized: "Arranging windows uses the same permission as pasting."),
+                symbol: layout.symbol, recovery: String(localized: "Open Settings"))
             if openSettings { Permissions.openAccessibilitySettings() }
             return
         }
@@ -144,14 +192,13 @@ final class WindowLayoutCoordinator {
         guard let detail = detail(for: outcome) else { return }
         guard outcome.didAnything else {
             await core.showNotice(
-                title: "Couldn't Run “\(layout.name)”", message: detail, symbol: layout.symbol,
-                tone: .danger)
+                title: String(localized: "Couldn't Run “\(layout.name)”"), message: detail,
+                symbol: layout.symbol, tone: .danger)
             return
         }
         core.showMessage("\(layout.name) — \(detail)", tone: .neutral)
     }
 
-    /// What went wrong, or nil when everything the layout asked for happened.
     private func detail(for outcome: WindowLayoutRunner.Outcome) -> String? {
         var parts: [String] = []
         if let skipped = WindowLayoutPlan(placements: [], skipped: outcome.skipped).skippedSummary {
@@ -159,19 +206,19 @@ final class WindowLayoutCoordinator {
         }
         if !outcome.neverAppeared.isEmpty {
             let count = outcome.neverAppeared.count
-            parts.append(count == 1 ? "1 app didn't open" : "\(count) apps didn't open")
+            parts.append(String(localized: "\(count) apps didn't open"))
         }
         let failed = outcome.openFailures.count
         if failed > 0 {
-            parts.append(failed == 1 ? "1 app couldn't open" : "\(failed) apps couldn't open")
+            parts.append(String(localized: "\(failed) apps couldn't open"))
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     private func report(failure: WindowLayoutValidationError) async {
         await core.showNotice(
-            title: "Couldn't Save the Layout",
-            message: failure.errorDescription ?? "The layout could not be saved.",
+            title: String(localized: "Couldn't Save the Layout"),
+            message: failure.errorDescription ?? String(localized: "The layout could not be saved."),
             symbol: WindowLayout.sfSymbol, tone: .danger)
     }
 
@@ -192,7 +239,7 @@ final class WindowLayoutCoordinator {
     /// "Captured Layout", then " 2", so the editor opens on a name that will validate.
     private static func uniqueCaptureName(among existing: [WindowLayout]) -> String {
         let taken = Set(existing.map { $0.name.lowercased() })
-        let base = "Captured Layout"
+        let base = String(localized: "Captured Layout")
         guard taken.contains(base.lowercased()) else { return base }
         var index = 2
         while taken.contains("\(base) \(index)".lowercased()) { index += 1 }

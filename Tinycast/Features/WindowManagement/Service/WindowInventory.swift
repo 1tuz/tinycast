@@ -1,5 +1,6 @@
 import AppKit
 @preconcurrency import ApplicationServices
+@preconcurrency import ApplicationServices
 
 /// Reads what is on screen over AX, once, through a single `AXGeometry` snapshot.
 @MainActor
@@ -76,6 +77,22 @@ enum WindowInventory {
                 .first(where: { !$0.isTerminated })
         else { return nil }
         return (AXWindowAccess.application(for: app.processIdentifier), app)
+    }
+
+    /// Reads only the active app's focused document URL; no window titles or file contents.
+    // shortcut: refreshes on app activation and palette hotkey; add AX observers for live changes.
+    static func focusedDocumentURL(for app: NSRunningApplication) -> URL? {
+        guard AXIsProcessTrusted() else { return nil }
+        let application = AXWindowAccess.application(for: app.processIdentifier, timeout: 0.05)
+        guard
+            let window = AXWindowAccess.element(application, kAXFocusedWindowAttribute)
+                ?? AXWindowAccess.element(application, kAXMainWindowAttribute)
+        else { return nil }
+        AXUIElementSetMessagingTimeout(window, 0.05)
+        guard let value = AXWindowAccess.string(window, kAXDocumentAttribute) else { return nil }
+        if let url = URL(string: value), url.isFileURL { return url.standardizedFileURL }
+        guard value.hasPrefix("/") else { return nil }
+        return URL(fileURLWithPath: value).standardizedFileURL
     }
 
     /// A window a layout may name: real, standard, on screen, and reporting geometry.

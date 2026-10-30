@@ -8,7 +8,11 @@ TMP="${RUNNER_TEMP:-$(mktemp -d)}"
 
 echo "::group::structure"
 test -f Tinycast.xcodeproj/project.pbxproj || { echo "::error::missing Xcode project"; exit 1; }
-test -d Tinycast/Features/VoiceAsk || { echo "::error::Voice Ask sources missing"; exit 1; }
+test ! -d Tinycast/Features/Dictation || { echo "::error::Dictation sources must be absent"; exit 1; }
+if rg -n -i 'VoiceAsk|Voice Ask|CodexRealtime|MicrophoneCapture|thread/realtime|NSMicrophoneUsageDescription|audio-input|Dictation' Tinycast Tests docs project.yml; then
+  echo "::error::voice input or microphone capture remains in the fork"
+  exit 1
+fi
 rg -q 'static let repository = "1tuz/tinycast"' Tinycast/Features/Updates/Model/ReleaseFeed.swift \
   || { echo "::error::ReleaseFeed still points at upstream"; exit 1; }
 rg -q 'pump = nil' Tinycast/Features/Support/Service/SupportReminderStore.swift \
@@ -29,7 +33,11 @@ echo "::endgroup::"
 
 echo "::group::focused harnesses"
 FAILED=""
-for t in voice-ask-test hotkey-test ai-provider-test updates-test; do
+for t in hotkey-test ai-provider-test updates-test ranking-test developer-utility-test \
+  ephemeral-snippet-test quick-action-test file-search-test file-search-session-test \
+  calendar-test window-layout-test window-switch-test compact-bar-test \
+  clipboard-search-test clipboard-thumbnail-test fallback-test launcher-settings-file-test \
+  settings-backup-test hotkey-dispatch-test; do
   echo "▸ $t"
   if ! ./Scripts/run-tests.sh "$t" > "$TMP/gate-$t.log" 2>&1; then
     echo "::error::harness failed: $t"

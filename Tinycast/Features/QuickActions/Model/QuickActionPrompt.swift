@@ -10,6 +10,7 @@ enum QuickActionPrompt {
     }
 
     static func instructions(for action: BuiltInQuickAction, override: String? = nil) -> String {
+        guard action.requiresAI else { return "" }
         if !action.usesTranslationFramework, let override { return override }
         return switch action {
         case .fixGrammar:
@@ -41,6 +42,8 @@ enum QuickActionPrompt {
         case .translate:
             // Apple's translator does this one; exhaustive so a new action cannot forget a prompt.
             boundary
+        case .base64Encode, .base64Decode, .formatJSON, .minifyJSON, .hashMD5, .hashSHA256, .hexEncode, .hexDecode, .urlEncode, .urlDecode, .generateUUID, .timestampToDate, .convertColor, .generateLoremIpsum, .convertCase:
+            ""
         }
     }
 

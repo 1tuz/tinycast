@@ -2,7 +2,6 @@ import Foundation
 
 /// What `SettingsBackup.SettingsData` carries, written out so a new setting has to be considered.
 enum SettingsBackupCoverage {
-    /// Each `SettingsData` field paired with the `AppSettings` key it mirrors.
     static let mirrored: [String: AppSettingsKey] = [
         "clipboardEnabled": .clipboardEnabled,
         "clipboardRetentionDays": .clipboardRetention,
@@ -11,28 +10,34 @@ enum SettingsBackupCoverage {
         "hyperKey": .hyperKey,
         "hyperKeyIncludesShift": .hyperKeyIncludesShift,
         "hyperKeyQuickPress": .hyperKeyQuickPress,
-        "hyperKeyHoldVoiceAsk": .hyperKeyHoldVoiceAsk,
+        "hyperKeySecureInputCompatibility": .hyperKeySecureInputCompatibility,
         "showInMenuBar": .showInMenuBar,
+        "automaticallyCheckForUpdates": .automaticallyCheckForUpdates,
         "emojiSkinTone": .emojiSkinTone,
         "emojiGridColumns": .emojiGridColumns,
         "popToRootSeconds": .popToRootTimeout,
         "escapeKeyBehavior": .escapeKeyBehavior,
         "appearance": .appearance,
+        "language": .language,
         "calcNumberStyle": .calcNumberStyle,
         "interfaceSize": .interfaceSize,
         "compactMode": .compactMode,
-        "showFavoritesInCompactMode": .showFavoritesInCompactMode,
+        "compactBarCommands": .compactBarCommands,
         "searchScopes": .searchScopes,
         "launcherShowsSuggestions": .launcherShowsSuggestions,
         "rootSearchSensitivity": .rootSearchSensitivity,
         "openOnCursorScreen": .openOnCursorScreen,
         "paletteDraggable": .paletteDraggable,
+        "animationsEnabled": .animationsEnabled,
         "fileSearchEnabled": .fileSearchEnabled,
         "fileSearchScopes": .fileSearchScopes,
         "fileSearchIgnorePatterns": .fileSearchIgnorePatterns,
+        "fileSearchRemovedDefaultPatterns": .fileSearchRemovedDefaultPatterns,
+        "fileSearchShowInLauncher": .fileSearchShowInLauncher,
         "notesEnabled": .notesEnabled,
         "notesRendersMarkdown": .notesRendersMarkdown,
         "notesShowsFormattingBar": .notesShowsFormattingBar,
+        "notesShowsInMenuBar": .notesShowsInMenuBar,
         "customCommandsEnabled": .customCommandsEnabled,
         "customCommandsShowInLauncher": .customCommandsShowInLauncher,
         "snippetsShowInLauncher": .snippetsShowInLauncher,
@@ -48,7 +53,7 @@ enum SettingsBackupCoverage {
         "quicklinksEnabled": .quicklinksEnabled,
         "quicklinksShowInLauncher": .quicklinksShowInLauncher,
         "quicklinkOpensNewWindow": .quicklinkOpensNewWindow,
-        "quicklinkSelectionFallback": .quicklinkSelectionFallback,
+        "quicklinkPassesSelectedText": .quicklinkPassesSelectedText,
         "quicklinkConfirmsBeforeDelete": .quicklinkConfirmsBeforeDelete,
         "appleShortcutsEnabled": .appleShortcutsEnabled,
         "extensionsShowInLauncher": .extensionsShowInLauncher,
@@ -57,6 +62,7 @@ enum SettingsBackupCoverage {
         "calendarSpan": .calendarSpan,
         "joinWindowMinutes": .joinWindowMinutes,
         "autoJoinConfirms": .autoJoinConfirms,
+        "autoJoinNamedProvidersOnly": .autoJoinNamedProvidersOnly,
         "menuBarEvents": .menuBarEvents,
         "calendarMenuBarDisplay": .calendarMenuBarDisplay,
         "menuBarLinkedEventsOnly": .menuBarLinkedEventsOnly,
@@ -93,6 +99,8 @@ enum SettingsBackupCoverage {
             "Names a browser installed on this Mac; another Mac may not have it.",
         AppSettingsKey.calendarEnabled.rawValue:
             "Doubles as consent to read your calendar; an import must not grant calendar access.",
+        AppSettingsKey.workflowsEnabled.rawValue:
+            "Arms local schedules and event triggers; an import must not enable unattended actions.",
         AppSettingsKey.autoJoinMeetings.rawValue:
             "Arms the app to open meeting links unattended; an import must not switch that on.",
         AppSettingsKey.cameraPreview.rawValue:
@@ -100,6 +108,9 @@ enum SettingsBackupCoverage {
         AppSettingsKey.aiEnabled.rawValue:
             "No other AI setting travels in a backup, so an import would arm a feature it cannot "
             + "configure.",
+        AppSettingsKey.ephemeralSnippetsEnabled.rawValue:
+            "Stores AI replies locally for later use; an import must not enable that history "
+            + "without the person's choice.",
         AppSettingsKey.aiInstalledProviders.rawValue:
             "Installed commands and their accounts belong to this Mac; an import must not enable "
             + "their discovery on another one.",
@@ -109,6 +120,8 @@ enum SettingsBackupCoverage {
             "The default model names an external AI destination; importing must not choose one.",
         AppSettingsKey.aiWebSearch.rawValue:
             "Whether prompts may reach a search engine is a choice each Mac makes for itself.",
+        AppSettingsKey.aiChoices.rawValue:
+            "Changes the instructions every turn carries, and no other AI setting travels.",
         AppSettingsKey.aiSystemPrompt.rawValue:
             "Standing instructions to a model are the one AI setting that changes every answer; an "
             + "import must not carry them onto another Mac unseen.",
@@ -135,8 +148,6 @@ enum SettingsBackupCoverage {
         AppSettingsKey.aiInstalledOverrides.rawValue:
             "Names a command to run and the variables to run it with; an import must never decide "
             + "which program this Mac launches.",
-        AppSettingsKey.aiVoiceAskSendAutomatically.rawValue:
-            "Whether Voice Ask sends the transcript without review; an import must not arm that.",
         AppSettingsKey.mcpEnabled.rawValue:
             "Doubles as consent to run third-party MCP servers, one of which is a local process; a "
             + "flag that grants a capability is never carried by a backup.",
@@ -159,6 +170,14 @@ enum SettingsBackupCoverage {
             "Custom model instructions change transformed results and must not move unseen.",
         AppSettingsKey.quickActionLanguage.rawValue:
             "Follows the language the person at this Mac reads, not the one who wrote the backup.",
+        AppSettingsKey.commandHistoryEnabled.rawValue:
+            "Describes a local list of commands run on this Mac; a backup carries neither the list "
+            + "nor a reason to re-enable it elsewhere.",
+        AppSettingsKey.commandHistoryLimit.rawValue:
+            "Controls a local list of commands run on this Mac, which is not carried by a backup.",
+        AppSettingsKey.developerQuickActionsEnabled.rawValue:
+            "Gates local actions that read and replace a selection through Accessibility; a backup "
+            + "must not change that choice on another Mac.",
         AppSettingsKey.snippetsFolder.rawValue:
             "Names a folder on this Mac; the one a backup lands on may not have it.",
         AppSettingsKey.notesFolder.rawValue:

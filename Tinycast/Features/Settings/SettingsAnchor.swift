@@ -1,9 +1,16 @@
+import Foundation
+
 /// One `Section` inside a pane, named once so the catalog and the pane cannot disagree: the search
 /// result carries the anchor, the pane's `.settingsAnchor(_:)` marks the section it scrolls to.
 struct SettingsAnchor: Hashable, Sendable {
     let tab: SettingsTab
     /// The `Section`'s own header text, which is also what a result's breadcrumb reads.
     let title: String
+
+    init(tab: SettingsTab, title: LocalizedStringResource) {
+        self.tab = tab
+        self.title = title.resolved()
+    }
 }
 
 // Named `<pane><Section>` throughout, so the constant for a section is always guessable from it.
@@ -12,6 +19,8 @@ extension SettingsAnchor {
     static let generalSearch = Self(tab: .general, title: "Search")
     static let generalHyperKey = Self(tab: .general, title: "Hyper Key")
     static let generalAppearance = Self(tab: .general, title: "Appearance")
+    static let generalCompactShortcuts = Self(tab: .general, title: "Compact Shortcuts")
+    static let generalWorkflows = Self(tab: .general, title: "Workflows")
     static let generalCalculator = Self(tab: .general, title: "Calculator")
     static let generalGeneral = Self(tab: .general, title: "General")
 
@@ -23,6 +32,7 @@ extension SettingsAnchor {
     static let systemActionsSystemActions = Self(tab: .systemActions, title: "System Actions")
 
     static let commandsCommands = Self(tab: .commands, title: "Commands")
+    static let commandsHistory = Self(tab: .commands, title: "History")
     static let commandsCustomCommands = Self(tab: .commands, title: "Custom Commands")
 
     static let quicklinksQuicklinks = Self(tab: .quicklinks, title: "Quicklinks")
@@ -31,14 +41,15 @@ extension SettingsAnchor {
     static let quicklinksImportExport = Self(tab: .quicklinks, title: "Import & Export")
 
     static let appleShortcutsAppleShortcuts = Self(tab: .appleShortcuts, title: "Apple Shortcuts")
-    static let appleShortcutsShortcuts = Self(tab: .appleShortcuts, title: "Shortcuts")
+    static let appleShortcutsShortcuts = Self(
+        tab: .appleShortcuts,
+        title: LocalizedStringResource("apple-shortcuts-section", defaultValue: "Shortcuts"))
 
     static let fallbacksFallbacks = Self(tab: .fallbacks, title: "Fallbacks")
 
     static let aiAI = Self(tab: .ai, title: "AI")
     static let aiProviders = Self(tab: .ai, title: "Providers")
     static let aiDefault = Self(tab: .ai, title: "Default")
-    static let aiVoiceAsk = Self(tab: .ai, title: "Voice Ask")
     static let aiChat = Self(tab: .ai, title: "Chat")
     static let aiConversations = Self(tab: .ai, title: "Conversations")
     static let aiSystemPrompt = Self(tab: .ai, title: "System prompt")
@@ -49,8 +60,12 @@ extension SettingsAnchor {
     static let quickActionsActions = Self(tab: .quickActions, title: "Actions")
     static let quickActionsModel = Self(tab: .quickActions, title: "Model")
     static let quickActionsTranslate = Self(tab: .quickActions, title: "Translate")
+    static let quickActionsDeveloper = Self(tab: .quickActions, title: "Developer Actions")
+
 
     static let fileSearchFileSearch = Self(tab: .fileSearch, title: "File Search")
+    static let fileSearchFullDiskAccess = Self(tab: .fileSearch, title: "Full Disk Access")
+    static let fileSearchIndex = Self(tab: .fileSearch, title: "Index")
     static let fileSearchCommands = Self(tab: .fileSearch, title: "Commands")
     static let fileSearchSearchScopes = Self(tab: .fileSearch, title: "Search Scopes")
     static let fileSearchIgnorePatterns = Self(tab: .fileSearch, title: "Ignore Patterns")
@@ -80,7 +95,7 @@ extension SettingsAnchor {
     static let clipboardCommands = Self(tab: .clipboard, title: "Commands")
     static let clipboardHistory = Self(tab: .clipboard, title: "History")
     static let clipboardDisabledApplications = Self(
-        tab: .clipboard, title: "Disabled Applications")
+        tab: .clipboard, title: "Excluded Applications")
 
     static let emojiCommands = Self(tab: .emoji, title: "Commands")
     static let emojiAppearance = Self(tab: .emoji, title: "Appearance")
@@ -93,13 +108,17 @@ extension SettingsAnchor {
 
     static let extensionsExtensions = Self(tab: .extensions, title: "Extensions")
     static let extensionsCompatibility = Self(tab: .extensions, title: "Compatibility")
-    static let extensionsInstalled = Self(tab: .extensions, title: "Installed")
-    static let extensionsInstall = Self(tab: .extensions, title: "Install")
+    static let extensionsInstalled = Self(
+        tab: .extensions,
+        title: LocalizedStringResource("extensions-installed-section", defaultValue: "Installed"))
+    static let extensionsInstall = Self(
+        tab: .extensions,
+        title: LocalizedStringResource("extensions-install-section", defaultValue: "Install"))
     static let extensionsStorage = Self(tab: .extensions, title: "Storage")
 
     static let permissionsAccessibility = Self(tab: .permissions, title: "Accessibility")
+    static let permissionsFullDiskAccess = Self(tab: .permissions, title: "Full Disk Access")
     static let permissionsCalendars = Self(tab: .permissions, title: "Calendars")
-    static let permissionsMicrophone = Self(tab: .permissions, title: "Microphone")
 
     static let backupExport = Self(tab: .backup, title: "Export")
     static let backupImport = Self(tab: .backup, title: "Import")
@@ -110,7 +129,6 @@ extension SettingsAnchor {
     static let aboutLinks = Self(tab: .about, title: "Links")
 }
 
-/// Where a search result lands: a whole section, or one row inside it.
 enum SettingsTarget: Hashable, Sendable {
     case section(SettingsAnchor)
     /// The row's visible title, which is also the catalog entry's — they are the same string.

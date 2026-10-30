@@ -4,11 +4,14 @@ import Foundation
 struct RankingTest {
     @MainActor
     static func main() async {
+        let historySuite = "tinycast-ranking-history-\(UUID().uuidString)"
+        let historyDefaults = UserDefaults(suiteName: historySuite)!
+        defer { historyDefaults.removePersistentDomain(forName: historySuite) }
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("tinycast-ranking-\(UUID().uuidString).json")
 
         var clock = Date(timeIntervalSince1970: 2_000_000_000)
-        let store = LauncherRankingStore(fileURL: fileURL) { clock }
+        let store = LauncherRankingStore(fileURL: fileURL, defaults: historyDefaults) { clock }
         var failures = 0
 
         func check(_ description: String, _ condition: @autoclosure () -> Bool) {
@@ -108,6 +111,23 @@ struct RankingTest {
             "": LauncherVisit(anchor: clock + day, openedAt: clock, searchTerms: [])
         ])
         check("an import keeps only live, keyed entries", Array(store.visits.keys) == ["kept"])
+
+        // MARK: - Command history
+
+        store.recordCommand("command:first", limit: 3)
+        store.recordCommand("command:second", limit: 3)
+        store.recordCommand("command:first", limit: 3)
+        check(
+            "command history deduplicates and moves a repeated command to the top",
+            store.recentCommandIDs == ["command:first", "command:second"])
+        store.recordCommand("command:third", limit: 2)
+        check("command history respects its configured limit", store.recentCommandIDs.count == 2)
+        store.trimCommandHistory(to: 1)
+        check("changing the limit trims existing history", store.recentCommandIDs == ["command:third"])
+        let historyReloaded = LauncherRankingStore(fileURL: fileURL, defaults: historyDefaults) { clock }
+        check("command history survives a relaunch", historyReloaded.recentCommandIDs == ["command:third"])
+        store.clearCommandHistory()
+        check("command history can be cleared", store.recentCommandIDs.isEmpty)
 
         await store.flush()
         try? FileManager.default.removeItem(at: fileURL)

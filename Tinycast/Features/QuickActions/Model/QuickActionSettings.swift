@@ -30,11 +30,11 @@ struct QuickActionSettings: Equatable, Sendable {
     }
 
     func instructionOverride(for action: BuiltInQuickAction) -> String? {
-        instructionOverrides[action]
+        action.requiresAI ? instructionOverrides[action] : nil
     }
 
     mutating func setInstructionOverride(_ instructions: String?, for action: BuiltInQuickAction) {
-        guard !action.usesTranslationFramework else { return }
+        guard action.requiresAI, !action.usesTranslationFramework else { return }
         instructionOverrides[action] = instructions
     }
 
@@ -55,7 +55,7 @@ struct QuickActionSettings: Equatable, Sendable {
             instructionOverrides = Dictionary(
                 uniqueKeysWithValues: newValue.compactMap { key, value in
                     guard let action = BuiltInQuickAction(rawValue: key),
-                        !action.usesTranslationFramework
+                        action.requiresAI, !action.usesTranslationFramework
                     else { return nil }
                     return (action, value)
                 })

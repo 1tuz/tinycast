@@ -68,7 +68,13 @@ struct KeyShortcut: Hashable, Sendable {
             carbonKeyCode: carbonKeyCode, carbonModifiers: Self.carbonModifiers(from: retargeted))
     }
 
-    /// `modifierSymbols` with the Hyper chord collapsed to "✦", when one is configured at all.
+    func secureInputEquivalent(of hyperChord: NSEvent.ModifierFlags) -> KeyShortcut? {
+        guard modifierFlags.isSuperset(of: hyperChord) else { return nil }
+        let reduced = modifierFlags.subtracting(hyperChord).union(.control)
+        return KeyShortcut(
+            carbonKeyCode: carbonKeyCode, carbonModifiers: Self.carbonModifiers(from: reduced))
+    }
+
     static func collapsedModifierSymbols(
         from flags: NSEvent.ModifierFlags, hyperChord: NSEvent.ModifierFlags?
     ) -> [String] {
@@ -105,8 +111,8 @@ struct KeyShortcut: Hashable, Sendable {
     }
 
     private static let specialKeyGlyphs: [Int: String] = [
-        kVK_Return: "↵", kVK_ANSI_KeypadEnter: "⌤", kVK_Tab: "⇥", kVK_Space: "Space",
-        kVK_Delete: "⌫", kVK_ForwardDelete: "⌦", kVK_Escape: "⎋",
+        kVK_Return: "↵", kVK_ANSI_KeypadEnter: "⌤", kVK_Tab: "⇥", kVK_Space: String(localized: "Space"),
+        kVK_Delete: "⌫", kVK_ForwardDelete: "⌦", kVK_Escape: "esc",
         kVK_LeftArrow: "←", kVK_RightArrow: "→", kVK_UpArrow: "↑", kVK_DownArrow: "↓",
         kVK_Home: "↖", kVK_End: "↘", kVK_PageUp: "⇞", kVK_PageDown: "⇟", kVK_Help: "?⃝"
     ]

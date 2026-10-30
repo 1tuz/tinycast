@@ -27,6 +27,7 @@ struct WindowSwitchTests {
         searchMapping()
         ordering()
         orderingIsTotal()
+        switchable()
         ranking()
         rankingLimit()
 
@@ -69,6 +70,24 @@ struct WindowSwitchTests {
         expect(
             sorted.map(\.handle) == [2, 3, 0, 4, 1],
             "front app first, then by rank, unranked next, minimized last: \(sorted.map(\.handle))")
+
+        let recentlyUsedMinimized = entry(5, app: "Safari", title: "Recently Used", minimized: true)
+        let unseenVisible = entry(6, app: "Safari", title: "Unseen")
+        let historySorted = WindowSwitchOrder.sorted(
+            [unseenVisible, recentlyUsedMinimized], recentHistory: [recentlyUsedMinimized.historyKey])
+        expect(
+            historySorted.map(\.handle) == [5, 6],
+            "recent history ranks ahead of windows that have not been used")
+
+        let duplicateHistorySorted = WindowSwitchOrder.sorted(
+            [unseenVisible, recentlyUsedMinimized],
+            recentHistory: [
+                unseenVisible.historyKey, recentlyUsedMinimized.historyKey,
+                unseenVisible.historyKey
+            ])
+        expect(
+            duplicateHistorySorted.map(\.handle) == [6, 5],
+            "duplicate history keys keep their first rank")
     }
 
     static func orderingIsTotal() {
@@ -87,6 +106,29 @@ struct WindowSwitchTests {
         expect(
             once[split...].allSatisfy(\.isMinimized),
             "minimized windows form one run at the end, never interleaved")
+    }
+
+    static func switchable() {
+        expect(
+            WindowSwitchPolicy.isSwitchable(
+                isStandardWindow: true, isMinimized: false, canMinimize: true),
+            "a standard window is offered")
+        expect(
+            WindowSwitchPolicy.isSwitchable(
+                isStandardWindow: true, isMinimized: true, canMinimize: true),
+            "a minimized window that still reports its subrole is offered")
+        expect(
+            WindowSwitchPolicy.isSwitchable(
+                isStandardWindow: false, isMinimized: true, canMinimize: true),
+            "a minimized window reading AXDialog is offered, which is Finder and Transmission")
+        expect(
+            !WindowSwitchPolicy.isSwitchable(
+                isStandardWindow: false, isMinimized: false, canMinimize: true),
+            "a sheet is no window to switch to")
+        expect(
+            !WindowSwitchPolicy.isSwitchable(
+                isStandardWindow: false, isMinimized: true, canMinimize: false),
+            "a dialog cannot minimize, so it is never read as a minimized window")
     }
 
     static func ranking() {

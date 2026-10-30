@@ -1,6 +1,6 @@
 import Carbon.HIToolbox
 
-/// C entry point: decode the `EventRef` to a plain value before crossing into actor code.
+@MainActor
 private func hotKeyCarbonEventHandler(
     _: EventHandlerCallRef?, event: EventRef?, userData: UnsafeMutableRawPointer?
 ) -> OSStatus {
@@ -16,9 +16,10 @@ private func hotKeyCarbonEventHandler(
         &hotKeyID
     )
     guard error == noErr else { return error }
-    let kind = GetEventKind(event)
     let center = Unmanaged<HotKeyCenter>.fromOpaque(userData).takeUnretainedValue()
-    return MainActor.assumeIsolated { center.handle(hotKeyID, kind: kind) }
+    let kind = GetEventKind(event)
+    let flagsRaw = CopyEventCGEvent(event)?.takeRetainedValue().flags.rawValue ?? 0
+    return center.handle(hotKeyID, kind: kind, flagsRaw: flagsRaw)
 }
 
 /// The Carbon layer only; which shortcuts exist is `HotKeyManager`'s business.
@@ -26,13 +27,12 @@ private func hotKeyCarbonEventHandler(
 final class HotKeyCenter {
     private struct Entry {
         let shortcut: KeyShortcut
-        let onKeyDown: () -> Void
+        let onKeyDown: (UInt64) -> Void
         let onKeyUp: (() -> Void)?
         let carbonID: UInt32
         var ref: EventHotKeyRef?
     }
 
-    /// Live registrations by stable id, plus the reverse lookup the Carbon callback needs.
     private var entries: [String: Entry] = [:]
     private var idToKey: [UInt32: String] = [:]
     private var nextCarbonID: UInt32 = 0
@@ -50,18 +50,15 @@ final class HotKeyCenter {
     }
 
     /// Registers `shortcut` under `id`, dropping any previous one so no combo leaks.
-    /// `onKeyUp` is optional: existing press-only shortcuts omit it and keep their old behaviour.
     func register(
-        id: String,
-        shortcut: KeyShortcut,
-        onKeyDown: @escaping () -> Void,
+        id: String, shortcut: KeyShortcut, onKeyDown: @escaping (UInt64) -> Void,
         onKeyUp: (() -> Void)? = nil
     ) {
         unregister(id: id)
         nextCarbonID += 1
         entries[id] = Entry(
-            shortcut: shortcut, onKeyDown: onKeyDown, onKeyUp: onKeyUp, carbonID: nextCarbonID,
-            ref: nil)
+            shortcut: shortcut, onKeyDown: onKeyDown, onKeyUp: onKeyUp,
+            carbonID: nextCarbonID, ref: nil)
         idToKey[nextCarbonID] = id
         if !isPaused { activate(id) }
     }
@@ -110,7 +107,9 @@ final class HotKeyCenter {
         ]
         InstallEventHandler(
             dispatcher,
-            hotKeyCarbonEventHandler,
+            { @MainActor call, event, userData in
+                hotKeyCarbonEventHandler(call, event: event, userData: userData)
+            },
             eventTypes.count,
             &eventTypes,
             Unmanaged.passUnretained(self).toOpaque(),
@@ -118,21 +117,20 @@ final class HotKeyCenter {
         )
     }
 
-    fileprivate func handle(_ hotKeyID: EventHotKeyID, kind: UInt32) -> OSStatus {
+    fileprivate func handle(_ hotKeyID: EventHotKeyID, kind: UInt32, flagsRaw: UInt64) -> OSStatus {
         guard
             hotKeyID.signature == signature,
             let key = idToKey[hotKeyID.id],
             let entry = entries[key]
         else { return OSStatus(eventNotHandledErr) }
-        switch kind {
-        case UInt32(kEventHotKeyPressed):
-            entry.onKeyDown()
-            return noErr
-        case UInt32(kEventHotKeyReleased):
-            entry.onKeyUp?()
-            return noErr
-        default:
+        if kind == kEventHotKeyPressed {
+            entry.onKeyDown(flagsRaw)
+        } else if kind == kEventHotKeyReleased {
+            guard let onKeyUp = entry.onKeyUp else { return OSStatus(eventNotHandledErr) }
+            onKeyUp()
+        } else {
             return OSStatus(eventNotHandledErr)
         }
+        return noErr
     }
 }

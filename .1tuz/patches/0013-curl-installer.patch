@@ -12,9 +12,9 @@ index 0000000..5c0eeb9
 +curl -fsSL https://raw.githubusercontent.com/1tuz/tinycast/main/Scripts/install.sh | /bin/bash
 +```
 +
-+The script builds `main` with Xcode 26 and installs `~/Applications/Tinycast.app`. It uses the first
++The script builds `main` with Xcode 26 or 27 and installs `~/Applications/Tinycast.app`. It uses the first
 +valid code-signing identity in Keychain. Set `TINYCAST_SIGNING_IDENTITY` before running the command
-+to select another identity. It needs Git, Xcode 26 and a persistent signing identity. It does not
++to select another identity. It needs Git, Xcode 26 or 27 and a persistent signing identity. It does not
 +install packages or change system settings.
 +
 +In-app updates check stable releases from `1tuz/tinycast`. Each update must be published with the
@@ -46,11 +46,11 @@ index 0000000..1d5b2b2
 +}
 +
 +command -v git >/dev/null || fail "Git is required."
-+command -v xcodebuild >/dev/null || fail "Install Xcode 26 first."
++command -v xcodebuild >/dev/null || fail "Install Xcode 26 or 27 first."
 +xcode_version="$(xcodebuild -version | awk '/^Xcode / { print $2; exit }')"
 +case "$xcode_version" in
-+    26.*) ;;
-+    *) fail "Xcode 26 is required; found ${xcode_version:-unknown}." ;;
++    26.*|27.*) ;;
++    *) fail "Xcode 26 or 27 is required; found ${xcode_version:-unknown}." ;;
 +esac
 +signing_identity="${TINYCAST_SIGNING_IDENTITY:-$(
 +    security find-identity -v -p codesigning \

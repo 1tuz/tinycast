@@ -133,7 +133,8 @@ struct WindowLayoutTests {
         custom.iconSymbol = "star"
         expect(custom.symbol == "star", "a chosen glyph wins")
 
-        expect(layout(entries: [entry()]).summary == "1 window", "one entry reads singular")
+        // The singular is the catalog's plural variation, which the harness does not load.
+        expect(layout(entries: [entry(), entry()]).summary == "2 windows", "entries are counted")
         let two = layout(entries: [entry(display: 1), entry(display: 2)])
         expect(two.summary == "2 windows · 2 displays", "two displays are named")
         let same = layout(entries: [entry(display: 1), entry(display: 1)])
@@ -405,7 +406,9 @@ struct WindowLayoutTests {
         expect(
             plan.skipped.first?.reason == .displayDisconnected(name: "Display 2"),
             "the skip names the stored display")
-        expect(plan.skippedSummary == "1 display not connected", "the summary names the cause")
+        expect(
+            plan.skippedSummary == String(localized: "\(1) displays not connected"),
+            "the summary names the cause")
 
         let none = WindowLayoutPlan.make(
             layout: value, screens: [], windows: [], preferredGap: 0)
@@ -519,6 +522,7 @@ struct WindowLayoutTests {
         let marked = entry(bundleID: "com.example.other", display: 2, argument: "https://example.com")
         let value = WindowLayout(
             name: "Office", iconSymbol: "star", usesPreferredGap: false,
+            autoApplyBundleID: "com.example.other",
             entries: [
                 entry(width: 0.25, height: 0.75, anchor: .bottomLeft, offset: CGPoint(x: -8, y: 12)),
                 marked
@@ -554,6 +558,7 @@ struct WindowLayoutTests {
             return
         }
         expect(first.usesPreferredGap, "an absent gap flag defaults on")
+        expect(first.autoApplyBundleID == nil, "an absent auto-apply app defaults off")
         expect(first.frontmostEntryID == nil, "an absent frontmost mark defaults to none")
         expect(onlyEntry.widthFraction == 1 && onlyEntry.heightFraction == 1, "fractions default full")
         expect(onlyEntry.anchor == .center, "an absent anchor defaults centred")
@@ -633,6 +638,16 @@ struct WindowLayoutTests {
             expectThrows(.duplicateName, "a duplicate name is rejected") {
                 _ = try store.add(layout("OFFICE", entries: [entry()]))
             }
+            _ = try? store.add(
+                WindowLayout(
+                    name: "Triggered", autoApplyBundleID: "com.example.app",
+                    entries: [entry(bundleID: "com.example.app")]))
+            expectThrows(.duplicateAutoApplyApp, "one app cannot trigger two layouts") {
+                _ = try store.add(
+                    WindowLayout(
+                        name: "Second Trigger", autoApplyBundleID: "com.example.app",
+                        entries: [entry(bundleID: "com.example.app")]))
+            }
         }
     }
 
@@ -640,11 +655,19 @@ struct WindowLayoutTests {
         let shared = UUID()
         let dropped = UUID()
         let hostile = [
-            WindowLayout(id: shared, name: "Office", entries: [entry()]),
+            WindowLayout(
+                id: shared, name: "Office", autoApplyBundleID: "com.example.app",
+                entries: [entry()]),
             WindowLayout(id: shared, name: "Second", entries: [entry()]),
             WindowLayout(name: "office", entries: [entry()]),
             WindowLayout(name: "  ", entries: [entry()]),
             WindowLayout(name: "Empty", entries: []),
+            WindowLayout(
+                name: "Bad Trigger", autoApplyBundleID: "com.example.missing",
+                entries: [entry(bundleID: "com.example.app")]),
+            WindowLayout(
+                name: "Duplicate Trigger", autoApplyBundleID: "com.example.app",
+                entries: [entry(bundleID: "com.example.app")]),
             WindowLayout(
                 name: "Clamped",
                 entries: [
@@ -654,9 +677,11 @@ struct WindowLayoutTests {
         ]
         withStore { store in
             let kept = store.replace(with: hostile)
-            expect(kept == 2, "only the sound records survive")
+            expect(kept == 4, "only the sound records survive")
             expect(
-                store.layouts.map(\.name) == ["Clamped", "Office"],
+                store.layouts.map(\.name) == [
+                    "Bad Trigger", "Clamped", "Duplicate Trigger", "Office"
+                ],
                 "survivors are the first of each identity, in display order")
             guard let clamped = store.layouts.first(where: { $0.name == "Clamped" }),
                 let onlyEntry = clamped.entries.first
@@ -665,6 +690,13 @@ struct WindowLayoutTests {
             }
             expect(clamped.entries.count == 1, "an entry with no bundle id is dropped")
             expect(clamped.frontmostEntryID == nil, "a mark on a dropped entry is cleared")
+            expect(clamped.autoApplyBundleID == nil, "a trigger without an entry is cleared")
+            expect(
+                store.layouts.first(where: { $0.name == "Duplicate Trigger" })?.autoApplyBundleID
+                    == nil
+                    && store.layouts.first(where: { $0.name == "Office" })?.autoApplyBundleID
+                        == "com.example.app",
+                "the first layout keeps a duplicated trigger")
             expect(onlyEntry.widthFraction == 1, "an over-range fraction clamps to full")
             expect(onlyEntry.heightFraction == 0, "a negative fraction clamps to zero")
             expect(onlyEntry.offset.x == 0, "a non-finite offset becomes none")
@@ -687,6 +719,7 @@ struct WindowLayoutTests {
             stored = try? store.add(
                 WindowLayout(
                     name: "Office", iconSymbol: "star", usesPreferredGap: false,
+                    autoApplyBundleID: "com.example.app",
                     entries: [entry(width: 0.5, height: 0.25, anchor: .bottomRight)]))
         }
         let reopened = WindowLayoutStore(defaults: defaults)

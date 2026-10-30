@@ -65,9 +65,13 @@ needed. Run it from the **Actions** tab (`Release` → **Run workflow**) and pic
   version as-is.
 - **version** — base semver, e.g. `0.2.0`.
 
-It builds on a `macos-26` runner with Xcode 26 and publishes a GitHub Release tagged
-`v<full-version>` with a versioned DMG and zip asset, marked prerelease for beta. On success it also
-bumps the matching cask in the tap and announces the release on Discord. A stable run also
+Its first step is `Scripts/check-migrations.sh`: a migration that a stable release already shipped
+stops the run until it is deleted ([migrations.md](migrations.md)). The check reads tags and history,
+so the checkout fetches every commit without blobs.
+
+It builds on an `xcode-27` runner with the newest released Xcode 27 and publishes a GitHub Release
+tagged `v<full-version>` with a versioned DMG and zip asset, marked prerelease for beta. On success
+it also bumps the matching cask in the tap and announces the release on Discord. A stable run also
 dispatches the Website workflow, because the site reads the latest version and the
 [changelog](https://tinycast.dev/changelog/) from GitHub at build time.
 
@@ -75,10 +79,12 @@ A stable run then fans out to a second job, `universal`, which rebuilds the same
 `ARCHS="arm64 x86_64"` and attaches `Tinycast-Universal-<version>.dmg` / `.zip` to the release the
 first job created, then bumps `tinycast-universal`. macOS 26 is the last release that boots on Intel,
 and those Macs need both slices. Both jobs pin `ARCHS` explicitly and assert the slices on *every*
-shipping binary — the app and the bundled `ClipboardTextHelper`: trusting `ARCHS_STANDARD` is what
+shipping binary — the app and `ClipboardTextHelper`: trusting `ARCHS_STANDARD` is what
 shipped a thin arm64 build to Intel users once already, and it also keeps the Apple silicon download
 from silently gaining a slice it never needs. A thin helper inside a universal app is the quiet form
 of the same bug: the app boots on Intel and only clipboard OCR stops working.
+
+Channel builds override `TINYCAST_BUNDLE_IDENTIFIER`, not the target-wide `PRODUCT_BUNDLE_IDENTIFIER`.
 
 ### Release notes
 
