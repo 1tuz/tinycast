@@ -825,6 +825,21 @@ run developer-utility-test Tinycast/Features/QuickActions/Model/DeveloperUtility
                            Tinycast/Features/Clipboard/Model/ColorValue.swift \
                            Tinycast/Features/Clipboard/Model/ColorSpaces.swift
 run ephemeral-snippet-test Tinycast/Features/Snippets/Model/EphemeralSnippet.swift
+run workflow-test         Tinycast/Features/Workflows/Model/Workflow.swift \
+                           Tinycast/Features/Launcher/Model/CommandID.swift \
+                           Tinycast/Features/HotKeys/Model/HotKeyAction.swift \
+                           Tinycast/Features/QuickActions/Model/QuickAction.swift \
+                           Tinycast/Features/QuickActions/Model/BuiltInQuickAction.swift \
+                           Tinycast/Features/QuickActions/Model/DeveloperUtility.swift \
+                           Tinycast/Features/Clipboard/Model/ColorValue.swift \
+                           Tinycast/Features/Clipboard/Model/ColorSpaces.swift \
+                           Tinycast/Features/QuickActions/Model/CustomQuickAction.swift \
+                           Tinycast/Features/Quicklinks/Model/Quicklink.swift \
+                           Tinycast/Features/Quicklinks/Model/QuicklinkDestination.swift \
+                           Tinycast/Features/SystemActions/Model/SystemAction.swift \
+                           Tinycast/Features/WindowManagement/Model/WindowCommand.swift \
+                           Tinycast/Features/Snippets/Model/Snippet.swift \
+                           Tinycast/Platform/LocalizedResource.swift
 run apple-intelligence-test Tinycast/Features/Settings/AppSettingsKey.swift \
                            Tinycast/Features/AI/Model/*.swift \
                            Tinycast/Features/AI/Service/AIProvider.swift \

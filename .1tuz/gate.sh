@@ -37,7 +37,7 @@ for t in hotkey-test ai-provider-test updates-test ranking-test developer-utilit
   ephemeral-snippet-test quick-action-test file-search-test file-search-session-test \
   calendar-test window-layout-test window-switch-test compact-bar-test \
   clipboard-search-test clipboard-thumbnail-test fallback-test launcher-settings-file-test \
-  settings-backup-test hotkey-dispatch-test; do
+  settings-backup-test hotkey-dispatch-test workflow-test; do
   echo "▸ $t"
   if ! ./Scripts/run-tests.sh "$t" > "$TMP/gate-$t.log" 2>&1; then
     echo "::error::harness failed: $t"
