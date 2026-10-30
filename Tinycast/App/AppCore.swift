@@ -596,9 +596,7 @@ final class AppCore {
         var tasks: [Task<Void, Never>] = []
         if enabledKinds.contains(.codex) {
             tasks.append(
-                chatGPTSubscription.phase == .idle
-                    ? chatGPTSubscription.refresh()
-                    : chatGPTSubscription.currentRefreshTask())
+                chatGPTSubscription.refreshIfNeeded())
         } else {
             chatGPTSubscription.stop()
         }

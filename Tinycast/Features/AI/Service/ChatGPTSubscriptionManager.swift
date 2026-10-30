@@ -7,6 +7,7 @@ import Observation
 final class ChatGPTSubscriptionManager {
     /// Long enough to span a conversation; a relaunch costs a second, a resident server ~20 MB.
     private static let idleShutdown: Duration = .seconds(600)
+    private static let modelCatalogRefreshInterval: TimeInterval = 300
 
     private let client: CodexAppServerClient
     let turns: CodexTurnRunner
@@ -25,6 +26,7 @@ final class ChatGPTSubscriptionManager {
 
     @ObservationIgnored private var operationTask: Task<Void, Never>?
     @ObservationIgnored private var idleTask: Task<Void, Never>?
+    @ObservationIgnored private var modelCatalogCheckedAt: Date?
 
     init(supportDirectory: URL = AppPaths.applicationSupport()) {
         let root = supportDirectory.appending(path: "InstalledAI/Codex", directoryHint: .isDirectory)
@@ -60,6 +62,15 @@ final class ChatGPTSubscriptionManager {
     }
 
     func currentRefreshTask() -> Task<Void, Never> { operationTask ?? Task {} }
+
+    func refreshIfNeeded() -> Task<Void, Never> {
+        let catalogIsStale = modelCatalogCheckedAt.map {
+            Date().timeIntervalSince($0) >= Self.modelCatalogRefreshInterval
+        } ?? true
+        guard phase == .idle || (phase == .connected && (!client.isRunning || catalogIsStale))
+        else { return currentRefreshTask() }
+        return refresh()
+    }
 
     /// Releases process, timers and state alike; `.idle` lets the next visit check again.
     func stop() {
@@ -148,28 +159,31 @@ final class ChatGPTSubscriptionManager {
         do {
             let response = try await client.request(
                 method: "model/list", params: ["includeHidden": false, "limit": 100])
-            models = (response["data"]?.arrayValue ?? []).compactMap { value in
-                guard let raw = value.objectValue, let id = raw["model"]?.stringValue else {
-                    return nil
+            if let modelData = response["data"]?.arrayValue {
+                models = modelData.compactMap { value in
+                    guard let raw = value.objectValue, let id = raw["model"]?.stringValue else {
+                        return nil
+                    }
+                    let rawEfforts = raw["supportedReasoningEfforts"]?.arrayValue ?? []
+                    let efforts = rawEfforts.compactMap { effort -> ChatGPTSubscription.Effort? in
+                        guard let raw = effort.objectValue,
+                            let id = raw["reasoningEffort"]?.stringValue
+                        else { return nil }
+                        return ChatGPTSubscription.Effort(
+                            id: id, detail: raw["description"]?.stringValue)
+                    }
+                    return ChatGPTSubscription.Model(
+                        id: id,
+                        name: raw["displayName"]?.stringValue ?? id,
+                        efforts: efforts,
+                        defaultEffort: raw["defaultReasoningEffort"]?.stringValue,
+                        isDefault: raw["isDefault"]?.boolValue ?? false)
                 }
-                let rawEfforts = raw["supportedReasoningEfforts"]?.arrayValue ?? []
-                let efforts = rawEfforts.compactMap { effort -> ChatGPTSubscription.Effort? in
-                    guard let raw = effort.objectValue,
-                        let id = raw["reasoningEffort"]?.stringValue
-                    else { return nil }
-                    return ChatGPTSubscription.Effort(
-                        id: id, detail: raw["description"]?.stringValue)
-                }
-                return ChatGPTSubscription.Model(
-                    id: id,
-                    name: raw["displayName"]?.stringValue ?? id,
-                    efforts: efforts,
-                    defaultEffort: raw["defaultReasoningEffort"]?.stringValue,
-                    isDefault: raw["isDefault"]?.boolValue ?? false)
             }
         } catch {
-            models = []
+            // Keep the last known catalog when the app-server cannot refresh it.
         }
+        modelCatalogCheckedAt = Date()
         await loadRateLimits()
     }
 
