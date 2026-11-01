@@ -61,6 +61,19 @@ enum CalcUnitCatalog {
             }
         }
 
+        for (alias, symbol, label, factor) in [
+            ("Ki", "Ki", "Kibibytes", 1024.0), ("Mi", "Mi", "Mebibytes", 1048576.0),
+            ("Gi", "Gi", "Gibibytes", 1073741824.0), ("Ti", "Ti", "Tebibytes", 1099511627776.0)
+        ] {
+            add(UnitDef(symbol, label, .digitalStorage, factor), [alias])
+        }
+
+        let cpu = UnitDef("cpu", "CPU Cores", .cpu, 1)
+        add(cpu, ["cpu"])
+        add(
+            UnitDef("cpu", "Millicores", .cpu, 0.001),
+            ["m cpu"])
+
         return table
     }
 

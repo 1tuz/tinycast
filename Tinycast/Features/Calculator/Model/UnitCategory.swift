@@ -5,7 +5,7 @@ enum UnitCategory: String, CaseIterable, Sendable {
     case angle, speed, pressure, dataRate, acceleration, force, energy, power, frequency
     case electricCurrent, voltage, resistance, electricCharge, volumeFlow
     case fuelEconomy, fuelConsumption
-    case pixels, pixelArea, pixelDensity, compound
+    case pixels, pixelArea, pixelDensity, cpu, compound
 
     var displayName: String {
         switch self {
@@ -36,6 +36,7 @@ enum UnitCategory: String, CaseIterable, Sendable {
         case .pixels: return String(localized: "Pixels")
         case .pixelArea: return String(localized: "Pixel Area")
         case .pixelDensity: return String(localized: "Pixel Density")
+        case .cpu: return String(localized: "CPU Cores")
         }
     }
 
@@ -65,6 +66,7 @@ enum UnitCategory: String, CaseIterable, Sendable {
         case .pixels: return CalcDimension(pixels: 1)
         case .pixelArea: return CalcDimension(pixels: 2)
         case .pixelDensity: return CalcDimension(length: -1, pixels: 1)
+        case .cpu: return CalcDimension(cpu: 1)
         case .temperature, .angle, .compound: return nil
         }
     }

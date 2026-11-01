@@ -106,6 +106,7 @@ enum CalcUnits {
         "dm": ("cm", false), "in": ("cm", false), "ft": ("m", false), "yd": ("m", false), "mi": ("km", false),
         "mg": ("g", false), "g": ("oz", false), "kg": ("lb", false), "oz": ("g", false),
         "lb": ("kg", false),
+        "cpu": ("cpu", false),
         // Temperature (bare form requires a spelled/°-prefixed alias — see parseBareConversion)
         "°C": ("f", false), "°F": ("c", false), "K": ("c", false),
         "ms": ("s", false), "s": ("ms", false), "min": ("s", false), "hr": ("min", false),
