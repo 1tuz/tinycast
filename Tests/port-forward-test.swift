@@ -101,10 +101,10 @@ struct PortForwardTests {
     static func main() async throws {
         try requestArgumentsAndValidation()
         backoff()
-        await kubePolicyIsRevalidated()
-        await retriesUseCappedBackoff()
-        await manualStopDisablesRetry()
-        await stopAllEndsEverySession()
+        try await kubePolicyIsRevalidated()
+        try await retriesUseCappedBackoff()
+        try await manualStopDisablesRetry()
+        try await stopAllEndsEverySession()
         print("Port forward: \(failures) failures")
         exit(failures == 0 ? 0 : 1)
     }
@@ -211,7 +211,7 @@ struct PortForwardTests {
         expect(delays == [1, 2, 4, 8, 16, 30, 30], "retry delays grow exponentially to a fixed cap")
     }
 
-    static func kubePolicyIsRevalidated() async {
+    static func kubePolicyIsRevalidated() async throws {
         let selection = KubePortForwardSelection(contextName: "dev", namespace: "team-a")
         let enabled = KubeCommandPolicy(
             isEnabled: true, contextNames: ["dev"], productionContextNames: [])
@@ -231,10 +231,10 @@ struct PortForwardTests {
                 return ShellCommandSession(events: events, stop: {})
             },
             retrySleep: { _ in await MainActor.run { context.policy = disabled } })
-        let request = try! PortForwardRequest.kubernetes(
+        let request = try PortForwardRequest.kubernetes(
             context: "dev", namespace: "team-a", resource: "service/api",
             localPort: "8080", remotePort: "80", policy: enabled)
-        let id = try! await manager.start(request)
+        let id = try await manager.start(request)
         await wait { manager.sessions.first(where: { $0.id == id })?.state.isActive == false }
         expect(
             probe.arguments == [
@@ -247,7 +247,7 @@ struct PortForwardTests {
             "disabled current Kube policy prevents a reconnect")
     }
 
-    static func retriesUseCappedBackoff() async {
+    static func retriesUseCappedBackoff() async throws {
         let probe = PortForwardProbe()
         let policy = KubeCommandPolicy(isEnabled: true, contextNames: [], productionContextNames: [])
         let manager = PortForwardManager(
@@ -265,10 +265,14 @@ struct PortForwardTests {
                 probe.record(delay: $0)
                 try await Task.sleep(for: .milliseconds(10))
             })
-        let request = try! PortForwardRequest.ssh(
+        let request = try PortForwardRequest.ssh(
             alias: "jump", localPort: "8000", remoteHost: "db.internal", remotePort: "80")
-        let id = try! await manager.start(request)
-        await wait { probe.delays.count >= 7 }
+        let id = try await manager.start(request)
+        await wait {
+            probe.delays.count >= 7
+                && manager.sessions.first(where: { $0.id == id })?.state
+                    == .reconnecting(attempt: 7, delaySeconds: 30, lastError: "Exited with status 2.")
+        }
         let session = manager.sessions.first(where: { $0.id == id })
         expect(probe.arguments.count == 7, "unexpected exits keep reconnecting")
         expect(
@@ -286,12 +290,12 @@ struct PortForwardTests {
         expect(probe.arguments.count == 7, "manual stop cancels a pending retry")
     }
 
-    static func manualStopDisablesRetry() async {
+    static func manualStopDisablesRetry() async throws {
         let probe = PortForwardProbe()
         let manager = manager(with: probe)
-        let request = try! PortForwardRequest.ssh(
+        let request = try PortForwardRequest.ssh(
             alias: "jump", localPort: "8001", remoteHost: "db.internal", remotePort: "80")
-        let id = try! await manager.start(request)
+        let id = try await manager.start(request)
         await wait { probe.arguments.count == 1 }
         probe.emit(.output("forward ready"))
         await wait { manager.sessions.first(where: { $0.id == id })?.state == .running }
@@ -306,13 +310,13 @@ struct PortForwardTests {
         probe.finishAll()
     }
 
-    static func stopAllEndsEverySession() async {
+    static func stopAllEndsEverySession() async throws {
         let probe = PortForwardProbe()
         let manager = manager(with: probe)
-        let first = try! await manager.start(
+        let first = try await manager.start(
             PortForwardRequest.ssh(
                 alias: "first", localPort: "8002", remoteHost: "one.internal", remotePort: "80"))
-        let second = try! await manager.start(
+        let second = try await manager.start(
             PortForwardRequest.ssh(
                 alias: "second", localPort: "8003", remoteHost: "two.internal", remotePort: "80"))
         await wait { probe.arguments.count == 2 }

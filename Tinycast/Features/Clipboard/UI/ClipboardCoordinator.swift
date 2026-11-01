@@ -184,6 +184,11 @@ final class ClipboardCoordinator {
         Paster.copyPlainText(format.string(for: color))
     }
 
+    func copyDeveloperUtilityOutput(_ output: String) {
+        Paster.copyString(output)
+        core.showMessage(String(localized: "Copied result"))
+    }
+
     func revealClip(_ item: ClipboardItem) {
         guard let url = clipURL(for: item) else { return }
         paletteCoordinator.hidePalette(restoreFocus: false)

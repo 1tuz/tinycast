@@ -1,0 +1,14 @@
+{
+  "name": "kube-lens",
+  "title": "KubeLens",
+  "description": "Read-only Kubernetes pod and event diagnostics using an explicit context.",
+  "author": "tinycast",
+  "version": "1.0.0",
+  "platforms": ["macOS"],
+  "categories": ["Developer Tools"],
+  "commands": [{"name":"index","title":"KubeLens","description":"Inspect Kubernetes pods and events","mode":"view","devOpsCategory":"kubernetes"}],
+  "preferences": [
+    {"name":"context","title":"Kubernetes context (exact name or EKS ARN)","type":"textfield","required":true,"default":""},
+    {"name":"namespace","title":"Namespace","type":"textfield","required":true,"default":"default"}
+  ]
+}

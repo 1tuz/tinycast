@@ -35,6 +35,9 @@ selectable Markdown renderer with AI Chat.
   along with anything raised while Secure Event Input is up. Notes is the narrow in-process exception:
   its own editor supplies and replaces a selected passage without Accessibility, clipboard or events.
   A shortcut pressed with Settings frontmost, or in a password field, does nothing and says so.
+- **Clipboard fallback is a second, explicit choice for local actions only.** If selection reading
+  fails, a built-in developer utility asks before reading the current plain-text pasteboard value.
+  AI and custom actions never receive that value, and no clipboard text is read in the background.
 - **One run at a time.** Two overlapping runs would race for one selection, and the second would
   replace text the first had already changed. `QuickActionCoordinator` holds a single task and
   refuses a second while it lives; a generation token stops a task that finishes after being
@@ -105,6 +108,58 @@ it replaces. No diff, for the same reason.
 
 Custom instructions stay on this Mac and are excluded from settings backups, like chat's system
 prompt, because importing them would change results without the reader seeing them first.
+
+## Local DevOps utilities
+
+**Decode JWT**, **Calculate CIDR**, **Decode Kubernetes Secret**, **YAML ↔ JSON**, and **Explain cron**
+use the existing local developer-utility route. They require
+selected text, carry no AI prompt or model override, and send no data outside Tinycast.
+
+JWT accepts raw compact tokens or a `Bearer` prefix. It displays JSON header/payload objects and
+numeric `iat`, `nbf` and `exp` claims as UTC dates. Every decoded token says **Signature not verified**,
+including tokens with `alg=none` or an empty signature. This action does not validate or trust a token.
+Malformed tokens and unsupported date claims are rejected.
+
+CIDR accepts dotted IPv4 plus a prefix from `/0` through `/32`. It returns network, netmask,
+wildcard, broadcast, host range and host count. `/31` keeps both RFC 3021 addresses; `/32` keeps one.
+`/0` uses a wide counter and does not overflow. Counts stay plain decimal for copying.
+
+Secret decoding accepts Kubernetes Secret objects as JSON or the YAML subset below. It decodes
+`data` values from Base64, sorts keys, quotes single-line UTF-8 and preserves multiline UTF-8 in
+explicit-indent block scalars. Chomping markers preserve the final newline and trailing blank lines.
+Invalid UTF-8 and control-byte data render as `<N bytes binary>`. An invalid value rejects the whole
+conversion. JWT and Secret inputs are capped at 1 MiB before decoding.
+
+YAML conversion detects valid JSON first, including scalar fragments. JSON emits sorted block YAML
+with quoted keys and strings. YAML emits pretty JSON with sorted keys. Conversion returns no partial
+output when validation fails.
+
+The dependency-free YAML subset covers normal `kubectl get secret -o yaml` structures:
+
+- Nested string-key maps and block sequences, including indentless sequences and `- key: value`
+  mapping entries. Nested sequences use separate block lines.
+- JSON flow objects/arrays, JSON-style double-quoted strings, single-quoted strings with doubled
+  quotes, one-line plain strings, and comments that start after whitespace.
+- `true`, `false`, `null`, `~`, finite decimal/exponent numbers, and integers fitting Int64 or UInt64.
+  Plain dates and `yes`/`no`/`on`/`off` stay strings. Quote a numeric-looking value to preserve it as text.
+- A single document, optionally surrounded by one leading `---` and one trailing `...`.
+
+It rejects anchors, aliases, tags, complex/merge/duplicate/non-string keys, block scalars, multiline
+scalars/flow collections, non-JSON flow syntax, malformed indentation, and ambiguous numeric spellings
+such as leading-zero or base-prefixed numbers. Quote plain text containing unmatched brackets or
+reserved YAML prefixes. Input is capped at 1 MiB and nesting at 64 levels. This is a documented subset,
+not a general YAML implementation. `BlockYAMLParser` is also reusable by kubeconfig parsing without
+an external runtime or third-party package.
+
+Cron accepts exactly five numeric fields: minute, hour, day of month, month, and day of week.
+It supports `*`, comma lists, ascending ranges and positive steps (`*/5`, `10/5`, `10-30/5`).
+A value/step runs through the field maximum. Weekday `7` becomes Sunday (`0`). Names, aliases,
+seconds/year fields, malformed fields and out-of-range values are rejected. Minute steps have a short
+explanation; other expressions name every field and its values. Restricted day-of-month and
+weekday conditions use cron OR semantics. No next date or timezone is inferred, and no work is scheduled.
+
+The standalone `developer-utility-test` harness checks conversion and parsing. `quick-action-test`
+checks the local policy, empty prompts and stable command-ID round trips.
 
 ## Custom actions
 
@@ -244,6 +299,10 @@ false-positives when the same text was already on the clipboard.
 Copying is the fallback and never the first try: it synthesises a keystroke into somebody else's app.
 When both tiers come back empty, only an Accessibility result of `.empty` justifies "nothing is
 selected"; otherwise the app told us nothing either way and says so.
+
+If selection reading still fails, a built-in local developer utility offers the current clipboard text
+after a separate confirmation. It reads the pasteboard only after that choice, applies the same input
+limit, and does not offer the fallback to AI or custom actions.
 
 Quicklinks and snippets read `{selection}` through the same two tiers, with one rule of their own:
 the ⌘C is sent only when the expanded template reads the selection. A snippet's keyword expansion

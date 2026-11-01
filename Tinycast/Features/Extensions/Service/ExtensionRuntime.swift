@@ -151,11 +151,15 @@ final class ExtensionRuntime: @unchecked Sendable {
         }
     }
 
-    func stop(session: String) async {
+    func unmount(session: String) async {
         await onQueue { context in
             _ = context.objectForKeyedSubscript("__tinycast")?
                 .invokeMethod("stop", withArguments: [session])
         }
+    }
+
+    func stop(session: String) async {
+        await unmount(session: session)
         queue.async { self.nodeShims.closeFiles() }
     }
 

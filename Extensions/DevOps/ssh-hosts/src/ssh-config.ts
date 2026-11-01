@@ -47,6 +47,10 @@ export function sshArguments(alias: string): string[] {
   if(!aliasPattern.test(alias)) throw new Error("Choose a valid SSH host alias");
   return ["--",alias];
 }
+export function sshConfigArguments(alias: string): string[] {
+  if(!aliasPattern.test(alias)) throw new Error("Choose a valid SSH host alias");
+  return ["-G",alias];
+}
 export function parseInventoryAliases(text: string): string[] {
   const data=JSON.parse(text); const result: string[]=[];
   for(const [name,group] of Object.entries(data)) if(name!=="_meta" && group && typeof group==="object") for(const host of (group as any).hosts ?? []) if(typeof host==="string" && aliasPattern.test(host)) result.push(host);

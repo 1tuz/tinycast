@@ -22,6 +22,7 @@ extension SettingsAnchor {
     static let generalCompactShortcuts = Self(tab: .general, title: "Compact Shortcuts")
     static let generalWorkflows = Self(tab: .general, title: "Workflows")
     static let generalCalculator = Self(tab: .general, title: "Calculator")
+    static let generalKubernetes = Self(tab: .general, title: "Kubernetes")
     static let generalGeneral = Self(tab: .general, title: "General")
 
     static let applicationsSearchScopes = Self(tab: .applications, title: "Search Scopes")

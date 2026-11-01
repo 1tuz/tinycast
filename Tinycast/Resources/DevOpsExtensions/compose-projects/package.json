@@ -1,0 +1,31 @@
+{
+  "name": "compose-projects",
+  "title": "Compose Projects",
+  "description": "Local Compose Projects using your installed CLI and configuration.",
+  "author": "tinycast",
+  "version": "1.0.0",
+  "platforms": [
+    "macOS"
+  ],
+  "categories": [
+    "Developer Tools"
+  ],
+  "commands": [
+    {
+      "name": "index",
+      "title": "Compose Projects",
+      "description": "Open Compose Projects",
+      "mode": "view",
+      "devOpsCategory": "docker"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "dockerContext",
+      "title": "Docker context",
+      "type": "textfield",
+      "required": false,
+      "default": "default"
+    }
+  ]
+}

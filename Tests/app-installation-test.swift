@@ -538,6 +538,7 @@ enum IconCache {
 }
 enum CommandID: String, Sendable {
     case fixture
+    var devOpsCategory: DevOpsCommandCategory? { nil }
     var sfSymbol: String { "" }
     var hotKeyAction: HotKeyAction? { nil }
     var isQueryDriven: Bool { false }
@@ -554,6 +555,7 @@ enum HotKeyAction: Hashable, Sendable {
     case app(bundleID: String), settingsPane(bundleID: String), quickAction(id: UUID)
     case customCommand(id: UUID), systemAction(id: SystemAction.ID), windowCommand(id: WindowCommand.ID)
     case customWindowSize(id: UUID), windowLayout(id: UUID), windowRoom(id: UUID), quicklink(id: UUID)
+    case workflow(id: UUID)
     case appleShortcut(id: UUID), snippet(id: UUID), extensionCommand(entryID: String)
 }
 struct OtherEntry<Tag: Sendable>: Sendable {
@@ -564,9 +566,15 @@ struct OtherEntry<Tag: Sendable>: Sendable {
     var isEnabled = true
     var showsInRootSearch = true
     var link = ""
+    var entries: [WorkspaceEntry] = []
     static var sfSymbol: String { "" }
     static func id(fromEntryID id: String) -> UUID? { nil }
     static func precedes(_ lhs: Self, _ rhs: Self) -> Bool { lhs.name < rhs.name }
+}
+struct WorkspaceEntry: Sendable { var bundleID: String }
+@MainActor
+enum WindowInventory {
+    static func focusedDocumentURL(for app: NSRunningApplication) -> URL? { nil }
 }
 enum LayoutTag: Sendable {}
 enum RoomTag: Sendable {}

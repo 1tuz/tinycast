@@ -52,6 +52,11 @@ The first load creates the folder and nothing else: a new channel starts with an
 snippets only ever arrive from the editor or a Raycast import. Malformed Markdown is reported per file
 while valid files stay available.
 
+**Settings → Snippets** can also add four curated kubectl command templates. Namespace and resource
+arguments use the existing option chips. The templates are plain text: listing, importing and
+expanding them never starts `kubectl`; the command runs only if the user later executes it in a shell.
+Repeated imports skip templates whose command text is already in the library.
+
 The store runs only while the feature is enabled: launch starts it for an enabled feature, and a
 user who never enables snippets pays for no load, no directory watcher and no event tap.
 

@@ -253,11 +253,13 @@ function syncHostCall(api, method, args) {
       const exit = new Promise((done) =>
         child.on("close", (status, signal) => done({ stdout: "", stderr: "", status: status ?? 1, signal })),
       );
-      runningChildren.set(child.pid, { readers, exit });
+      runningChildren.set(child.pid, { child, readers, exit });
       return child.pid;
     }
     case "proc.kill":
       process.kill(args[0], args[1]);
+      return null;
+    case "proc.release":
       return null;
     case "proc.run": {
       const spec = args[0];
@@ -329,6 +331,20 @@ async function stubHostCall(api, method, args) {
       const exit = runningChildren.get(args[0])?.exit;
       runningChildren.delete(args[0]);
       return exit;
+    }
+    case "proc.writeStdin": {
+      const child = runningChildren.get(args[0])?.child;
+      if (!child) throw new Error("harness: unknown child");
+      await new Promise((resolve, reject) => {
+        child.stdin.write(Buffer.from(args[1], "base64"), (error) => error ? reject(error) : resolve());
+      });
+      return null;
+    }
+    case "proc.closeStdin": {
+      const child = runningChildren.get(args[0])?.child;
+      if (!child) throw new Error("harness: unknown child");
+      await new Promise((resolve, reject) => child.stdin.end((error) => error ? reject(error) : resolve()));
+      return null;
     }
     // Streams like the Swift side: one chunk per call, null at EOF.
     case "proc.read": {

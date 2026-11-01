@@ -15,7 +15,8 @@
       "name": "index",
       "title": "SSH Hosts",
       "description": "Open SSH Hosts",
-      "mode": "view"
+      "mode": "view",
+      "devOpsCategory": "networking"
     }
   ],
   "preferences": [

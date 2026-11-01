@@ -1,0 +1,31 @@
+{
+  "name": "ssh-hosts",
+  "title": "SSH Hosts",
+  "description": "Local SSH Hosts using your installed CLI and configuration.",
+  "author": "tinycast",
+  "version": "1.0.0",
+  "platforms": [
+    "macOS"
+  ],
+  "categories": [
+    "Developer Tools"
+  ],
+  "commands": [
+    {
+      "name": "index",
+      "title": "SSH Hosts",
+      "description": "Open SSH Hosts",
+      "mode": "view",
+      "devOpsCategory": "networking"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "inventoryPath",
+      "title": "Optional Ansible inventory path",
+      "type": "textfield",
+      "required": false,
+      "default": ""
+    }
+  ]
+}

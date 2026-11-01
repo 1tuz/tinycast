@@ -28,6 +28,7 @@ final class ExtensionMenuBarHost: ExtensionHostContext {
     var applicationURLs: [URL] { coordinator?.applicationURLs ?? [] }
 
     func enableInteraction() { isInteractive = true }
+    func disableInteraction() { isInteractive = false }
     func closeMainWindow(clearRootSearch: Bool) {}
     func reopenPalette() { coordinator?.reopenPalette(hasRunningCommand: false) }
     func popToRoot() {}

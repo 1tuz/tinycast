@@ -2,7 +2,7 @@ import { build } from "esbuild";
 import { mkdirSync, readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
-export const packageIDs = ["git-worktrees", "jira-key-actions", "compose-projects", "helm-releases", "vault-lookup", "ssh-hosts"];
+export const packageIDs = ["git-worktrees", "jira-key-actions", "compose-projects", "helm-releases", "vault-lookup", "ssh-hosts", "kube-lens"];
 const root = resolve(import.meta.dirname, "../..");
 const safeName = /^[a-z][a-z0-9-]*$/;
 export function validateManifest(manifest, id) {

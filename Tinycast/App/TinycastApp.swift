@@ -13,7 +13,7 @@ struct TinycastApp: App {
 
     private let appName = Bundle.main.appDisplayName
 
-    /// Two independent items: one preference each, no state either can read off the other.
+    /// Each status item follows its own feature preference.
     var body: some Scene {
         MenuBarExtra(isInserted: menuBarInsertion) {
             MenuBarMenu(appName: appName)
@@ -27,6 +27,29 @@ struct TinycastApp: App {
         } label: {
             CalendarMenuBarLabel(appName: appName)
         }
+
+        MenuBarExtra(isInserted: devOpsMenuBarInsertion) {
+            DevOpsMenuBarItem()
+                .environment(AppCore.shared.kubeContextCoordinator)
+                .environment(AppCore.shared)
+        } label: {
+            DevOpsMenuBarLabel().environment(AppCore.shared.kubeContextCoordinator)
+        }
+    }
+
+    private var devOpsMenuBarInsertion: Binding<Bool> {
+        let store = AppCore.shared.kubeContexts
+        let manager = AppCore.shared.portForwardManager
+        let inserted = store.isEnabled || manager.hasActiveSessions
+        return Binding(
+            get: { inserted },
+            set: { value in
+                if value {
+                    if !store.isEnabled { store.setEnabled(true) }
+                } else if !manager.hasActiveSessions {
+                    store.setEnabled(false)
+                }
+            })
     }
 
     /// Read in `body` for Observation; SwiftUI echoes the binding back, so only a change writes.

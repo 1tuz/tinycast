@@ -155,6 +155,7 @@ struct ExtensionCommand: Sendable, Hashable, Identifiable {
     let disabledByDefault: Bool
     let preferences: [ExtensionPreferenceSchema]
     let arguments: [ExtensionCommandArgument]
+    let devOpsCategory: DevOpsCommandCategory?
 
     /// Unique within its extension; `ExtensionCommandRef` pairs it with the owner for a global id.
     var id: String { name }
@@ -187,6 +188,7 @@ struct ExtensionCommand: Sendable, Hashable, Identifiable {
         disabledByDefault = dict["disabledByDefault"] as? Bool ?? false
         preferences = (dict["preferences"] as? [Any] ?? []).compactMap(ExtensionPreferenceSchema.init(json:))
         arguments = (dict["arguments"] as? [Any] ?? []).compactMap(ExtensionCommandArgument.init(json:))
+        devOpsCategory = (dict["devOpsCategory"] as? String).flatMap(DevOpsCommandCategory.init(rawValue:))
     }
 }
 

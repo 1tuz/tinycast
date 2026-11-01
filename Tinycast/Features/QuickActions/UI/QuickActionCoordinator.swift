@@ -238,8 +238,34 @@ final class QuickActionCoordinator {
                 }
             }
         } catch let failure as QuickActionFailure {
-            reportRefusal(failure)
-            return
+            guard action.builtInAction?.developerUtility != nil,
+                failure != .tooLong
+            else {
+                reportRefusal(failure)
+                return
+            }
+            guard
+                await core.confirm(
+                    title: String(localized: "Use Clipboard Text?"),
+                    message: String(
+                        localized:
+                            "No selected text is available. Use the current clipboard text for this local action? The clipboard is read only after you confirm."
+                    ),
+                    symbol: action.symbol, confirmTitle: String(localized: "Use Clipboard Text"),
+                    tone: .neutral, confirmRole: .standard)
+            else { return }
+            do {
+                guard let clipboardText = NSPasteboard.general.string(forType: .string) else {
+                    throw QuickActionFailure.noSelection
+                }
+                selection = try QuickActionRunner.accepted(clipboardText)
+            } catch let clipboardFailure as QuickActionFailure {
+                reportRefusal(clipboardFailure)
+                return
+            } catch {
+                core.showMessage(error.localizedDescription, tone: .danger)
+                return
+            }
         } catch {
             core.showMessage(error.localizedDescription, tone: .danger)
             return

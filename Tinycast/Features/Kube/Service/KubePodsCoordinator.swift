@@ -8,12 +8,22 @@ struct KubeTerminalCommand: Sendable {
     let contextName: String
 }
 
-enum KubePodsError: Error, Sendable, Equatable {
+enum KubePodsError: LocalizedError, Sendable, Equatable {
     case noSelectedContext
     case kubectlUnavailable
     case staleSelection
     case commandFailed(String)
     case policy(KubeContextPolicyError)
+
+    var errorDescription: String? {
+        switch self {
+        case .noSelectedContext: String(localized: "Choose a Kubernetes context first.")
+        case .kubectlUnavailable: String(localized: "kubectl was not found in your Terminal environment.")
+        case .staleSelection: String(localized: "The selected context changed. Reload the pod list.")
+        case .commandFailed(let message): message
+        case .policy(let error): String(describing: error)
+        }
+    }
 }
 
 @MainActor

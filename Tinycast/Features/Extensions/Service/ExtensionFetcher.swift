@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import Synchronization
 
 /// Bodies cross the bridge base64-encoded, so binary responses survive.
@@ -163,6 +164,7 @@ enum ExtensionAsyncProcess {
     struct Child: Sendable {
         let task: Process
         let exit: ProcessExit
+        let stdin: Pipe?
         let stdout: Pipe
         let stderr: Pipe
 
@@ -183,19 +185,69 @@ enum ExtensionAsyncProcess {
             ]
         }
 
-        /// Signals the pid rather than the `Process`, which a `@Sendable` timer handler cannot capture.
+        /// A timed-out process can leave descendants holding its output pipes open.
         fileprivate func terminationWatchdog(after seconds: Double) -> DispatchSourceTimer {
             let pid = task.processIdentifier
             let timer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
             timer.schedule(deadline: .now() + seconds)
-            timer.setEventHandler { kill(pid, SIGTERM) }
+            timer.setEventHandler { ExtensionAsyncProcess.terminateGroup(pid) }
             timer.resume()
             return timer
         }
     }
 
-    /// Started by `enqueue` and not yet claimed by `wait`, keyed by pid.
-    private static let uncollected = Mutex<[Int32: (child: Child, watchdog: DispatchSourceTimer?)]>([:])
+    private struct Entry: Sendable {
+        let child: Child
+        var watchdog: DispatchSourceTimer?
+        var waitStarted = false
+    }
+
+    /// Retained until `release`, so runtime teardown can still signal a child during `wait`.
+    private static let children = Mutex<[Int32: Entry]>([:])
+
+    fileprivate static func terminateGroup(_ pid: Int32) {
+        guard Darwin.kill(-pid, SIGTERM) == 0 else { return }
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + .milliseconds(500)) {
+            _ = Darwin.kill(-pid, SIGKILL)
+        }
+    }
+
+    static func writeStdin(_ arguments: [RenderValue]) async throws {
+        guard let pid = arguments.first?.doubleValue.flatMap({ Int32(exactly: $0) }),
+            let data = arguments[safe: 1]?.stringValue.flatMap({ Data(base64Encoded: $0) }),
+            let stdin = children.withLock({ $0[pid]?.child.stdin })
+        else { throw ProcessError.notStarted }
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(with: Result { try stdin.fileHandleForWriting.write(contentsOf: data) })
+            }
+        }
+    }
+
+    static func closeStdin(_ arguments: [RenderValue]) async throws {
+        guard let pid = arguments.first?.doubleValue.flatMap({ Int32(exactly: $0) }),
+            let stdin = children.withLock({ $0[pid]?.child.stdin })
+        else { throw ProcessError.notStarted }
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(with: Result { try stdin.fileHandleForWriting.close() })
+            }
+        }
+    }
+
+    static func terminate(_ pids: Set<Int32>) {
+        let entries = children.withLock { values -> [(Int32, Entry)] in
+            pids.compactMap { pid in
+                values.removeValue(forKey: pid).map { (pid, $0) }
+            }
+        }
+        for (pid, entry) in entries {
+            entry.watchdog?.cancel()
+            let child = entry.child
+            try? child.stdin?.fileHandleForWriting.close()
+            terminateGroup(pid)
+        }
+    }
 
     /// An app bundle inherits no login shell, so a bare `brew` would otherwise fail.
     static func resolveExecutable(_ command: String) -> URL? {
@@ -223,13 +275,15 @@ enum ExtensionAsyncProcess {
     static func enqueue(_ child: Child, timeout: Double?) {
         // Armed at launch: `wait` only starts once streaming output has ended.
         let watchdog = timeout.flatMap { $0 > 0 ? child.terminationWatchdog(after: $0 / 1000) : nil }
-        uncollected.withLock { $0[child.task.processIdentifier] = (child, watchdog) }
+        children.withLock {
+            $0[child.task.processIdentifier] = Entry(child: child, watchdog: watchdog)
+        }
     }
 
     /// Next chunk of fd 1 or 2, nil at EOF; `wait` then finds both pipes drained.
     static func read(_ arguments: [RenderValue]) async throws -> String? {
         guard let pid = arguments.first?.doubleValue.flatMap({ Int32(exactly: $0) }),
-            let child = uncollected.withLock({ $0[pid]?.child })
+            let child = children.withLock({ $0[pid]?.child })
         else { throw ProcessError.notStarted }
         let pipe = arguments[safe: 1]?.doubleValue == 2 ? child.stderr : child.stdout
         return await withCheckedContinuation { continuation in
@@ -240,19 +294,33 @@ enum ExtensionAsyncProcess {
         }
     }
 
+    static func release(_ arguments: [RenderValue]) {
+        guard let pid = arguments.first?.doubleValue.flatMap({ Int32(exactly: $0) }) else { return }
+        children.withLock { $0.removeValue(forKey: pid)?.watchdog?.cancel() }
+    }
+
     static func wait(_ pid: RenderValue?) async throws -> [String: Any] {
         guard let pid = pid?.doubleValue.flatMap({ Int32(exactly: $0) }),
-            let entry = uncollected.withLock({ $0.removeValue(forKey: pid) })
+            let child = children.withLock({ entries -> Child? in
+                guard var entry = entries[pid], !entry.waitStarted else { return nil }
+                entry.waitStarted = true
+                entries[pid] = entry
+                return entry.child
+            })
         else { throw ProcessError.notStarted }
 
-        let child = entry.child
         let result = await withCheckedContinuation { continuation in
             // The drain blocks until the child closes its output, which can be minutes away.
             DispatchQueue.global(qos: .userInitiated).async {
                 continuation.resume(returning: child.collect(timeout: nil))
             }
         }
-        entry.watchdog?.cancel()
+        children.withLock { entries in
+            guard var entry = entries[pid] else { return }
+            entry.watchdog?.cancel()
+            entry.watchdog = nil
+            entries[pid] = entry
+        }
         return result
     }
 }

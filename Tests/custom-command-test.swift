@@ -388,6 +388,46 @@ struct CustomCommandTests {
         check("a streamed run reports what it printed", simple.log.contains("captured"))
         check("a streamed run reports a clean exit", simple.result?.succeeded == true)
 
+        let argvMarker = FileManager.default.temporaryDirectory
+            .appendingPathComponent("tinycast-argv-(UUID().uuidString)")
+        let argvPayload = "; /usr/bin/touch \(argvMarker.path)"
+        let direct = await collect(
+            ShellCommandRunner.stream(
+                executable: URL(fileURLWithPath: "/usr/bin/printf"),
+                arguments: ["%s", argvPayload]))
+        check("direct streaming preserves argv as data", direct.log == argvPayload)
+        check("direct streaming does not execute shell syntax", !FileManager.default.fileExists(atPath: argvMarker.path))
+        check("direct streaming reports the child exit", direct.result?.succeeded == true)
+        let invalidArgv = await collect(
+            ShellCommandRunner.stream(
+                executable: URL(fileURLWithPath: "/usr/bin/printf"), arguments: ["bad\0arg"]))
+        check("direct streaming rejects NUL arguments", invalidArgv.result?.succeeded == false)
+
+        let terminalPayload = "quote ' ; /usr/bin/touch /tmp/tinycast-terminal-injection"
+        var terminalFile: URL?
+        var terminalOutputText: String?
+        do {
+            let terminalScript = try TerminalCommandLauncher.scriptText(
+                executable: "/usr/bin/printf", arguments: ["%s", terminalPayload])
+            let script = FileManager.default.temporaryDirectory
+                .appendingPathComponent("tinycast-terminal-\(UUID().uuidString).command")
+            terminalFile = script
+            try Data(terminalScript.utf8).write(to: script)
+            let process = Process()
+            let output = Pipe()
+            process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            process.arguments = [script.path]
+            process.standardOutput = output
+            process.standardError = FileHandle.nullDevice
+            try process.run()
+            let bytes = output.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            terminalOutputText = String(decoding: bytes, as: UTF8.self)
+        } catch {}
+        check("Terminal launcher preserves argv boundaries", terminalOutputText == terminalPayload)
+        check("Terminal launcher script removes its temporary file", terminalFile.map { !FileManager.default.fileExists(atPath: $0.path) } == true)
+        check("Terminal launcher rejects NUL arguments", (try? TerminalCommandLauncher.scriptText(executable: "/bin/true", arguments: ["bad\0arg"])) == nil)
+
         // The reported bug: brew writes `==>` to stderr, which must not reorder.
         let ordered = await collect(
             ShellCommandRunner.stream("printf 'one\\n'; printf 'two\\n' >&2; printf 'three\\n'"))

@@ -39,7 +39,8 @@ enum CommandCatalog {
         AppEntry(
             id: id.rawValue, name: id.name, url: url ?? placeholderURL(id), bundleID: nil,
             kind: id.entryKind, settingsOwner: id.owner, subtitle: subtitle,
-            alternateTitles: [id.englishName])
+            alternateTitles: [id.englishName] + id.searchKeywords,
+            devOpsCategory: id.devOpsCategory)
     }
 
     nonisolated private static func placeholderURL(_ id: CommandID) -> URL {

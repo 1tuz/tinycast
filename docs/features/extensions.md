@@ -12,17 +12,19 @@ produces, rendered natively into the palette. No Electron, no browser, no Node.j
 
 ## Invariants
 
-- **At most two commands run concurrently.** The palette and scheduled `no-view` refreshes share one
-  runtime; a foreground launch preempts its background refresh. Menu commands use a separate runtime,
-  serialized by `ExtensionMenuBarManager`. Every menu session has its own bridge and an immutable
-  extension namespace, so storage, preferences and command launches cannot target the palette's
-  extension. Shutdown cancels pending host tasks; a generation check rejects replies from old contexts.
+- **At most two commands execute concurrently.** The palette and scheduled `no-view` refreshes share
+  one runtime; a foreground launch preempts its background refresh. Menu sessions use a separate lane,
+  serialized by `ExtensionMenuBarManager`. Each activated menu command retains its own runtime between
+  sessions. Its bridge keeps an immutable extension namespace, so storage, preferences and command
+  launches cannot target the palette's extension. Shutdown cancels pending host tasks; a generation
+  check rejects replies from old contexts.
 - **Bridges share one private HTTP transport, never execution state.** Cookies, credential storage and
   URL caching are disabled. Individual task cancellation leaves other requests running; releasing the
   fetcher invalidates its session so CFNetwork does not retain discarded connections and sessions.
-- **An idle menu item holds no JavaScript.** Once `isLoading` clears, keep only the native button and
-  its snapshot. Reload a fresh context when its menu opens; retain it until the menu closes and any
-  asynchronous action and host calls finish. Never keep a context alive to preserve handlers.
+- **An activated menu command keeps its JavaScript context.** Each launch mounts a new menu session
+  into that command's runtime. Once the session settles, unmount its React tree and clear its handlers,
+  but retain the runtime while the menu item stays enabled. Disabling the command, uninstalling it,
+  turning extensions off or stopping the manager shuts down that runtime and its child processes.
 - **`ExtensionRuntime`'s `@unchecked Sendable` is load-bearing.** Every `JSContext` / `JSValue` touch
   happens on its private serial queue, and only plain `Sendable` values (`RenderValue`, `RenderTree`,
   JSON strings) cross in or out. Keep that boundary.
@@ -129,8 +131,8 @@ Two host-call flavours:
 | `Service/ExtensionCatalog.swift`              | discovery on disk, install, uninstall, import-from-Raycast                                                 |
 | `Service/ExtensionCleanup.swift`              | the build workspace's name, the launch sweep, and reclaiming orphans                                       |
 | `Service/ExtensionManager.swift`              | the single owner: installed set, foreground session, no-view refreshes, menu-bar manager, launcher entries |
-| `Service/ExtensionMenuBarManager.swift`       | serialized refreshes, short-lived menu sessions and their deadlines                                        |
-| `Service/ExtensionMenuBarHost.swift`          | immutable per-session namespace and menu-specific host behavior                                            |
+| `Service/ExtensionMenuBarManager.swift`       | serialized menu sessions, persistent command runtimes and their deadlines                                 |
+| `Service/ExtensionMenuBarHost.swift`          | immutable command namespace and menu-specific host behavior                                                |
 | `UI/ExtensionMenuBarController.swift`         | native `NSStatusItem` and `NSMenu` rendering and dispatch                                                  |
 | `UI/ExtensionMenuBarImage.swift`              | small native icons with light/dark variants                                                                |
 | `Model/ExtensionManifest.swift`               | `package.json` → commands, preferences, arguments                                                          |
@@ -149,17 +151,21 @@ touch happens on one private serial queue, and only plain `Sendable` values cros
 (`RenderValue` for arguments, `RenderTree` for output, JSON strings for results). That keeps extension
 evaluation and the blocking shims off the main actor.
 
-**One foreground command at a time, one context per command.** Starting a foreground command stops
-its predecessor and throws the whole `JSContext` away; the next launch boots a fresh one (~7 ms warm,
-measured). Scheduled `no-view` refreshes borrow this runtime while the palette is idle and yield to a
-foreground launch. Menu commands use a separate transient lane owned by the extension feature.
+**One foreground command at a time, one context per foreground run.** Starting a foreground command
+stops its predecessor and throws the whole `JSContext` away; the next launch boots a fresh one (~7 ms
+warm, measured). Scheduled `no-view` refreshes borrow this runtime while the palette is idle and yield
+to a foreground launch. Menu commands use a separate serialized lane owned by the extension feature.
+Each activated menu command lazily creates one context and keeps it until that command is disabled,
+removed or the extension manager stops.
 
-Reusing a context was subtly broken. Timers are global and React's scheduler drives every commit
-through `setTimeout`, so cancelling an extension's leftover timers on teardown also cancelled the
-scheduler's — which latches `isMessageLoopRunning` and silently stops _every later session_ from
-committing. The symptom was a command that worked once and then hung on "Starting…" forever. Leaving
-the timers alone instead leaks any interval an extension forgot to clear. Discarding the context avoids
-both, and as a bonus no module-level state in an extension bundle survives into its next run.
+Reusing the foreground context was subtly broken. Timers are global and React's scheduler drives every
+commit through `setTimeout`, so cancelling an extension's leftover timers on teardown also cancelled
+the scheduler's — which latches `isMessageLoopRunning` and silently stops _every later session_ from
+committing. The symptom was a command that worked once and then hung on "Starting…" forever. The
+foreground runtime is discarded to avoid that and to keep module state from crossing launches. A
+menu-bar runtime has a longer, command-scoped lifetime: each session unmounts its React tree while the
+shared scheduler stays available for the next launch. Shutting down the command cancels its timers,
+host tasks and child processes with the whole context.
 
 Each runtime owns its bridge. Foreground calls use `ExtensionManager.activeExtensionName`; a menu
 bridge uses `ExtensionMenuBarHost`'s captured extension name. A late response cannot settle a call
@@ -188,24 +194,25 @@ The menu is attached to the status item, so AppKit owns tracking: it positions a
 and a click on any other status item hands off to that item the way two native menus do. Attaching it
 once at init rather than per snapshot keeps the first click working before any render arrives.
 Native rows and small icons stay prepared between runs;
-teardown clears handler IDs while preserving action appearance. A click before the new runtime is
+unmounting clears handler IDs while preserving action appearance. A click before the new session is
 ready waits for a fresh callback with the same section/submenu path, label and shortcut, including an alternate's primary
 item. Changed or ambiguous items ask the user to reopen the menu instead of dispatching an old handler.
-Opening reuses those rows while a fresh context loads. Only a menu without prepared content shows a
+Opening reuses those rows while a new React surface mounts in the retained context. Only a menu without prepared content shows a
 loading row, prepared before native menu sizing. Subtitles follow the title on the same line. React
 updates reconcile text and callbacks immediately, fill reserved icon slots asynchronously, and preserve
 settled content while loading. Button changes wait until the menu closes so its anchor does not move
 under the pointer.
 The session stays alive while the menu is open. After a settled render or menu
-closure, a 100 ms coalescing delay lets React commit effects and host calls drain before releasing the
-context; a further 50 ms after the drain lets their results render. The runtime queue drains
-temporary Objective-C objects after each work item, including
-context teardown. Loading and closed-menu actions have a 60-second deadline; an open, settled menu is exempt.
+closure, a 100 ms coalescing delay lets React commit effects and host calls drain before unmounting the
+session; a further 50 ms after the drain lets their results render. The command's JavaScript context
+remains available for its next launch, but the React tree and its handler IDs do not. The runtime queue
+drains temporary Objective-C objects after each work item, including context teardown. Loading and
+closed-menu actions have a 60-second deadline; an open, settled menu is exempt.
 This bounds asynchronous work, but cannot interrupt an extension stuck in synchronous JavaScript or a
 blocking Node shim on the runtime queue.
 
-A saved button restores after relaunch without executing JavaScript; only its next due refresh boots
-the runtime. Activation and the saved button live on the command's own record in
+A saved button restores after relaunch without executing JavaScript; only its next due refresh or menu
+open boots the runtime. Activation and the saved button live on the command's own record in
 `extension-commands.json`, which is channel-local Application Support data and is excluded from
 settings backups. The command's **Show in menu bar** toggle, uninstall, and disabling extensions
 all tear down the corresponding native items and work. Removing a menu item leaves the extension's
@@ -699,8 +706,9 @@ redirect lands.
 
 **Node built-ins** — `path`, `fs` (+ `fs/promises`, `createReadStream`/`createWriteStream`, a snapshot-backed `opendir`, and
 the descriptor calls `tar` unpacks through), `os`,
-`child_process` (`exec`, `execFile`, `execSync`, `execFileSync`, `spawnSync`, and a streaming `spawn`,
-each async form reporting the child's real `pid` for `process.kill` — Timers pauses that way),
+`child_process` (`exec`, `execFile`, `execSync`, `execFileSync`, `spawnSync`, and a streaming `spawn`
+that takes an executable and argument array, rejects `shell: true`, and has writable stdin,
+backpressure-aware stdout/stderr, and the child's real `pid` for `process.kill` — Timers pauses that way),
 `crypto` (hashes, HMAC, PBKDF2, AES-CBC/ECB, random, UUID), `zlib` (gzip/zlib/raw deflate, both
 directions, plus `create*` streams that buffer until `end`), `http`/`https` (`request`, `get` and `Agent`, buffered over the same URLSession bridge
 as `fetch`, with `socketPath` for Unix-socket HTTP), `stream` (`Readable`, `Writable`, `Duplex`, `Transform`, `PassThrough`, `pipeline`,
@@ -823,7 +831,6 @@ extensions / 114 of 147 view commands** boot and render. `Scripts/raycast-runtim
 | **`AI`, `BrowserExtension`, `WindowManagement`**             | Raycast services with no local equivalent. Importing them works; calling one throws with a clear reason.                                                                                                                                                                                                                                     |
 | **A WebSocket to a host with a certificate macOS distrusts** | `ws`'s `rejectUnauthorized: false` is ignored — URLSession validates the chain either way.                                                                                                                                                                                                                                                   |
 | **Aborting a `fetch` already in flight**                     | `AbortSignal` is complete — `timeout`, `abort` and `any` included — and `fetch` checks it on both sides of the host call, so a caller gets its `AbortError`. The request itself still runs to completion: the signal isn't carried across the bridge, so nothing cancels the `URLSessionTask`. A timeout bounds the caller, not the network. |
-| **Interactive `spawn` stdin**                                | stdout and stderr stream, but stdin is sent once as the child starts: whatever was written in the same tick. A later `stdin.write` is dropped.                                                                                                                                                                                               |
 | **`net` / `tls`**                                            | Resolve but throw on use. Nothing bridges a raw socket; a bundled `ws` reaches the network through the WebSocket bridge instead. `tls.TLSSocket` is the one exception: `http2-wrapper`, inside `got`, derives a class from one at import time, so it constructs as an inert duplex.                                                          |
 | **Streaming HTTP**                                           | The bridge answers a request with the whole body at once, so `http.request` delivers one chunk and `Response.body` replays bytes that already arrived. Server-sent events, network-level progress and backpressure onto the socket are all out of reach; `stream` itself is real enough to carry them the day the bridge is.                 |
 | **Tool/AI-extension entry points (`tools/`)**                | Not surfaced.                                                                                                                                                                                                                                                                                                                                |

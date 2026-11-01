@@ -156,6 +156,12 @@ enum SettingsSearchCatalog {
             group: .generalWorkflows, "Workflows",
             keywords: ["automation", "schedule", "clipboard", "folder change", "hotkey"]),
         .init(
+            .generalKubernetes, "Enable Kube Context Guard",
+            keywords: ["kubernetes", "kubectl", "kubeconfig", "prod", "context"]),
+        .init(.generalKubernetes, "Context", keywords: ["kubernetes", "cluster", "kubeconfig"]),
+        .init(.generalKubernetes, "Namespace", keywords: ["kubernetes", "kubectl"]),
+        .init(.generalKubernetes, "Production contexts", keywords: ["kubernetes", "prod", "guard", "read only"]),
+        .init(
             .generalAppearance, "Follow the cursor across displays",
             keywords: ["monitor", "screen", "pointer", "multi display"]),
         .init(
@@ -340,7 +346,8 @@ enum SettingsSearchCatalog {
             keywords: ["new", "custom", "prompt", "instructions", "alias"]),
         .init(
             .quickActionsDeveloper, "Enable developer actions",
-            keywords: ["local", "base64", "json", "hash", "url", "color", "uuid"]),
+            keywords: ["local", "base64", "json", "hash", "url", "color", "uuid",
+                       "jwt", "bearer", "token", "cidr", "subnet", "kubernetes", "k8s", "secret", "yaml", "cron"]),
         .init(
             .quickActionsModel, "Model",
             keywords: ["llm", "ai", "default"]),

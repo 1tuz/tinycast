@@ -102,6 +102,8 @@ struct GeneralSettingsView: View {
 
             WorkflowSettingsSection()
 
+            KubeContextSettingsSection()
+
             HyperKeySettingsSection()
 
             Section {

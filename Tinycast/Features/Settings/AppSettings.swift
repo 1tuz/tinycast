@@ -473,6 +473,22 @@ final class AppSettings {
         }
     }
 
+    var kubeContextGuardEnabled: Bool {
+        didSet { defaults.set(kubeContextGuardEnabled, forKey: Key.kubeContextGuardEnabled.rawValue) }
+    }
+
+    var kubeSelectedContext: String? {
+        didSet { defaults.set(kubeSelectedContext, forKey: Key.kubeSelectedContext.rawValue) }
+    }
+
+    var kubeSelectedNamespace: String {
+        didSet { defaults.set(kubeSelectedNamespace, forKey: Key.kubeSelectedNamespace.rawValue) }
+    }
+
+    var kubeProductionContexts: [String] {
+        didSet { defaults.set(kubeProductionContexts, forKey: Key.kubeProductionContexts.rawValue) }
+    }
+
     /// Doubles as calendar-access consent, so only `CalendarCoordinator` may write it.
     var calendarEnabled: Bool {
         didSet { defaults.set(calendarEnabled, forKey: Key.calendarEnabled.rawValue) }
@@ -798,6 +814,10 @@ final class AppSettings {
             .flatMap(ExtensionPackageManager.init(rawValue:)) ?? .automatic
         extensionCustomSearchPaths =
             defaults.stringArray(forKey: Key.extensionCustomSearchPaths.rawValue) ?? []
+        kubeContextGuardEnabled = defaults.bool(forKey: Key.kubeContextGuardEnabled.rawValue)
+        kubeSelectedContext = defaults.string(forKey: Key.kubeSelectedContext.rawValue)
+        kubeSelectedNamespace = defaults.string(forKey: Key.kubeSelectedNamespace.rawValue) ?? "default"
+        kubeProductionContexts = defaults.stringArray(forKey: Key.kubeProductionContexts.rawValue) ?? []
         // Opt-in, like extensions: until it is asked for, EventKit is never loaded.
         calendarEnabled = defaults.bool(forKey: Key.calendarEnabled.rawValue)
         calendarShowInLauncher =

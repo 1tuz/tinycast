@@ -1,0 +1,38 @@
+{
+  "name": "helm-releases",
+  "title": "Helm Releases",
+  "description": "Local Helm Releases using your installed CLI and configuration.",
+  "author": "tinycast",
+  "version": "1.0.0",
+  "platforms": [
+    "macOS"
+  ],
+  "categories": [
+    "Developer Tools"
+  ],
+  "commands": [
+    {
+      "name": "index",
+      "title": "Helm Releases",
+      "description": "Open Helm Releases",
+      "mode": "view",
+      "devOpsCategory": "kubernetes"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "kubeContext",
+      "title": "Kubernetes context",
+      "type": "textfield",
+      "required": false,
+      "default": ""
+    },
+    {
+      "name": "productionContexts",
+      "title": "Production contexts (one exact name per line)",
+      "type": "textfield",
+      "required": false,
+      "default": ""
+    }
+  ]
+}

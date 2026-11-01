@@ -16,6 +16,7 @@ struct QuickActionTests {
     }
 
     static func main() {
+        devOpsActionsStayLocal()
         everyActionDescribesItself()
         promptsForbidCommentaryAndInjection()
         previewChoicesRememberOnlyWhatWasChosen()
@@ -210,8 +211,8 @@ struct QuickActionTests {
                 == [.fixGrammar, .rewrite, .translate, .summarize],
             "only the four text-generation actions use an AI provider")
         expect(
-            BuiltInQuickAction.allCases.filter { !$0.requiresAI }.count == 15,
-            "all fifteen developer utilities stay local")
+            BuiltInQuickAction.allCases.filter { !$0.requiresAI }.count == 20,
+            "all twenty developer utilities stay local")
 
         // Summarize answers a question about the text; replacing it unasked would destroy the text.
         expect(BuiltInQuickAction.summarize.alwaysPreviews, "Summarize always shows its panel")
@@ -497,4 +498,24 @@ struct QuickActionTests {
         expect(writeFailure == .storageUnavailable, "a write that cannot land is reported")
         expect(unwritable.actions.isEmpty, "and the list never moved ahead of the file")
     }
+    static func devOpsActionsStayLocal() {
+        for (raw, identifier) in [("decodeJWT", "command:decode-jwt"), ("calculateCIDR", "command:calculate-cidr"),
+                                  ("decodeKubernetesSecret", "command:decode-kubernetes-secret"),
+                                  ("convertYAMLJSON", "command:convert-yaml-json"),
+                                  ("explainCron", "command:explain-cron")] {
+            guard let action = BuiltInQuickAction(rawValue: raw) else {
+                expect(false, "missing DevOps action: \(raw)")
+                continue
+            }
+            expect(!action.requiresAI, "DevOps actions require no AI")
+            expect(action.developerUtility?.requiresSelection == true, "DevOps actions need input")
+            expect(!action.title.isEmpty && !action.symbol.isEmpty, "DevOps actions have title and symbol")
+            expect(CommandID(action).rawValue == identifier, "DevOps command has stable id")
+            expect(CommandID(rawValue: identifier)?.builtInQuickAction == action, "DevOps command round trips")
+            expect(CommandID(action).sfSymbol == action.symbol, "DevOps launcher symbol matches action")
+            expect(!CommandID(action).searchKeywords.isEmpty, "DevOps command has technical search keywords")
+            expect(QuickActionPrompt.instructions(for: action).isEmpty, "DevOps action carries no AI prompt")
+        }
+    }
+
 }

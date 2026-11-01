@@ -133,6 +133,7 @@ export const raycastApi = {
   popToRoot: system.popToRoot,
   clearSearchBar: system.clearSearchBar,
   open: system.open,
+  openTerminal: system.openTerminal,
   trash: system.trash,
   showInFinder: system.showInFinder,
   getApplications: system.getApplications,

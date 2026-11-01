@@ -108,7 +108,8 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
                             priority: type == .background ? .utility : .userInitiated),
                         stop: {
                             bridge.context = nil
-                        }, enableInteraction: { host.enableInteraction() })
+                        }, enableInteraction: { host.enableInteraction() },
+                        disableInteraction: { host.disableInteraction() })
                 },
                 onError: { [weak coordinator] message, owner, needsPreferences in
                     coordinator?.showHUD(message)
@@ -187,7 +188,8 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
                 lastError: metadata.lastError),
             keywords: command.keywords,
             iconOverride: icon(for: command, in: owner, appearance: appearance),
-            ownerName: owner.title, installedAt: owner.installedAt)
+            ownerName: owner.title, devOpsCategory: command.devOpsCategory,
+            installedAt: owner.installedAt)
     }
 
     /// Persist and re-publish, so rows change under the user rather than on the next scan.
@@ -219,6 +221,15 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
 
     func install(from source: URL) async throws {
         untrack(try ExtensionCatalog.install(from: source).manifest.name)
+        await refresh()
+    }
+
+    var bundledDevOpsExtensions: [InstalledExtension] {
+        ExtensionCatalog.bundledDevOpsExtensions()
+    }
+
+    func installBundledDevOps(named name: String) async throws {
+        untrack(try ExtensionCatalog.installBundledDevOps(named: name).manifest.name)
         await refresh()
     }
 

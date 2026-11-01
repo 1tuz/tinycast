@@ -15,7 +15,8 @@
       "name": "index",
       "title": "Vault Lookup",
       "description": "Open Vault Lookup",
-      "mode": "view"
+      "mode": "view",
+      "devOpsCategory": "security"
     }
   ],
   "preferences": []

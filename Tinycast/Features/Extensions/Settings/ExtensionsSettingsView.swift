@@ -7,6 +7,7 @@ struct ExtensionsSettingsView: View {
     @State private var filter = ""
     @State private var importCandidates: ImportCandidates?
     @State private var browsingStore = false
+    @State private var browsingDevOps = false
     @State private var storeInstall: ExtensionDeepLink.StoreInstall?
     @State private var installingFromGitHub = false
     @State private var error: String?
@@ -61,6 +62,9 @@ struct ExtensionsSettingsView: View {
         .settingsEditorPanel(isPresented: $browsingStore) {
             ExtensionStorePanel(onClose: { browsingStore = false })
         }
+        .settingsEditorPanel(isPresented: $browsingDevOps) {
+            BundledDevOpsExtensionPanel(onClose: { browsingDevOps = false })
+        }
         .settingsEditorPanel(item: $storeInstall) { install in
             ExtensionStorePanel(storeInstall: install, onClose: { storeInstall = nil })
         }
@@ -90,6 +94,15 @@ struct ExtensionsSettingsView: View {
 
     private var compatibility: some View {
         Section {
+            SettingsRow(
+                title: "DevOps toolkit",
+                subtitle: String(localized: "Local Git, Jira, Kubernetes, Compose, Helm, Vault and SSH extensions."),
+                anchor: .extensionsInstall
+            ) {
+                ExtensionSettingsIcon(systemName: "shippingbox")
+            } trailing: {
+                Button("Browse…") { browsingDevOps = true }
+            }
             SettingsRow(
                 title: String(localized: "What works"),
                 subtitle: String(

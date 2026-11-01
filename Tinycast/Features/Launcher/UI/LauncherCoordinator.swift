@@ -192,7 +192,7 @@ final class LauncherCoordinator {
             core.quickActionCoordinator.run(.summarize)
         case .base64Encode, .base64Decode, .formatJSON, .minifyJSON, .hashMD5, .hashSHA256,
             .hexEncode, .hexDecode, .urlEncode, .urlDecode, .generateUUID, .timestampToDate,
-            .convertColor, .generateLoremIpsum, .convertCase:
+            .convertColor, .generateLoremIpsum, .convertCase, .convertYAMLJSON, .explainCron, .decodeJWT, .calculateCIDR, .decodeKubernetesSecret:
             guard let action = id.builtInQuickAction else { return }
             core.quickActionCoordinator.run(.builtIn(action))
         case .calculatorHistory:
@@ -261,6 +261,14 @@ final class LauncherCoordinator {
             customCommandCoordinator.editCustomCommand(nil)
         case .searchCustomCommands:
             customCommandCoordinator.showCustomCommands()
+        case .kubeContext:
+            core.kubeContextCoordinator.show()
+        case .kubePods:
+            dismissPalette()
+            core.kubePodsWindowController.show()
+        case .ansibleRunner:
+            dismissPalette()
+            core.ansibleCoordinator.show()
         case .importQuicklinks:
             dismissPalette()
             Task { await quicklinkCoordinator.importQuicklinks() }

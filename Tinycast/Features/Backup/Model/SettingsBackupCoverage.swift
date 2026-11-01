@@ -78,6 +78,14 @@ enum SettingsBackupCoverage {
 
     /// Keys kept out of a backup on purpose, each with the reason it has to stay out.
     static let deliberatelyExcluded: [String: String] = [
+        AppSettingsKey.kubeContextGuardEnabled.rawValue:
+            "Consent to read kubeconfig stays on this Mac.",
+        AppSettingsKey.kubeSelectedContext.rawValue:
+            "The selected Kubernetes context names a destination configured on this Mac.",
+        AppSettingsKey.kubeSelectedNamespace.rawValue:
+            "The selected namespace belongs to this Mac's selected Kubernetes context.",
+        AppSettingsKey.kubeProductionContexts.rawValue:
+            "Production context names belong to the kubeconfig on this Mac.",
         AppSettingsKey.clipboardTextSearchEnabled.rawValue:
             "Background OCR is an opt-in processing choice on this Mac; a backup must not enable it.",
         AppSettingsKey.snippetsEnabled.rawValue:

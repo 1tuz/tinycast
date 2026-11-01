@@ -44,6 +44,10 @@
 - **A colour is parsed from the text on demand, never stored.** `ColorValue` is the single parser
   behind the clipboard's swatches and the launcher's colour card, so the two can never disagree
   about what counts as a colour or what it converts to.
+- **DevOps badges and actions use the saved text item only.** JWT, Kubernetes Secret and IPv4/CIDR
+  recognition never reads `NSPasteboard`; a chosen action transforms `ClipboardItem.text` locally.
+  Its result stays in the open preview. `Copy Result` writes a marked Tinycast paste, so it is not
+  captured as another history entry.
 - **Recognized text is search metadata and nothing else.** It lives in its own `item_text` table,
   never on `ClipboardItem` and never in the resident window, so no surface can paste it, copy it,
   or classify an entry by it. The one exception is Copy Text, which the reader invokes explicitly:
@@ -305,6 +309,10 @@ and `index.html` are
 domain-shaped — so a bare domain must be lower case (which is what keeps `Safari.app` out) and end
 in one of a compact set of TLDs people actually copy. It is a heuristic whose worst case files a row
 under the wrong type, and `clipboard-test` pins the cases that matter.
+
+The separate DevOps classifier is bounded to one MiB and reads only text entries. It exposes local
+JWT decode, Kubernetes Secret decode and valid IPv4/CIDR actions. JWT output says that the signature
+was not verified. The decoded result is transient UI state and does not become a history record.
 
 `search(_:filter:)` filters **after** the pinned/rest split, so a matching pin still leads its block
 in pin order, and the filter joins the search memo's key — keying on the query alone would serve

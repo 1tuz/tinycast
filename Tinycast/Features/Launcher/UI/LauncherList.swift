@@ -48,12 +48,14 @@ struct LauncherList: View {
     /// Calc answers a typed query and the card an empty one, so only one ever leads.
     enum LeadCard: Equatable {
         case calc(CalcResult)
+        case devOps(DevOpsLeadCard)
         case meeting(MeetingEvent, now: Date)
         case color(ColorValue)
 
         var sectionTitle: String {
             switch self {
             case .calc: return String(localized: "Calculator")
+            case .devOps(let card): return card.title
             case .meeting: return String(localized: "Meeting")
             case .color: return String(localized: "Color")
             }
@@ -62,6 +64,7 @@ struct LauncherList: View {
         var rowID: String {
             switch self {
             case .calc: return "calc-card"
+            case .devOps(let card): return "devops-\(card.id)"
             case .meeting: return "meeting-card"
             case .color: return "color-card"
             }
@@ -217,7 +220,8 @@ struct LauncherList: View {
                                 case .recent(let app):
                                     AppRow(
                                         app: app, selected: row.id == selectedRowID,
-                                        running: runningApps.isRunning(app), slot: nil)
+                                        running: runningApps.isRunning(app), slot: nil
+                                    )
                                     .contentShape(Rectangle())
                                     .onRowTap(drag: drag(for: app)) { onActivate(app) }
                                     .onRightClick { onActions(app, row.id) }
@@ -307,6 +311,8 @@ private struct LeadCardView: View {
         switch card {
         case .calc(let result):
             CalculatorCard(result: result, selected: selected)
+        case .devOps(let card):
+            DevOpsLeadCardView(card: card, selected: selected)
         case .meeting(let meeting, let now):
             MeetingCard(meeting: meeting, now: now, selected: selected)
         case .color(let color):

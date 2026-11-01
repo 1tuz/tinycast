@@ -1,20 +1,21 @@
 # DevOps Toolkit Design
 
-**Статус:** на проверке пользователя
-**Объём:** раздел 11 `ROADMAP.md`, пункты 11.1–11.7
+**Статус:** одобрено пользователем
+**Объём:** раздел 11 `ROADMAP.md`, пункты 11.1–11.7, дополнительно 11.9 и KubeLens handoff из OMP
 **Публикация:** отдельная ветка в `1tuz/tinycast`; `main` не изменять
 
 ## Цель
 
 Добавить локальный DevOps toolkit в Tinycast. Он должен работать с установленными CLI и конфигурацией пользователя. Tinycast не хранит токены и не запускает команды без явного действия пользователя.
 
-## Что уже есть
+## Исходное состояние форка
 
-- Три локальных Quick Actions: Decode JWT, Calculate CIDR и Decode Kubernetes Secret.
-- Для нативных команд есть `ShellCommandRunner.stream`, `TerminalLogView` и отмена процесса.
-- Extension runtime умеет выполнять короткие команды, но `child_process.spawn` буферизует вывод.
-- `MenuBarExtra` в расширениях распознаётся, но не отображается.
-- Workflows запускают только встроенные команды.
+- Базовая ветка — чистый `fork/main`; локальные незакоммиченные удаления из другого checkout сюда не переносятся.
+- В Quick Actions уже есть 15 старых действий. JWT, CIDR, Kubernetes Secret, YAML ↔ JSON и Explain cron добавляются в рамках этой работы.
+- `ShellCommandRunner.stream`, `TerminalLogView` и отмена процесса уже существуют и должны использоваться нативными долгими операциями.
+- В extension runtime уже есть частичная async-обвязка для spawn, а menu-bar команды, менеджер и status item частично реализованы. Требуется довести потоки, stdin, владение процессами и постоянную runtime-сессию до требований 11.7.
+- Workflows пока запускают только встроенные команды.
+- Репозиторий требует Swift 6, macOS 26+, нулевые новые Swift-зависимости и отдельные standalone harnesses; XcodeGen включает новые Swift-файлы из `Tinycast/` автоматически.
 
 ## Архитектурное решение
 
@@ -22,17 +23,20 @@
 
 Короткие команды «получить список → выполнить действие» остаются TypeScript/Raycast extensions. Они используют существующий extension host. Для них не добавляется отдельный сетевой backend.
 
-Потоковый `child_process.spawn`, `menu-bar` extensions и пользовательские команды в Workflows — отдельные изменения платформы. Их нельзя сводить к переключателю режима: сейчас extension host сериализует вызовы JavaScript, а меню расширений не имеет нативного рендерера.
+Потоковый `child_process.spawn`, `menu-bar` extensions и пользовательские команды в Workflows — отдельные изменения платформы. В форке уже есть частичный async spawn и нативные status items; задача — завершить bidirectional I/O, процессный lifecycle и постоянную runtime-сессию, а не добавлять второй рендерер.
 
-Для YAML используется поддерживаемая библиотека с JSON-совместимой моделью. Самописный YAML parser не добавляется. Cron parser поддерживает стандартные пять полей и не исполняет расписание.
+Новые внешние зависимости не добавляются. Для `kubectl get secret -o yaml` реализуется документированный блоковый YAML subset с JSON-совместимыми значениями; неподдерживаемые YAML конструкции явно отклоняются. Полный YAML 1.2 parser не заявляется. Cron parser поддерживает стандартные пять полей и не исполняет расписание.
 
 ## Компоненты и поведение
 
 ### 11.1 Quick Actions
 
-Добавить YAML ↔ JSON и Explain cron к существующим локальным Developer Utilities.
+Добавить пять локальных Developer Utilities: Decode JWT, Calculate CIDR, Decode Kubernetes Secret, YAML ↔ JSON и Explain cron.
 
-- YAML принимает один документ и переводит JSON-совместимые скаляры, массивы и объекты. Ключи объектов должны быть строками. Несколько документов и значения, которые нельзя представить в JSON, дают понятную ошибку.
+- JWT принимает Bearer-токен или сырой compact token, декодирует header и payload, переводит `iat`/`nbf`/`exp` в UTC и всегда сообщает `Signature not verified`.
+- CIDR вычисляет IPv4 network, netmask, wildcard, broadcast, диапазон и число хостов; `/31` и `/32` соответствуют RFC 3021, `/0` не переполняет счётчики.
+- Kubernetes Secret принимает JSON или поддерживаемый блоковый YAML из `kubectl get secret -o json|yaml`, декодирует `data` локально, сохраняет многострочные UTF-8 данные блоками и обозначает бинарные значения как `<N bytes binary>`.
+- YAML ↔ JSON принимает один документ и переводит JSON-совместимые скаляры, массивы и объекты. Ключи объектов должны быть строками. Несколько документов и значения, которые нельзя представить в JSON, дают понятную ошибку.
 - Cron принимает пять полей: минута, час, день месяца, месяц, день недели. Поддерживаются `*`, списки, диапазоны и шаги. Невалидные поля отклоняются.
 - Оба действия работают локально, не требуют AI и не отправляют данные наружу.
 
@@ -103,6 +107,21 @@ Tinycast не меняет глобальный `current-context`. Выбран�
 
 Расширить модель Workflow типом действия для выбранной Custom Command и позиционных аргументов. Использовать существующие trigger и `ShellCommandRunner`. Для команды с `requiresConfirmation` спрашивать подтверждение при каждом срабатывании; не запускать такую команду скрыто из clipboard/file/time trigger. История не сохраняет секретный вывод. Триггеры остаются активны только пока запущен Tinycast.
 
+### 11.9 Быстрые DevOps-действия
+
+Добавить шесть интеграций, опираясь на существующие палитру, калькулятор, Quick Actions, clipboard, snippets и launcher ranking.
+
+- **Карточки в launcher:** распознавать IPv4 CIDR, Jira key и JWT в запросе. CIDR и JWT показывают локально вычисленный результат. JWT явно помечен как неподписанный: это decode, не проверка подписи. Jira открывается только через настроенный пользователем base URL.
+- **Kubernetes quantities в калькуляторе:** поддержать `Ki/Mi/Gi/Ti` как бинарные байтовые единицы и CPU millicores в выражениях с явным `cpu`, включая `512Mi in GiB`, `1500m cpu` и `2Gi * 3`. Обычное `m` без `cpu` сохраняет текущее значение метра.
+- **Fallback Quick Actions:** если чтение выделения не дало текст, после явного запуска Quick Action предложить использовать текущий clipboard text. Не читать clipboard в фоне и не передавать clipboard содержимое AI-действиям без отдельного действия пользователя.
+- **Clipboard badges/actions:** распознавать JWT, Kubernetes YAML и IPv4/CIDR в уже сохранённом текстовом элементе и показывать локальное действие. Не перечитывать NSPasteboard, не добавлять сетевую обработку и не сохранять дополнительные копии текста.
+- **Kubectl snippets:** добавить готовые snippets с выбором namespace/resource через `options=`; существующие OptionChips остаются UI. Выбор статический и не запускает `kubectl` при открытии snippet.
+- **Terminal-aware Recent:** при активном Terminal команды с явными DevOps-категориями получают приоритет в Recent. Категория задаётся метаданными, а не выводится из ID или имени команды.
+
+### OMP handoff: KubeLens
+
+Подхватить отдельный KubeLens extension как read-only интерфейс для pod, событий и диагностики. Переносить исходники из незакоммиченного checkout только после аудита. Вызовы `kubectl` используют argv-массивы без shell interpolation, корректно сохраняют полные имена context (включая EKS ARN), используют явные context/namespace и не предлагают restart `deployment/<pod-name>`. Мутирующие действия не включать. Диагностические правила покрыть fixtures; реальные kubeconfig и кластер для тестов не требуются.
+
 ## Общая безопасность и ошибки
 
 - Все процессы запускаются с проверенным executable и позиционным массивом аргументов.
@@ -117,6 +136,7 @@ Tinycast не меняет глобальный `current-context`. Выбран�
 - Unit tests: YAML/JSON границы, cron поля, kubeconfig merge/parser, prod policy, inventory parsing и модели Workflows.
 - Fake executable tests: точные аргументы kubectl/Ansible/Docker/Helm/Vault/SSH/glab; подтвердить отсутствие shell interpolation и production guard.
 - Runtime tests: stdout/stderr events, stdin, exit/error, cancel, app/extension shutdown и ограничение очереди.
+- Shipped Swift sources компилируются отдельными standalone harnesses через `Scripts/run-tests.sh`; XCTest target не добавляется.
 - Build macOS app и все относящиеся к изменениям тесты. Для ручной проверки нужны только локальные fake configs; реальные кластеры, Vault и Jira не требуются.
 
 ## Этапы реализации
@@ -127,6 +147,6 @@ Tinycast не меняет глобальный `current-context`. Выбран�
 4. Ansible Runner.
 5. Compose, Helm, Vault и SSH extensions.
 6. Streaming spawn и `menu-bar` extension lifecycle.
-7. Custom Commands в Workflows, полная сборка и интеграционная проверка.
+7. Custom Commands в Workflows; 11.9 интеграции и KubeLens handoff; полная сборка и интеграционная проверка.
 
 После проверки изменений отправить DevOps-изменения отдельной веткой в `1tuz/tinycast`. Не включать несвязанные изменения рабочего дерева и не обновлять `main`.

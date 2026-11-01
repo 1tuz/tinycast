@@ -23,7 +23,7 @@ struct KubePod: Identifiable, Equatable, Sendable {
     var isProblem: Bool { problemReason != nil || phase == "Pending" }
 }
 
-enum KubePodFilter: Sendable, Equatable {
+enum KubePodFilter: Sendable, Equatable, Hashable {
     case all
     case problems
 }

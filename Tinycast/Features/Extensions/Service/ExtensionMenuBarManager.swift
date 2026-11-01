@@ -12,6 +12,7 @@ final class ExtensionMenuBarManager: ExtensionRuntimeDelegate {
     private let onError: (String, InstalledExtension, Bool) -> Void
     private var installed: [InstalledExtension] = []
     private var controllers: [String: ExtensionMenuBarController] = [:]
+    private var menuBarExecutions: [String: PersistentExecution] = [:]
     private var requests: [Request] = []
     private var active: Session?
     private var launchTask: Task<Void, Never>?
@@ -23,6 +24,13 @@ final class ExtensionMenuBarManager: ExtensionRuntimeDelegate {
         let runtime: ExtensionRuntime
         var stop: () -> Void
         var enableInteraction: () -> Void = {}
+        var disableInteraction: () -> Void = {}
+    }
+
+    private struct PersistentExecution {
+        let owner: InstalledExtension
+        let command: ExtensionCommand
+        let execution: Execution
     }
 
     var isRunning: Bool { active != nil }
@@ -58,6 +66,11 @@ final class ExtensionMenuBarManager: ExtensionRuntimeDelegate {
             isInteractive = true
             execution.enableInteraction()
         }
+
+        func disableInteraction() {
+            isInteractive = false
+            execution.disableInteraction()
+        }
     }
 
     init(
@@ -77,6 +90,7 @@ final class ExtensionMenuBarManager: ExtensionRuntimeDelegate {
 
     func synchronize(_ installed: [InstalledExtension]) {
         self.installed = installed
+        prunePersistentExecutions()
         for reference in menuBarReferences() {
             guard let (owner, command) = resolve(reference), command.mode == .menuBar
             else {
@@ -112,6 +126,7 @@ final class ExtensionMenuBarManager: ExtensionRuntimeDelegate {
                 command: reference.commandName)
         }
         if active?.request.reference.entryID == entryID { finish() }
+        stopPersistentExecution(entryID)
         runNext()
         scheduleRefresh()
     }
@@ -130,6 +145,7 @@ final class ExtensionMenuBarManager: ExtensionRuntimeDelegate {
         refreshTask = nil
         requests.removeAll()
         finish()
+        for entryID in Array(menuBarExecutions.keys) { stopPersistentExecution(entryID) }
         for controller in controllers.values { controller.remove() }
         controllers.removeAll()
         installed = []
@@ -188,11 +204,27 @@ final class ExtensionMenuBarManager: ExtensionRuntimeDelegate {
             runNext()
             return
         }
-        guard let execution = makeExecution(owner, command, request.type) else { runNext(); return }
+        let execution: Execution
+        if command.mode == .menuBar,
+            let retained = menuBarExecutions[entryID],
+            retained.owner == owner, retained.command == command
+        {
+            execution = retained.execution
+        } else {
+            if menuBarExecutions[entryID] != nil { stopPersistentExecution(entryID) }
+            guard let created = makeExecution(owner, command, request.type) else { runNext(); return }
+            execution = created
+            if command.mode == .menuBar {
+                menuBarExecutions[entryID] = PersistentExecution(
+                    owner: owner, command: command, execution: created)
+            }
+        }
+        execution.disableInteraction()
         let runtime = execution.runtime
         runtime.setDelegate(self)
         let session = Session(request: request, owner: owner, mode: command.mode, execution: execution)
         active = session
+        if request.type == .userInitiated { session.enableInteraction() }
         if controllers[entryID]?.isOpen == true { session.enableInteraction() }
         let support = supportDirectory.appendingPathComponent(ExtensionCatalog.safeName(owner.manifest.name))
         let context = ExtensionLaunchContext(
@@ -303,12 +335,16 @@ final class ExtensionMenuBarManager: ExtensionRuntimeDelegate {
                 !active.isLoading, active.pendingActions == 0,
                 self.controllers[active.request.reference.entryID]?.isOpen != true
             else { return }
-            self.finish()
+            if active.mode == .menuBar { await active.runtime.unmount(session: active.id) }
+            guard !Task.isCancelled, self.active?.id == active.id,
+                self.controllers[active.request.reference.entryID]?.isOpen != true
+            else { return }
+            self.finish(preservingMenuBarRuntime: active.mode == .menuBar)
             self.runNext()
         }
     }
 
-    private func finish() {
+    private func finish(preservingMenuBarRuntime: Bool = false) {
         launchTask?.cancel()
         deadlineTask?.cancel()
         idleTask?.cancel()
@@ -317,10 +353,37 @@ final class ExtensionMenuBarManager: ExtensionRuntimeDelegate {
         idleTask = nil
         guard let session = active else { return }
         active = nil
-        session.execution.stop()
-        session.runtime.shutdown()
+        if !preservingMenuBarRuntime {
+            session.execution.stop()
+            session.runtime.shutdown()
+            if session.mode == .menuBar {
+                menuBarExecutions.removeValue(forKey: session.request.reference.entryID)
+            }
+        }
         storage.flush()
         controllers[session.request.reference.entryID]?.clearMenu()
+    }
+
+    private func prunePersistentExecutions() {
+        for entryID in Array(menuBarExecutions.keys) {
+            guard let reference = ExtensionCommandRef(entryID: entryID),
+                let (owner, command) = resolve(reference), command.mode == .menuBar,
+                metadata(reference).menuBarEnabled,
+                let retained = menuBarExecutions[entryID],
+                retained.owner == owner, retained.command == command
+            else {
+                if active?.request.reference.entryID == entryID { finish() }
+                stopPersistentExecution(entryID)
+                controllers.removeValue(forKey: entryID)?.remove()
+                continue
+            }
+        }
+    }
+
+    private func stopPersistentExecution(_ entryID: String) {
+        guard let retained = menuBarExecutions.removeValue(forKey: entryID) else { return }
+        retained.execution.stop()
+        retained.execution.runtime.shutdown()
     }
 
     private func scheduleRefresh() {

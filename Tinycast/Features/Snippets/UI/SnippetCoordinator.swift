@@ -138,6 +138,22 @@ final class SnippetCoordinator {
         paletteCoordinator.showPalette(mode: .snippetEditor)
     }
 
+    func addKubectlSnippets() {
+        guard settings.snippetsEnabled else { return }
+        let additions = KubectlSnippetCatalog.missing(from: store.snippets.map(\.snippet))
+        guard !additions.isEmpty else { return }
+        Task {
+            do {
+                let created = try await store.importSnippets(additions)
+                guard !Task.isCancelled else { return }
+                showMessage(String(localized: "Added \(created.count) kubectl snippets"), .success)
+            } catch {
+                guard !Task.isCancelled else { return }
+                showMessage(error.localizedDescription, .danger)
+            }
+        }
+    }
+
     func copyEphemeralSnippet(id: UUID) {
         guard let reply = ephemeralSnippet(id: id) else { return }
         Paster.copyPlainText(reply.text)

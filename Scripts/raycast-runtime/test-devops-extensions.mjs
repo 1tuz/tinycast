@@ -22,9 +22,10 @@ after(() => rmSync(scratch,{recursive:true,force:true}));
   const helm = await source("helm-releases", "helm");
   const vault = await source("vault-lookup", "vault");
   const ssh = await source("ssh-hosts", "ssh-config");
+  const kubeLens = await source("kube-lens", "kube-lens");
   const catalog = await import("./build-devops-extensions.mjs");
-  test("catalog has six stable packages and validates manifests", () => {
-    assert.deepEqual(catalog.packageIDs,["git-worktrees","jira-key-actions","compose-projects","helm-releases","vault-lookup","ssh-hosts"]);
+  test("catalog has seven stable packages and validates manifests", () => {
+    assert.deepEqual(catalog.packageIDs,["git-worktrees","jira-key-actions","compose-projects","helm-releases","vault-lookup","ssh-hosts","kube-lens"]);
     assert.throws(()=>catalog.validateManifest({name:"../bad",commands:[]},"../bad"));
     assert.throws(()=>catalog.validateManifest({name:"git-worktrees",commands:[{name:"../escape"}]},"git-worktrees"));
     assert.equal(catalog.commandOutputPath("/out","git-worktrees","index"),"/out/git-worktrees/index.js");
@@ -103,7 +104,7 @@ after(() => rmSync(scratch,{recursive:true,force:true}));
     assert.deepEqual(vault.vaultArguments("kv/path"),["kv","get","-format=json","kv/path"]);
     assert.throws(()=>vault.vaultArguments("-output-curl-string"));
   });
-  test("SSH extracts aliases and confined includes without evaluating Match", () => {
+  test("SSH extracts aliases and confines includes without evaluating Match during discovery", () => {
     assert.deepEqual(ssh.parseSSHHostAliases('Host alpha beta *.example !bad\n IdentityFile ~/.ssh/id_ed25519\nMatch exec "touch /tmp/bad"\n HostName ignored\nHost gamma\n'),["alpha","beta","gamma"]);
     const files={"/home/me/.ssh/config":'Include conf.d/hosts\nHost root\n',"/home/me/.ssh/conf.d/hosts":'Host nested\nInclude ../config\n'};
     assert.deepEqual(ssh.discoverSSHHostAliases("/home/me/.ssh",p=>files[p]),["nested","root"]);
@@ -115,5 +116,19 @@ after(() => rmSync(scratch,{recursive:true,force:true}));
     assert.deepEqual(ssh.parseInventoryAliases('{"_meta":{"hostvars":{"private":"not-an-alias"}},"web":{"hosts":["app","-bad","app"]}}'),["app"]);
     assert.deepEqual(ssh.parseSSHHostAliases('Host alpha # comment\n'),["alpha"]);
     assert.deepEqual(ssh.sshArguments("alpha"),["--","alpha"]);
+    assert.deepEqual(ssh.sshConfigArguments("alpha"),["-G","alpha"]);
+    assert.throws(()=>ssh.sshConfigArguments("-G"));
+  });
+  test("KubeLens preserves full contexts and uses read-only explicit argv", () => {
+    const context="arn:aws:eks:us-east-1:123456789012:cluster/prod";
+    assert.deepEqual(kubeLens.kubeLensArguments("pods",context,"team-a"),["get","pods","--output","json","--context",context,"--namespace","team-a"]);
+    assert.deepEqual(kubeLens.kubeLensArguments("events",context,"team-a"),["get","events","--output","json","--context",context,"--namespace","team-a"]);
+    assert.deepEqual(kubeLens.kubeLensArguments("logs",context,"team-a","api-0"),["logs","api-0","--context",context,"--namespace","team-a","--tail","100"]);
+    assert.throws(()=>kubeLens.kubeLensArguments("restart",context,"team-a","api-0"));
+    assert.throws(()=>kubeLens.kubeLensArguments("pods",context,"team;bad"));
+    const pods=kubeLens.parsePods(JSON.stringify({items:[{metadata:{name:"api-0"},status:{phase:"Running",containerStatuses:[{name:"api",ready:false,state:{waiting:{reason:"CrashLoopBackOff"}}}]},spec:{containers:[{name:"api"}]}}]}));
+    assert.equal(pods[0].diagnostic,"CrashLoopBackOff");assert.equal(pods[0].healthy,false);
+    assert.deepEqual(kubeLens.parseEvents(JSON.stringify({items:[{type:"Warning",reason:"BackOff",message:"restarting",involvedObject:{name:"api-0"},eventTime:"2026-01-01T00:00:00Z"}]})),[{type:"Warning",reason:"BackOff",message:"restarting",object:"api-0",timestamp:"2026-01-01T00:00:00Z"}]);
+    assert.throws(()=>kubeLens.parsePods('{"items":{}}'));
   });
 }

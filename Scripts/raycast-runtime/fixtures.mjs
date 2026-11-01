@@ -465,6 +465,13 @@ const spawnSource = `
 import { spawn } from "node:child_process";
 
 export default async function Command() {
+  let shellRejected = false;
+  try {
+    spawn("/bin/echo", ["unsafe"], { shell: true });
+  } catch (error) {
+    shellRejected = error instanceof TypeError;
+  }
+
   const iterated = [];
   const child = spawn("/bin/echo", ["hello"]);
   for await (const chunk of child.stdout) iterated.push(chunk.toString());
@@ -494,7 +501,29 @@ export default async function Command() {
     child.on("close", () => resolve(events.join(",")));
   });
 
-  globalThis.__spawn = { iterated: iterated.join(""), late, grouped, streamed };
+  const bidirectional = await new Promise((resolve) => {
+    const result = { stdout: "", stderr: "", live: false, exitCount: 0, closeCount: 0, stdinFinished: false };
+    const child = spawn("/bin/sh", ["-c", "IFS= read -r first; echo one:$first; sleep 0.1; IFS= read -r second; echo two:$second; echo err:$second >&2"]);
+    child.stdout.on("data", (chunk) => {
+      result.live ||= child.exitCode === null;
+      result.stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => { result.stderr += chunk.toString(); });
+    child.stdin.on("finish", () => { result.stdinFinished = true; });
+    child.stdin.write("alpha\\n");
+    child.on("spawn", () => {
+      child.stdin.write("beta\\n");
+      child.stdin.end();
+    });
+    child.on("exit", (code) => { result.exitCode = code; result.exitCount++; });
+    child.on("close", (code) => {
+      result.closeCode = code;
+      result.closeCount++;
+      setTimeout(() => resolve(result), 30);
+    });
+  });
+
+  globalThis.__spawn = { iterated: iterated.join(""), late, grouped, streamed, bidirectional, shellRejected };
 }
 `;
 
@@ -1052,6 +1081,23 @@ export async function runFixtures() {
     expected.forEach((value, index) => check(`shim ${index}: ${value}`, markdown[index] === value, markdown[index]));
   });
 
+  let terminalArguments;
+  await run(
+    "openTerminal forwards exact executable and argv",
+    `const { openTerminal } = require("@raycast/api");
+     module.exports.default = async () => openTerminal("ssh", ["--", "prod; echo unsafe", "host'quote"]);`,
+    "no-view",
+    async (harness) => {
+      check(
+        "openTerminal reaches the native system bridge with exact argv",
+        harness.state.hostCalls.includes("system.openTerminal")
+          && JSON.stringify(terminalArguments) === JSON.stringify(["ssh", ["--", "prod; echo unsafe", "host'quote"]]),
+        JSON.stringify(terminalArguments),
+      );
+    },
+    { stubs: { "system.openTerminal": (args) => { terminalArguments = args; } } },
+  );
+
   await run("createRequire resolves through the module registry", createRequireSource, "view", async (harness) => {
     const markdown = findNode(harness.state.trees.at(-1), "Detail").props.markdown.split("\n");
     check("lazily requires @raycast/api", markdown[0] === "true" && markdown[1] === "true", markdown.join(","));
@@ -1189,6 +1235,12 @@ export async function runFixtures() {
     check("a listener attached after exit still gets it", result?.late === "world\n", JSON.stringify(result?.late));
     check("a detached child that pipes stdout is still awaited", result?.grouped === "group\n", JSON.stringify(result?.grouped));
     check("output streams before exit, after spawn", result?.streamed === "spawn,live", JSON.stringify(result?.streamed));
+    check("stdin accepts a write before spawn", result?.bidirectional?.stdout?.startsWith("one:alpha\n"), JSON.stringify(result?.bidirectional));
+    check("stdin accepts a write after spawn", result?.bidirectional?.stdout?.includes("two:beta\n"), JSON.stringify(result?.bidirectional));
+    check("stdout and stderr stream incrementally", result?.bidirectional?.live && result?.bidirectional?.stderr === "err:beta\n", JSON.stringify(result?.bidirectional));
+    check("stdin finish and child close each occur once", result?.bidirectional?.stdinFinished && result?.bidirectional?.exitCount === 1 && result?.bidirectional?.closeCount === 1, JSON.stringify(result?.bidirectional));
+    check("child exit status is preserved", result?.bidirectional?.exitCode === 0 && result?.bidirectional?.closeCode === 0, JSON.stringify(result?.bidirectional));
+    check("streaming spawn rejects shell interpolation", result?.shellRejected === true, String(result?.shellRejected));
   }, { settle: 800 });
 
   const httpSpecs = [];

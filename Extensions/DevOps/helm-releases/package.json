@@ -15,7 +15,8 @@
       "name": "index",
       "title": "Helm Releases",
       "description": "Open Helm Releases",
-      "mode": "view"
+      "mode": "view",
+      "devOpsCategory": "kubernetes"
     }
   ],
   "preferences": [

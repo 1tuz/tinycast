@@ -292,7 +292,10 @@ struct ClipboardPreview: View {
 
     @Environment(\.metrics) private var metrics
     let item: ClipboardItem?
+    let devOpsResult: ClipboardDevOpsResult?
     let onAnnotate: (ClipboardItem) -> Void
+    let onDevOpsAction: (ClipboardDevOpsAction) -> Void
+    let onCopyDevOpsResult: (String) -> Void
     @Environment(ClipboardStore.self) private var store
 
     var body: some View {
@@ -300,6 +303,7 @@ struct ClipboardPreview: View {
             VStack(alignment: .leading, spacing: 0) {
                 content(for: item)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                devOpsTools(for: item)
                 if item.kind == .image {
                     imageTools(for: item)
                         .padding(.top, metrics.spacing.sm)
@@ -309,6 +313,65 @@ struct ClipboardPreview: View {
             .padding(.horizontal, 12)
         } else {
             Color.clear
+        }
+    }
+
+    @ViewBuilder
+    private func devOpsTools(for item: ClipboardItem) -> some View {
+        let actions = ClipboardDevOpsAction.available(
+            for: item.kind == .text ? item.text ?? "" : "")
+        if !actions.isEmpty || devOpsResult?.itemID == item.id {
+            VStack(alignment: .leading, spacing: metrics.spacing.sm) {
+                if !actions.isEmpty {
+                    HStack(spacing: metrics.spacing.xs) {
+                        ForEach(actions) { action in
+                            Text(action.badge)
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, metrics.spacing.sm)
+                                .padding(.vertical, metrics.spacing.xxs)
+                                .background(.quaternary, in: Capsule())
+                        }
+                        Spacer(minLength: 0)
+                        Menu {
+                            ForEach(actions) { action in
+                                Button(action.title, systemImage: action.symbol) {
+                                    onDevOpsAction(action)
+                                }
+                            }
+                        } label: {
+                            Label("Local Actions", systemImage: "wrench.and.screwdriver")
+                        }
+                        .menuStyle(.button)
+                        .buttonStyle(.accessoryBar)
+                        .fixedSize()
+                    }
+                }
+                if let result = devOpsResult, result.itemID == item.id {
+                    VStack(alignment: .leading, spacing: metrics.spacing.sm) {
+                        Text(result.action.title)
+                            .font(metrics.typography.rowTrailing.weight(.medium))
+                            .foregroundStyle(.secondary)
+                        ScrollView {
+                            Text(result.output)
+                                .font(.system(.caption, design: .monospaced))
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(maxHeight: 132)
+                        Button("Copy Result", systemImage: "doc.on.doc") {
+                            onCopyDevOpsResult(result.output)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    .padding(metrics.spacing.md)
+                    .background(
+                        Theme.Colors.cardFill,
+                        in: RoundedRectangle(
+                            cornerRadius: metrics.radius.card, style: .continuous))
+                }
+            }
+            .padding(.vertical, metrics.spacing.sm)
         }
     }
 
@@ -375,6 +438,12 @@ struct ClipboardPreview: View {
             }
         }
     }
+}
+
+struct ClipboardDevOpsResult: Equatable, Sendable {
+    let itemID: UUID
+    let action: ClipboardDevOpsAction
+    let output: String
 }
 
 /// Fixed string rules keep tags local and only use OCR stored by clipboard text-search opt-in.

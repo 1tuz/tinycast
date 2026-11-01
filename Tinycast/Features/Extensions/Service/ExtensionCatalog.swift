@@ -54,6 +54,11 @@ struct ExtensionCommandRef: Sendable, Hashable {
 
 /// Finds and installs extensions, stored in Raycast's own layout so a built one imports as-is.
 enum ExtensionCatalog {
+    private static let bundledDevOpsNames = [
+        "git-worktrees", "jira-key-actions", "compose-projects", "helm-releases",
+        "vault-lookup", "ssh-hosts", "kube-lens"
+    ]
+
     /// Keyed by bundle id, so a Debug build never shares installs with a release channel.
     static func extensionsDirectory() -> URL {
         supportDirectory().appendingPathComponent("extensions", isDirectory: true)
@@ -80,6 +85,29 @@ enum ExtensionCatalog {
 
     static func supportRoot() -> URL {
         supportDirectory().appendingPathComponent("extension-support", isDirectory: true)
+    }
+
+    static func bundledDevOpsExtensions() -> [InstalledExtension] {
+        guard let root = Bundle.main.resourceURL?.appendingPathComponent(
+            "DevOpsExtensions", isDirectory: true) else { return [] }
+        return bundledDevOpsNames.compactMap { name in
+            let directory = root.appendingPathComponent(name, isDirectory: true)
+            guard let manifest = try? ExtensionManifest.load(directory: directory),
+                manifest.supportsMacOS
+            else { return nil }
+            return InstalledExtension(manifest: manifest, directory: directory, installedAt: nil)
+        }
+    }
+
+    @discardableResult
+    static func installBundledDevOps(
+        named name: String, in directory: URL = ExtensionCatalog.extensionsDirectory()
+    ) throws -> InstalledExtension {
+        guard bundledDevOpsNames.contains(name),
+            let root = Bundle.main.resourceURL?.appendingPathComponent(
+                "DevOpsExtensions", isDirectory: true)
+        else { throw InstallError.notAnExtension(URL(fileURLWithPath: name)) }
+        return try install(from: root.appendingPathComponent(name, isDirectory: true), in: directory)
     }
 
     /// npm-style names flattened to one path segment; a second copy that drifts orphans every file.

@@ -20,6 +20,7 @@ struct LauncherScreen: PaletteScreen {
     private let results: [AppEntry]
     private let calc: CalcResult?
     private let color: ColorValue?
+    private let devOpsCard: DevOpsLeadCard?
     /// Only the empty query pins favorites — a category shows its sections without one of its own.
     private let pinsFavorites: Bool
     private let pinnedFavorites: [FavoritesStore.Item]
@@ -71,12 +72,25 @@ struct LauncherScreen: PaletteScreen {
             results.insert(browser, at: 0)
             matchCount += 1
         }
+        let jiraBaseURL: String?
+        if case .string(let value)? = core.extensions.storage.preference(
+            extension: "jira-key-actions", key: "jiraURL")
+        {
+            jiraBaseURL = value
+        } else {
+            jiraBaseURL = nil
+        }
+        let devOpsCard =
+            pinned == nil
+            ? DevOpsLeadCard.resolve(query: vm.query, jiraBaseURL: jiraBaseURL) : nil
         // No card over a pinned row: its fields hang off the selection, which must start on it.
         let calc =
-            pinned == nil
+            pinned == nil && devOpsCard == nil
             ? CalcMemo.evaluate(vm.query, rates: currencyRates.rates, format: core.calcNumberFormat) : nil
         // After the calculator: `#FF5733` is never arithmetic, so the two can't both answer.
-        let color = calc == nil && pinned == nil ? ColorValue.parse(vm.query) : nil
+        let color =
+            calc == nil && devOpsCard == nil && pinned == nil
+            ? ColorValue.parse(vm.query) : nil
         let files = pinned == nil ? core.fileSearchCoordinator.launcherFiles(for: vm.query) : []
         let fallbacks = core.fallbackCoordinator.entries(for: vm.query)
         let pinsFavorites = vm.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -90,7 +104,8 @@ struct LauncherScreen: PaletteScreen {
             contextualApps = []
         }
         let contextualIDs = Set(contextualApps.compactMap(\.bundleID))
-        let recentApps: [AppEntry] = pinsFavorites
+        let recentApps: [AppEntry] =
+            pinsFavorites
             ? core.runningApps.recentBundleIDs.compactMap { bundleID in
                 appIndex.apps.first {
                     $0.kind == .application && $0.bundleID == bundleID
@@ -99,12 +114,22 @@ struct LauncherScreen: PaletteScreen {
                 }
             }
             : []
-        let recentCommands: [AppEntry] = pinsFavorites && core.settings.commandHistoryEnabled
-            ? core.launcherRanking.recentCommandIDs.compactMap { id in
-                appIndex.apps.first {
-                    $0.id == id && visibility.isVisible($0) && !favorites.isFavorite($0)
-                }
-            }.prefix(core.settings.commandHistoryLimit).map { $0 }
+        let terminalIsActive = TerminalAwareRecentOrder.isTerminal(
+            bundleID: core.paletteCoordinator.targetApp?.bundleIdentifier)
+        let recentCommands: [AppEntry] =
+            pinsFavorites && core.settings.commandHistoryEnabled
+            ? Array(
+                TerminalAwareRecentOrder.prioritize(
+                    core.launcherRanking.recentCommandIDs.compactMap { id in
+                        appIndex.apps.first {
+                            $0.id == id && visibility.isVisible($0) && !favorites.isFavorite($0)
+                        }
+                    },
+                    terminalIsActive: terminalIsActive,
+                    category: {
+                        $0.devOpsCategory ?? CommandCatalog.command(for: $0)?.devOpsCategory
+                    }
+                ).prefix(core.settings.commandHistoryLimit))
             : []
         let recentEntries = contextualApps + recentApps + recentCommands
         let pinnedFavorites = favorites.orderedItems(
@@ -127,7 +152,8 @@ struct LauncherScreen: PaletteScreen {
                 remaining.dropFirst(
                     ordered.meetingCount + ordered.suggestionCount + ordered.matchCount)
             ).filter { !recentIDs.contains($0.id) }
-            results = Array(results.prefix(ordered.favoriteCount))
+            results =
+                Array(results.prefix(ordered.favoriteCount))
                 + meetings + suggestions + matches + rest
             self.meetingCount = meetings.count
             self.suggestionCount = suggestions.count
@@ -138,7 +164,8 @@ struct LauncherScreen: PaletteScreen {
             self.matchCount = matchCount
         }
         results.removeFirst(ordered.favoriteCount)
-        let entries = pinnedFavorites.map(Row.init) + recentEntries.map(Row.recent)
+        let entries =
+            pinnedFavorites.map(Row.init) + recentEntries.map(Row.recent)
             + results.map(Row.entry) + files.map(Row.file)
             + fallbacks.map { Row.fallback($0.fallback, $0.entry) }
         // At most one of them leads, so the flat index keeps a single-row offset.
@@ -146,6 +173,7 @@ struct LauncherScreen: PaletteScreen {
         self.meeting = meeting
         self.results = results
         self.calc = calc
+        self.devOpsCard = devOpsCard
         self.files = files
         self.fallbacks = fallbacks
         self.color = color
@@ -156,6 +184,8 @@ struct LauncherScreen: PaletteScreen {
         self.recentAppCount = recentApps.count
         if let calc {
             self.rows = [.calc(calc)] + entries
+        } else if let devOpsCard {
+            self.rows = [.devOps(devOpsCard)] + entries
         } else if let color {
             self.rows = [.color(color)] + entries
         } else if let meeting {
@@ -168,6 +198,7 @@ struct LauncherScreen: PaletteScreen {
     /// The card is a row like any other, so the flat selection indexes `rows` with no offset.
     enum Row: Equatable, Identifiable {
         case calc(CalcResult)
+        case devOps(DevOpsLeadCard)
         case meeting(MeetingEvent)
         case color(ColorValue)
         case entry(AppEntry)
@@ -198,6 +229,7 @@ struct LauncherScreen: PaletteScreen {
         var id: String {
             switch self {
             case .calc: return "calc-card"
+            case .devOps(let card): return "devops-\(card.id)"
             case .meeting: return "meeting-card"
             case .color: return "color-card"
             case .entry(let app): return app.id
@@ -217,6 +249,7 @@ struct LauncherScreen: PaletteScreen {
     var primaryActionTitle: String {
         switch row(at: clampedSelection) {
         case .calc: return String(localized: "Copy Answer")
+        case .devOps(let card): return card.primaryActionTitle
         case .color: return String(localized: "Copy Color")
         case .meeting(let meeting):
             return meeting.link == nil
@@ -301,13 +334,14 @@ struct LauncherScreen: PaletteScreen {
 
     private func isCardSelected(_ selection: Int) -> Bool {
         switch row(at: selection) {
-        case .calc, .meeting, .color: return true
+        case .calc, .devOps, .meeting, .color: return true
         case .entry, .recent, .file, .fallback, nil: return false
         }
     }
 
     private var leadCard: LauncherList.LeadCard? {
         if let calc { return .calc(calc) }
+        if let devOpsCard { return .devOps(devOpsCard) }
         if let color { return .color(color) }
         return meeting.map { .meeting($0, now: now) }
     }
@@ -322,6 +356,16 @@ struct LauncherScreen: PaletteScreen {
         switch row(at: selection) {
         case .calc(let result):
             return result.isActionable ? CalcActionsMenu.content(result: result, core: core) : nil
+        case .devOps(let card):
+            return PopoverMenuContent(
+                header: card.title,
+                items: [
+                    PopoverMenuItem(
+                        title: card.primaryActionTitle, systemImage: card.symbol, shortcut: "↵"
+                    ) {
+                        activateDevOpsCard(card)
+                    }
+                ])
         case .color(let color):
             return ColorActionsMenu.content(color: color, core: core)
         case .meeting(let meeting):
@@ -363,6 +407,7 @@ struct LauncherScreen: PaletteScreen {
         switch row(at: selection) {
         // Error cards no-op — copyCalculatorResult only acts on value payloads.
         case .calc(let result): core.calculatorCoordinator.copyCalculatorResult(result)
+        case .devOps(let card): activateDevOpsCard(card)
         case .color(let color):
             core.clipboardCoordinator.copyColor(color, as: ColorFormat.primary(for: color))
         case .meeting(let meeting): core.calendarCoordinator.activateMeeting(id: meeting.id)
@@ -379,12 +424,20 @@ struct LauncherScreen: PaletteScreen {
         }
     }
 
+    private func activateDevOpsCard(_ card: DevOpsLeadCard) {
+        if let url = card.url {
+            AppLauncher.open(url)
+        } else if let result = card.result {
+            core.clipboardCoordinator.copyDeveloperUtilityOutput(result)
+        }
+    }
+
     /// The card's meeting or a meeting row's; both answer the meeting menu's chords.
     private func meeting(at selection: Int) -> MeetingEvent? {
         switch row(at: selection) {
         case .meeting(let meeting): return meeting
         case .entry(let app) where app.kind == .meeting,
-             .recent(let app) where app.kind == .meeting:
+            .recent(let app) where app.kind == .meeting:
             return core.calendarCoordinator.meeting(entryID: app.id)
         default: return nil
         }

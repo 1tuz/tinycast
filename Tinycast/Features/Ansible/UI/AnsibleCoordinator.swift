@@ -13,6 +13,7 @@ final class AnsibleCoordinator {
     var selectedTarget = ""
     var limit = ""
     var tags = ""
+    var canRun: Bool { inventoryURL != nil && playbookURL != nil }
     var isSelectedHost: Bool { inventory?.hosts.contains(selectedTarget) == true }
     var historyRecords: [AnsibleRunRecord] { history.records }
 
@@ -100,8 +101,9 @@ final class AnsibleCoordinator {
                 errorMessage = String(localized: "ssh was not found in your command line tools.")
                 return
             }
-            do { try AnsibleTerminalLauncher.open(executable: executable, arguments: ["--", host]) }
-            catch { errorMessage = error.localizedDescription }
+            do { try TerminalCommandLauncher.open(executable: executable, arguments: ["--", host]) } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -117,11 +119,15 @@ final class AnsibleCoordinator {
         guard !isRunning else { return }
         if !dryRun {
             NSApp.activate(ignoringOtherApps: true)
-            guard await core.confirm(
-                title: String(localized: "Run playbook for real?"),
-                message: String(localized: "This can change remote hosts. Tinycast will run the selected playbook without --check."),
-                symbol: "exclamationmark.triangle", confirmTitle: String(localized: "Run for Real"),
-                tone: .danger, confirmRole: .destructive)
+            guard
+                await core.confirm(
+                    title: String(localized: "Run playbook for real?"),
+                    message: String(
+                        localized:
+                            "This can change remote hosts. Tinycast will run the selected playbook without --check."
+                    ),
+                    symbol: "exclamationmark.triangle", confirmTitle: String(localized: "Run for Real"),
+                    tone: .danger, confirmRole: .destructive)
             else { return }
         }
         errorMessage = nil
@@ -136,7 +142,8 @@ final class AnsibleCoordinator {
             activeRun = ActiveRun(outputID: outputID, stop: started.session.stop)
             lastInvocation = Invocation(id: commandID, run: request, dryRun: dryRun)
             isRunning = true
-            await consume(started.session, outputID: outputID, invocation: lastInvocation, startedAt: started.startedAt)
+            await consume(
+                started.session, outputID: outputID, invocation: lastInvocation, startedAt: started.startedAt)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -144,7 +151,8 @@ final class AnsibleCoordinator {
 
     private func runPing() async {
         guard !isRunning, let inventoryURL,
-            !selectedTarget.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            !selectedTarget.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
         errorMessage = nil
         do {
             let started = try await runner.startPing(host: selectedTarget, inventory: inventoryURL)
@@ -179,11 +187,15 @@ final class AnsibleCoordinator {
                 }
                 outputPresenter.finish(
                     CommandOutcome(
-                        summary: result.succeeded ? String(localized: "Completed") : String(localized: "Exited with status \(exitCode)"),
+                        summary: result.succeeded
+                            ? String(localized: "Completed")
+                            : String(localized: "Exited with status \(exitCode)"),
                         hint: nil, succeeded: result.succeeded, finishedAt: Date()), for: outputID)
                 if let invocation {
-                    history.append(AnsibleRunRecord(
-                        run: invocation.run, startedAt: startedAt, finishedAt: Date(), exitCode: exitCode))
+                    history.append(
+                        AnsibleRunRecord(
+                            run: invocation.run, dryRun: invocation.dryRun,
+                            startedAt: startedAt, finishedAt: Date(), exitCode: exitCode))
                 }
                 if activeRun?.outputID == outputID { activeRun = nil }
                 isRunning = false
@@ -215,42 +227,5 @@ final class AnsibleCoordinator {
     private static func commandPreview(executable: String, arguments: [String]) -> String {
         ([executable] + arguments).map { "'\($0.replacingOccurrences(of: "'", with: "'\\''"))'" }
             .joined(separator: " ")
-    }
-}
-
-@MainActor
-private enum AnsibleTerminalLauncher {
-    static func open(executable: URL, arguments: [String]) throws {
-        let values = [executable.path] + arguments
-        guard values.allSatisfy({ !$0.contains("\0") }) else { throw LaunchError.invalidArguments }
-        let command = values.map(quote).joined(separator: " ")
-        let script = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("tinycast-ansible-ssh-\(UUID().uuidString).command")
-        let body = "#!/bin/zsh\nset +e\n\(command)\nstatus=$?\nrm -f -- \"$0\"\nexit $status\n"
-        guard FileManager.default.createFile(
-            atPath: script.path, contents: Data(body.utf8), attributes: [.posixPermissions: 0o700]
-        ) else { throw LaunchError.couldNotPrepare }
-        guard NSWorkspace.shared.open(script) else {
-            try? FileManager.default.removeItem(at: script)
-            throw LaunchError.couldNotOpen
-        }
-    }
-
-    private static func quote(_ value: String) -> String {
-        "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
-    }
-
-    private enum LaunchError: LocalizedError {
-        case invalidArguments
-        case couldNotPrepare
-        case couldNotOpen
-
-        var errorDescription: String? {
-            switch self {
-            case .invalidArguments: String(localized: "SSH arguments contain an invalid character.")
-            case .couldNotPrepare: String(localized: "The SSH Terminal command could not be prepared.")
-            case .couldNotOpen: String(localized: "Terminal could not be opened for SSH.")
-            }
-        }
     }
 }

@@ -10,6 +10,11 @@ enum CommandID: String, CaseIterable, Sendable {
     case summarize = "command:summarize"
     case base64Encode = "command:base64-encode"
     case base64Decode = "command:base64-decode"
+    case convertYAMLJSON = "command:convert-yaml-json"
+    case decodeJWT = "command:decode-jwt"
+    case calculateCIDR = "command:calculate-cidr"
+    case decodeKubernetesSecret = "command:decode-kubernetes-secret"
+    case explainCron = "command:explain-cron"
     case formatJSON = "command:format-json"
     case minifyJSON = "command:minify-json"
     case hashMD5 = "command:hash-md5"
@@ -36,6 +41,9 @@ enum CommandID: String, CaseIterable, Sendable {
     case runShellCommand = "command:run-shell-command"
     case createCustomCommand = "command:create-custom-command"
     case searchCustomCommands = "command:search-custom-commands"
+    case kubeContext = "command:kube-context"
+    case kubePods = "command:kube-pods"
+    case ansibleRunner = "command:ansible-runner"
     case define = "command:define"
     case joinNextMeeting = "command:join-next-meeting"
     case mySchedule = "command:my-schedule"
@@ -87,6 +95,17 @@ enum CommandID: String, CaseIterable, Sendable {
         return commands
     }
 
+    var searchKeywords: [String] {
+        switch self {
+        case .decodeJWT: ["jwt", "bearer", "token", "header", "payload"]
+        case .calculateCIDR: ["cidr", "ipv4", "subnet", "netmask", "broadcast"]
+        case .decodeKubernetesSecret: ["kubernetes", "k8s", "secret", "base64", "decode"]
+        case .convertYAMLJSON: ["yaml", "json", "convert"]
+        case .explainCron: ["cron", "schedule", "crontab"]
+        default: []
+        }
+    }
+
     var name: String { nameResource.resolved() }
 
     var englishName: String { nameResource.key }
@@ -101,6 +120,11 @@ enum CommandID: String, CaseIterable, Sendable {
         case .summarize: return "Summarize"
         case .base64Encode: return "Base64 Encode"
         case .base64Decode: return "Base64 Decode"
+        case .convertYAMLJSON: return "YAML ↔ JSON"
+        case .decodeJWT: return "Decode JWT"
+        case .calculateCIDR: return "Calculate CIDR"
+        case .decodeKubernetesSecret: return "Decode Kubernetes Secret"
+        case .explainCron: return "Explain cron"
         case .formatJSON: return "Format JSON"
         case .minifyJSON: return "Minify JSON"
         case .hashMD5: return "Hash (MD5)"
@@ -127,6 +151,9 @@ enum CommandID: String, CaseIterable, Sendable {
         case .runShellCommand: return "Run Shell Command"
         case .createCustomCommand: return "Create Custom Command"
         case .searchCustomCommands: return "Search Custom Commands"
+        case .kubeContext: return "Kube Context Guard"
+        case .kubePods: return "Kubernetes Pods"
+        case .ansibleRunner: return "Ansible Runner"
         case .define: return "Define Word"
         case .joinNextMeeting: return "Join Next Meeting"
         case .mySchedule: return "My Schedule"
@@ -168,6 +195,11 @@ enum CommandID: String, CaseIterable, Sendable {
         case .summarize: return BuiltInQuickAction.summarize.symbol
         case .base64Encode: return BuiltInQuickAction.base64Encode.symbol
         case .base64Decode: return BuiltInQuickAction.base64Decode.symbol
+        case .convertYAMLJSON: return BuiltInQuickAction.convertYAMLJSON.symbol
+        case .decodeJWT: return BuiltInQuickAction.decodeJWT.symbol
+        case .calculateCIDR: return BuiltInQuickAction.calculateCIDR.symbol
+        case .decodeKubernetesSecret: return BuiltInQuickAction.decodeKubernetesSecret.symbol
+        case .explainCron: return BuiltInQuickAction.explainCron.symbol
         case .formatJSON: return BuiltInQuickAction.formatJSON.symbol
         case .minifyJSON: return BuiltInQuickAction.minifyJSON.symbol
         case .hashMD5: return BuiltInQuickAction.hashMD5.symbol
@@ -193,6 +225,9 @@ enum CommandID: String, CaseIterable, Sendable {
         case .runShellCommand: return "terminal"
         case .createCustomCommand: return "terminal"
         case .searchCustomCommands: return "terminal"
+        case .kubeContext: return "network"
+        case .kubePods: return "shippingbox"
+        case .ansibleRunner: return "terminal"
         case .define: return "book.closed"
         case .joinNextMeeting: return "video.fill"
         case .mySchedule: return "calendar"
@@ -233,6 +268,11 @@ enum CommandID: String, CaseIterable, Sendable {
         case .summarize: self = .summarize
         case .base64Encode: self = .base64Encode
         case .base64Decode: self = .base64Decode
+        case .convertYAMLJSON: self = .convertYAMLJSON
+        case .decodeJWT: self = .decodeJWT
+        case .calculateCIDR: self = .calculateCIDR
+        case .decodeKubernetesSecret: self = .decodeKubernetesSecret
+        case .explainCron: self = .explainCron
         case .formatJSON: self = .formatJSON
         case .minifyJSON: self = .minifyJSON
         case .hashMD5: self = .hashMD5
@@ -257,6 +297,11 @@ enum CommandID: String, CaseIterable, Sendable {
         case .summarize: return .summarize
         case .base64Encode: return .base64Encode
         case .base64Decode: return .base64Decode
+        case .convertYAMLJSON: return .convertYAMLJSON
+        case .decodeJWT: return .decodeJWT
+        case .calculateCIDR: return .calculateCIDR
+        case .decodeKubernetesSecret: return .decodeKubernetesSecret
+        case .explainCron: return .explainCron
         case .formatJSON: return .formatJSON
         case .minifyJSON: return .minifyJSON
         case .hashMD5: return .hashMD5

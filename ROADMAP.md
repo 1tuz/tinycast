@@ -18,6 +18,16 @@ Status after the local fork implementation.
 
 10. **Cross-Device Sync** — excluded. Tinycast stays a local macOS app. No iCloud or other sync backend is included.
 
+## DevOps Toolkit — implemented on `codex/devops-toolkit`
+
+11. **DevOps Toolkit** — local Quick Actions for YAML ↔ JSON, cron, JWT, CIDR and Kubernetes
+    Secrets; opt-in Kubernetes context guard, Pods and streaming logs; Kubernetes, Vault Proxy and
+    SSH port forwards; guarded Ansible inventory/playbook runner; six bundled Raycast extensions
+    plus the read-only KubeLens handoff; streaming extension processes, persistent menu-bar commands
+    and Custom Commands in Workflows.
+    The 11.9 integrations add launcher cards, Kubernetes quantity parsing, explicit clipboard
+    fallback, clipboard actions, kubectl snippets and Terminal-aware Recent ranking.
+
 ## Existing behavior retained
 
 - Compact mode stays enabled when already enabled. Its default shortcut row has Clipboard History,

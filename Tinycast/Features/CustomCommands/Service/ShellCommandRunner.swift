@@ -159,11 +159,50 @@ enum ShellCommandRunner {
             return failedSession(String(localized: "The shell could not be started."))
         }
 
+        return streamed(terminal) { launch.removeScript() }
+    }
+
+    /// Starts a CLI with exact argv, for commands that must not pass through a shell.
+    nonisolated static func stream(
+        executable: URL, arguments: [String], environment additions: [String: String] = [:],
+        workingDirectory: URL? = nil
+    ) -> ShellCommandSession {
+        let path = executable.standardizedFileURL.path
+        let directory = workingDirectory?.standardizedFileURL.path
+            ?? FileManager.default.homeDirectoryForCurrentUser.path
+        let invalid = [path, directory] + arguments + additions.flatMap { [$0.key, $0.value] }
+        var isDirectory: ObjCBool = false
+        guard path.hasPrefix("/"), !invalid.contains(where: { $0.contains("\0") }),
+            FileManager.default.isExecutableFile(atPath: path),
+            FileManager.default.fileExists(atPath: directory, isDirectory: &isDirectory),
+            isDirectory.boolValue
+        else {
+            return failedSession(String(localized: "The command could not be started."))
+        }
+        var environment = ProcessInfo.processInfo.environment
+        environment["TINYCAST"] = "1"
+        environment["TERM"] = "xterm-256color"
+        environment.merge(additions) { _, new in new }
+        guard !environment.contains(where: { $0.key.isEmpty || $0.key.contains("=") }) else {
+            return failedSession(String(localized: "The command environment is invalid."))
+        }
+        guard let terminal = PseudoTerminal.spawn(
+            executable: path, arguments: arguments, environment: environment,
+            workingDirectory: directory)
+        else {
+            return failedSession(String(localized: "The command could not be started."))
+        }
+        return streamed(terminal)
+    }
+
+    nonisolated private static func streamed(
+        _ terminal: PseudoTerminal, cleanup: @escaping @Sendable () -> Void = {}
+    ) -> ShellCommandSession {
         let stopped = StopFlag()
         let events = AsyncStream<ShellCommandEvent> { continuation in
             queue.async {
                 drain(terminal, stopped: stopped, into: continuation)
-                launch.removeScript()
+                cleanup()
             }
         }
         return ShellCommandSession(
@@ -171,7 +210,6 @@ enum ShellCommandRunner {
             stop: { [weak stopFlag = stopped] in
                 stopFlag?.mark()
                 terminal.signalSession(SIGTERM)
-                // The backstop, for a command that ignores a polite ask.
                 queue.asyncAfter(deadline: .now() + stopGrace) {
                     terminal.signalSession(SIGKILL)
                 }

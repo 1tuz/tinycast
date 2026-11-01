@@ -32,6 +32,28 @@ final class AppCore {
     let spaceSwitcher = SpaceSwitcher()
     let inputSourceSwitcher = InputSourceSwitcher()
     let settings: AppSettings
+    @ObservationIgnored private(set) lazy var kubeContexts = KubeContextStore(settings: settings)
+    @ObservationIgnored private(set) lazy var kubeContextCoordinator = KubeContextCoordinator(
+        store: kubeContexts, settingsCoordinator: settingsCoordinator,
+        paletteCoordinator: paletteCoordinator)
+    @ObservationIgnored private(set) lazy var portForwardManager = PortForwardManager(
+        currentPolicy: { [weak self] in
+            self?.kubeContexts.policy
+                ?? KubeCommandPolicy(isEnabled: false, contextNames: [], productionContextNames: [])
+        },
+        currentSelection: { [weak self] in
+            guard let self, let contextName = self.kubeContexts.selectedContextName else { return nil }
+            return KubePortForwardSelection(
+                contextName: contextName, namespace: self.kubeContexts.selectedNamespace)
+        })
+    @ObservationIgnored private(set) lazy var kubePodsCoordinator = KubePodsCoordinator(
+        contextStore: kubeContexts)
+    @ObservationIgnored private(set) lazy var kubePodsWindowController = KubePodsWindowController(
+        coordinator: kubePodsCoordinator, activationPolicy: activationPolicy)
+    @ObservationIgnored private(set) lazy var ansibleHistory = AnsibleRunHistoryStore(
+        fileURL: AppPaths.applicationSupport().appending(path: "ansible-runs.json"))
+    @ObservationIgnored private(set) lazy var ansibleCoordinator = AnsibleCoordinator(
+        runner: AnsibleRunner(), history: ansibleHistory, core: self)
     /// Mirrors settings into settings.json; nil while the Backup pane's switch is off.
     @ObservationIgnored private var settingsFile: SettingsFileRepository?
     /// The file's launcher items, kept to apply a waiting record once its app is installed.
@@ -294,6 +316,7 @@ final class AppCore {
             // Before `hotKeys.start` even when off: the prune reads it.
             customQuickActions.load()
             quickActionCoordinator.applyEnabled()
+            kubeContexts.applyPreferences()
             customCommands.onChange = { [weak self] _ in
                 self?.customCommandCoordinator.applyCustomCommandsPresence()
             }
@@ -419,6 +442,9 @@ final class AppCore {
                 guard let self, self.appIndex.isCommandEnabled(id) else { return }
                 self.launcherCoordinator.runCommand(id)
             }
+            workflowCoordinator.onRunCustomCommand = { [weak self] id, arguments in
+                self?.customCommandCoordinator.runWorkflowCommand(id: id, arguments: arguments)
+            }
             workflowCoordinator.start()
             // After `hotKeys.start`: Secure Input equivalents are built from the loaded bindings.
             hyperKey.onProblem = { [weak self] in self?.showMessage($0, tone: .danger) }
@@ -512,6 +538,7 @@ final class AppCore {
 
     func flushNotesForTermination() async {
         await notesCoordinator.prepareForTermination()
+        await extensions.setEnabled(false)
     }
 
     /// Idempotent: both switches are tracked, and either one flipping re-runs the whole decision.
@@ -554,6 +581,8 @@ final class AppCore {
     func prepareForTermination() {
         settingsFile?.flush()
         clipboardTextIndexer?.stop()
+        portForwardManager.stopAll()
+        Task { await extensions.setEnabled(false) }
         // HID remaps first: they outlive the process.
         hyperKey.prepareForTermination()
         windowLayoutCoordinator.prepareForTermination()
@@ -688,6 +717,12 @@ final class AppCore {
             { _ = $0.quickActionsEnabled },
             reproject: { $0.quickActionCoordinator.applyEnabled() })
         track({ _ = $0.calendarEnabled }, reproject: { $0.calendarCoordinator.applyEnabled() })
+        track(
+            {
+                _ = $0.kubeSelectedContext
+                _ = $0.kubeSelectedNamespace
+                _ = $0.kubeProductionContexts
+            }, reproject: { $0.kubeContexts.applyPreferences() })
         track(
             {
                 _ = $0.calendarShowInLauncher

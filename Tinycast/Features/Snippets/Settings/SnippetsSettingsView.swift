@@ -73,6 +73,15 @@ struct SnippetsSettingsView: View {
             }
 
             LabeledContent {
+                Button("Add") { coordinator.addKubectlSnippets() }
+                    .disabled(
+                        KubectlSnippetCatalog.missing(from: snippetsStore.snippets.map(\.snippet)).isEmpty)
+            } label: {
+                SettingsRowTitle(.snippetsLibrary, "Kubectl snippets")
+                Text("Add ready-made kubectl commands with namespace and resource choices.")
+            }
+
+            LabeledContent {
                 if settings.snippetsFolder != nil {
                     Button(
                         String(localized: "snippets-use-default-folder", defaultValue: "Use Default"),

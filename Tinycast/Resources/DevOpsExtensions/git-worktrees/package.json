@@ -1,0 +1,45 @@
+{
+  "name": "git-worktrees",
+  "title": "Git Worktrees",
+  "description": "Local Git Worktrees using your installed CLI and configuration.",
+  "author": "tinycast",
+  "version": "1.0.0",
+  "platforms": [
+    "macOS"
+  ],
+  "categories": [
+    "Developer Tools"
+  ],
+  "commands": [
+    {
+      "name": "index",
+      "title": "Git Worktrees",
+      "description": "Open Git Worktrees",
+      "mode": "view",
+      "devOpsCategory": "git"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "projectRoots",
+      "title": "Project roots (one absolute path per line)",
+      "type": "textfield",
+      "required": false,
+      "default": ""
+    },
+    {
+      "name": "mergeBase",
+      "title": "Merge base",
+      "type": "textfield",
+      "required": false,
+      "default": "main"
+    },
+    {
+      "name": "jiraURL",
+      "title": "Jira base URL",
+      "type": "textfield",
+      "required": false,
+      "default": ""
+    }
+  ]
+}

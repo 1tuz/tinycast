@@ -15,7 +15,8 @@
       "name": "index",
       "title": "Compose Projects",
       "description": "Open Compose Projects",
-      "mode": "view"
+      "mode": "view",
+      "devOpsCategory": "docker"
     }
   ],
   "preferences": [

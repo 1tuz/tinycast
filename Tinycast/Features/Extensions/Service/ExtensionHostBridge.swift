@@ -159,6 +159,12 @@ final class ExtensionHostBridge: ExtensionHostAPI {
         case "websocket": return try await sockets.perform(method: method, arguments: arguments)
         case "dns": return await ExtensionNameResolver.resolve(arguments.first)
         case "proc" where method == "read": return try await ExtensionAsyncProcess.read(arguments)
+        case "proc" where method == "writeStdin":
+            try await ExtensionAsyncProcess.writeStdin(arguments)
+            return nil
+        case "proc" where method == "closeStdin":
+            try await ExtensionAsyncProcess.closeStdin(arguments)
+            return nil
         case "proc": return try await ExtensionAsyncProcess.wait(arguments.first)
         default: throw ExtensionHostError.unknown("\(api).\(method)")
         }
@@ -272,16 +278,23 @@ final class ExtensionHostBridge: ExtensionHostAPI {
         pasteboard.writeObjects(items)
         pasteboard.setString(url.path, forType: .string)
         if concealed {
-            pasteboard.setData(Data(), forType: Self.concealedPasteboardType)
+            writeConcealedMarkers(on: pasteboard)
         }
     }
 
     private func writeConcealedString(_ text: String) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.declareTypes([.string, Self.concealedPasteboardType], owner: nil)
+        pasteboard.declareTypes(
+            [.string, ClipboardManager.internalType, Self.concealedPasteboardType], owner: nil)
         pasteboard.setString(text, forType: .string)
-        pasteboard.setData(Data(), forType: Self.concealedPasteboardType)
+        writeConcealedMarkers(on: pasteboard)
+    }
+
+    private func writeConcealedMarkers(on pasteboard: NSPasteboard) {
+        let marker = Data()
+        pasteboard.setData(marker, forType: ClipboardManager.internalType)
+        pasteboard.setData(marker, forType: Self.concealedPasteboardType)
     }
 
     private static let concealedPasteboardType = NSPasteboard.PasteboardType(
@@ -446,6 +459,42 @@ final class ExtensionHostBridge: ExtensionHostAPI {
         case "open":
             guard let target = arguments.first?.stringValue else { return nil }
             open(target: target, application: arguments[safe: 1]?.stringValue)
+            return nil
+
+        case "openTerminal":
+            let context = try requireContext().0
+            guard context.activeLaunchType != .background else {
+                throw ExtensionHostError.unsupported("openTerminal during a background run")
+            }
+            guard arguments.count <= 2,
+                case let .string(executable)? = arguments.first
+            else { throw TerminalCommandLauncherError.invalidCommand }
+            let rawArguments: [RenderValue]
+            if let value = arguments[safe: 1] {
+                guard case let .array(values) = value else {
+                    throw TerminalCommandLauncherError.invalidCommand
+                }
+                rawArguments = values
+            } else {
+                rawArguments = []
+            }
+            guard rawArguments.allSatisfy({ value in
+                if case .string = value { return true }
+                return false
+            }) else {
+                throw TerminalCommandLauncherError.invalidCommand
+            }
+            let request: ExtensionTerminalRequest
+            do {
+                request = try ExtensionTerminalRequest(
+                    executable: executable, arguments: rawArguments.compactMap(\.stringValue))
+            } catch {
+                throw TerminalCommandLauncherError.invalidCommand
+            }
+            guard let url = ExtensionAsyncProcess.resolveExecutable(request.executable) else {
+                throw ExtensionHostError.unsupported("openTerminal executable not found: \(request.executable)")
+            }
+            try TerminalCommandLauncher.open(executable: url, arguments: request.arguments)
             return nil
 
         case "openWith":

@@ -7,6 +7,11 @@ enum BuiltInQuickAction: String, CaseIterable, Codable, Identifiable, Sendable {
     case summarize
     case base64Encode
     case base64Decode
+    case convertYAMLJSON
+    case decodeJWT
+    case calculateCIDR
+    case decodeKubernetesSecret
+    case explainCron
     case formatJSON
     case minifyJSON
     case hashMD5
@@ -32,7 +37,7 @@ enum BuiltInQuickAction: String, CaseIterable, Codable, Identifiable, Sendable {
         case .summarize: return "Summarize"
         case .base64Encode, .base64Decode, .formatJSON, .minifyJSON, .hashMD5, .hashSHA256, .hexEncode,
             .hexDecode, .urlEncode, .urlDecode, .generateUUID, .timestampToDate, .convertColor,
-            .generateLoremIpsum, .convertCase:
+            .generateLoremIpsum, .convertCase, .convertYAMLJSON, .explainCron, .decodeJWT, .calculateCIDR, .decodeKubernetesSecret:
             return developerUtility!.title
         }
     }
@@ -45,7 +50,7 @@ enum BuiltInQuickAction: String, CaseIterable, Codable, Identifiable, Sendable {
         case .summarize: return "text.line.3.summary"
         case .base64Encode, .base64Decode, .formatJSON, .minifyJSON, .hashMD5, .hashSHA256, .hexEncode,
             .hexDecode, .urlEncode, .urlDecode, .generateUUID, .timestampToDate, .convertColor,
-            .generateLoremIpsum, .convertCase:
+            .generateLoremIpsum, .convertCase, .convertYAMLJSON, .explainCron, .decodeJWT, .calculateCIDR, .decodeKubernetesSecret:
             return developerUtility!.symbol
         }
     }
@@ -57,12 +62,14 @@ enum BuiltInQuickAction: String, CaseIterable, Codable, Identifiable, Sendable {
         case .translate: return "Translating…"
         case .summarize: return "Summarizing…"
         case .base64Encode, .hexEncode, .urlEncode: return "Encoding…"
-        case .base64Decode, .hexDecode, .urlDecode: return "Decoding…"
+        case .base64Decode, .hexDecode, .urlDecode, .decodeJWT, .decodeKubernetesSecret: return "Decoding…"
+        case .calculateCIDR: return String(localized: "Calculating…")
+        case .explainCron: return String(localized: "Explaining…")
         case .formatJSON: return "Formatting…"
         case .minifyJSON: return "Minifying…"
         case .hashMD5, .hashSHA256: return "Hashing…"
         case .generateUUID, .generateLoremIpsum: return "Generating…"
-        case .timestampToDate, .convertColor, .convertCase: return "Converting…"
+        case .timestampToDate, .convertColor, .convertCase, .convertYAMLJSON: return "Converting…"
         }
     }
 

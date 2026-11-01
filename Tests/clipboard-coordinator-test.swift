@@ -15,6 +15,7 @@ struct ClipboardCoordinatorTests {
         await tooLongEditIsRefused()
         await changedScreenKeepsItsSelection()
         await cancelledAndEmptyEditsChangeNothing()
+        developerUtilityOutputUsesTheInternalCopyPath()
         print("\(passes) passed, \(failures) failed")
         if failures > 0 { exit(1) }
     }
@@ -170,6 +171,16 @@ struct ClipboardCoordinatorTests {
             "a screen opened during editing keeps its own query and selection")
     }
 
+    static func developerUtilityOutputUsesTheInternalCopyPath() {
+        let fixture = Fixture()
+        defer { fixture.cleanUp() }
+        fixture.coordinator.copyDeveloperUtilityOutput("decoded locally")
+        expect(
+            Paster.developerUtilityCopies == ["decoded locally"],
+            "a developer result uses the internal clipboard copy path")
+        expect(fixture.core.messages == ["Copied result"], "a copied developer result is confirmed")
+    }
+
     static func expect(_ condition: Bool, _ message: String) {
         if condition {
             passes += 1
@@ -192,6 +203,7 @@ struct ClipboardCoordinatorTests {
         init(text: String = "draft selected", pinned: Bool = false) {
             Paster.copies = []
             Paster.plainCopies = []
+            Paster.developerUtilityCopies = []
             store = ClipboardStore(directory: directory)
             store.addText("other pin", sourceBundleID: nil)
             store.togglePinned(store.items[0])
@@ -275,6 +287,7 @@ enum ClipboardTextWorker {
 enum Paster {
     static var copies: [ClipboardItem] = []
     static var plainCopies: [String] = []
+    static var developerUtilityCopies: [String] = []
     @discardableResult
     static func copy(_ item: ClipboardItem, store: ClipboardStore) -> Bool {
         copies.append(item)
@@ -283,6 +296,7 @@ enum Paster {
     }
     @discardableResult
     static func copyPlainText(_ text: String) -> Bool { plainCopies.append(text); return true }
+    static func copyString(_ text: String) { developerUtilityCopies.append(text) }
     static func paste(
         _ item: ClipboardItem, store: ClipboardStore, previousApp: NSRunningApplication?
     ) -> Bool { true }

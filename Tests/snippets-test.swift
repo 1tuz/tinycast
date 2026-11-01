@@ -21,6 +21,7 @@ struct SnippetsTests {
         await testCopySelectionFallback()
         try await testStoreWatcher()
         testTemplateExpansion()
+        testKubectlSnippetCatalog()
         testDynamicPlaceholders()
         testTemplateEncodingAndSelectionAlias()
         testKeywordPolicy()
@@ -1303,6 +1304,43 @@ struct SnippetsTests {
             snippets: depthRecords,
             context: context)
         check("reference depth limit leaves the unexpanded token visible", depthResult.text == "{snippet:S6}")
+    }
+
+    private static func testKubectlSnippetCatalog() {
+        let snippets = KubectlSnippetCatalog.snippets
+        check("kubectl catalog contains four ready-made templates", snippets.count == 4)
+        check(
+            "kubectl templates are enabled and do not install auto-expansion keywords",
+            snippets.allSatisfy { $0.isEnabled && $0.keyword == nil })
+
+        var calendar = Calendar(identifier: .gregorian)
+        let timeZone = TimeZone(secondsFromGMT: 0)!
+        calendar.timeZone = timeZone
+        let context = SnippetTemplateEngine.ExpansionContext(
+            clipboardHistory: [], selection: "", now: Date(timeIntervalSince1970: 0),
+            calendar: calendar, locale: Locale(identifier: "en_US_POSIX"), timeZone: timeZone)
+        let expanded = snippets.map {
+            SnippetTemplateEngine.expand(text: $0.text, context: context)
+        }
+        check(
+            "kubectl namespace and resource choices use the existing option prompt",
+            expanded.map(\.missingArguments).flatMap { $0 }.contains(
+                .init(name: "Namespace", options: ["default", "kube-system", "production"]))
+                && expanded.map(\.missingArguments).flatMap { $0 }.contains(
+                    .init(name: "Resource", options: ["pod", "deployment", "service"]))
+        )
+        check(
+            "all kubectl templates remain literal until the user expands a snippet",
+            snippets.allSatisfy { $0.text.hasPrefix("kubectl ") }
+                && expanded.allSatisfy { $0.text.contains("kubectl ") })
+
+        let customizedExisting = Snippet(name: "Renamed", text: snippets[0].text)
+        check(
+            "catalog import skips an existing template by stable command text",
+            KubectlSnippetCatalog.missing(from: [customizedExisting]).count == snippets.count - 1)
+        check(
+            "catalog import becomes a no-op after every template is present",
+            KubectlSnippetCatalog.missing(from: snippets).isEmpty)
     }
 
     /// Every token, parameter and modifier, against injected clock, locale and UUIDs.

@@ -15,7 +15,8 @@
       "name": "index",
       "title": "Git Worktrees",
       "description": "Open Git Worktrees",
-      "mode": "view"
+      "mode": "view",
+      "devOpsCategory": "git"
     }
   ],
   "preferences": [

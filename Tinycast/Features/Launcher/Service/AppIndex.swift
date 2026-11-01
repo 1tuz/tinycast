@@ -140,6 +140,8 @@ struct AppEntry: Identifiable, Hashable, Sendable {
     var iconOverride: EntryIcon?
     /// What this entry comes from — an extension's title. Labels the row; ranks as a subtitle.
     var ownerName: String?
+    /// Explicit DevOps domain, used to raise relevant commands when a terminal opened the palette.
+    var devOpsCategory: DevOpsCommandCategory? = nil
     /// When it landed on disk, so a fresh install can be suggested before its first open.
     var installedAt: Date?
     var search = SearchProfile.unnamed

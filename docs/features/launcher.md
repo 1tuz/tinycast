@@ -477,6 +477,12 @@ kind section is sorted by the tiebreak, so what the user opens comes first and n
 read alphabetically below it. The sort runs within each contiguous kind run of the publication order,
 so the sectioned view stays 1:1 with the flat selection.
 
+When the app behind the palette is Terminal, iTerm2, Ghostty, Warp, Kitty, Alacritty or WezTerm,
+Recent commands with an explicit `DevOpsCommandCategory` appear before uncategorized commands.
+Both groups keep their recent-use order. Built-in commands declare the category in command metadata;
+extension commands declare `devOpsCategory` in their command manifest. The category is never inferred
+from a command title or identifier.
+
 ### Suggestions
 
 `LauncherSuggestions.select` chooses at most five from every visible entry that is not a favorite, a

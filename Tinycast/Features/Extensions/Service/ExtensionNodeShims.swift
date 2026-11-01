@@ -7,6 +7,7 @@ import Foundation
 final class ExtensionNodeShims: @unchecked Sendable {
     private let fileManager = FileManager.default
     private var fileHandles: [Int32: FileHandle] = [:]
+    private var childProcesses: Set<Int32> = []
 
     /// A lock flag like `O_EXLOCK` would block the JS queue with no way back.
     private static let openableFlags =
@@ -18,6 +19,8 @@ final class ExtensionNodeShims: @unchecked Sendable {
     func closeFiles() {
         for handle in fileHandles.values { try? handle.close() }
         fileHandles.removeAll()
+        ExtensionAsyncProcess.terminate(childProcesses)
+        childProcesses.removeAll()
     }
 
     /// Returns the JSON envelope `{ok, value}` / `{ok:false, error, code}` the JS side unwraps.
@@ -420,6 +423,12 @@ final class ExtensionNodeShims: @unchecked Sendable {
 
     private func process(method: String, arguments: [Any]) throws -> Any? {
         if method == "kill" { return try signal(arguments) }
+        if method == "release" {
+            guard let pid = (arguments.first as? NSNumber).flatMap({ Int32(exactly: $0.doubleValue) })
+            else { throw ShimError.failed("kill EINVAL", "EINVAL") }
+            childProcesses.remove(pid)
+            return nil
+        }
         guard let spec = arguments.first as? [String: Any] else {
             throw ShimError.failed("No command given.", "EINVAL")
         }
@@ -431,11 +440,10 @@ final class ExtensionNodeShims: @unchecked Sendable {
             return try launch(spec).collect(timeout: timeout)
         case "start":
             let child = try launch(spec)
-            // A detached child outlives its caller, so nothing ever waits on it.
-            if spec["detached"] as? Bool != true {
-                ExtensionAsyncProcess.enqueue(child, timeout: timeout)
-            }
-            return Int(child.task.processIdentifier)
+            let pid = Int32(child.task.processIdentifier)
+            ExtensionAsyncProcess.enqueue(child, timeout: timeout)
+            childProcesses.insert(pid)
+            return Int(pid)
         default:
             throw ShimError.failed("child_process.\(method) is not supported.", "ENOSYS")
         }
@@ -445,6 +453,10 @@ final class ExtensionNodeShims: @unchecked Sendable {
         let command = spec["command"] as? String ?? ""
         guard !command.isEmpty else { throw ShimError.failed("No command given.", "EINVAL") }
         let useShell = spec["shell"] as? Bool ?? false
+        let streaming = spec["streaming"] as? Bool ?? false
+        guard !(streaming && useShell) else {
+            throw ShimError.failed("Streaming child_process.spawn does not support shell:true.", "EINVAL")
+        }
 
         let task = Process()
         if useShell {
@@ -471,7 +483,8 @@ final class ExtensionNodeShims: @unchecked Sendable {
         task.standardOutput = stdout
         task.standardError = stderr
         let input = (spec["input"] as? String).flatMap { Data(base64Encoded: $0) }
-        let stdin = input.map { _ in Pipe() }
+        let streamsStdin = spec["streaming"] as? Bool == true
+        let stdin = input != nil || streamsStdin ? Pipe() : nil
         if let stdin { task.standardInput = stdin }
 
         let exit: ProcessExit
@@ -480,8 +493,10 @@ final class ExtensionNodeShims: @unchecked Sendable {
         } catch {
             throw ShimError.failed("Could not run '\(command)': \(error.localizedDescription)", "ENOENT")
         }
+        if let stdin { _ = fcntl(stdin.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1) }
         if let input, let stdin { feed(input, to: stdin) }
-        return ExtensionAsyncProcess.Child(task: task, exit: exit, stdout: stdout, stderr: stderr)
+        return ExtensionAsyncProcess.Child(
+            task: task, exit: exit, stdin: stdin, stdout: stdout, stderr: stderr)
     }
 
     /// A pipe holds 64 KB, so a larger input written before the child reads it would never finish.

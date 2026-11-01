@@ -743,6 +743,9 @@ const childProcess = {
       options = args;
       args = [];
     }
+    if (options.shell) {
+      throw new TypeError("child_process.spawn does not support shell:true in Tinycast.");
+    }
     return new ChildProcess(String(file), args.map(String), options);
   },
   fork() {
@@ -962,31 +965,82 @@ class ChildProcess extends EventEmitter {
     this.pid = 0;
     this.killed = false;
     this.exitCode = null;
-    this.stdout = new PassThrough();
-    this.stderr = new PassThrough();
-    this._input = [];
+    this.stdout = this._outputStream(1);
+    this.stderr = this._outputStream(2);
     this._started = false;
 
-    const self = this;
-    this.stdin = new EventEmitter();
-    this.stdin.writable = true;
-    this.stdin.write = (chunk) => (self._input.push(typeof chunk === "string" ? Buffer.from(chunk, "utf8") : Buffer.from(chunk)), true);
-    this.stdin.end = (chunk) => { if (chunk !== undefined) this.stdin.write(chunk); self._start(file, args, options); return this.stdin; };
-    this.stdin.destroy = () => {};
+    this._startedPromise = new Promise((resolve, reject) => {
+      this._resolveStarted = resolve;
+      this._rejectStarted = reject;
+    });
+    this._startedPromise.catch(() => {});
+    this.stdin = new Writable({
+      write: (chunk, encoding, callback) => {
+        const bytes = typeof chunk === "string" ? Buffer.from(chunk, encoding) : Buffer.from(chunk);
+        this._startedPromise
+          .then(() => hostCall("proc", "writeStdin", [this.pid, bytesToBase64(bytes)]))
+          .then(() => callback(null), callback);
+      },
+      final: (callback) => {
+        this._startedPromise
+          .then(() => hostCall("proc", "closeStdin", [this.pid]))
+          .then(() => callback(null), callback);
+      },
+    });
     this.stdio = [this.stdin, this.stdout, this.stderr];
 
-    // Start on a microtask, not a timer. Callers write stdin synchronously right after `spawn()`
-    // (`p.stdin.write(q); p.stdin.end()`), so a microtask still collects it — but unlike a timer it is
-    // guaranteed to drain before control returns to Swift. A fire-and-forget `spawn(...).unref()` in a
-    // no-view command would otherwise still be pending when the command finishes and its context is
-    // torn down, and the child would never launch at all.
     queueMicrotask(() => this._start(file, args, options));
+  }
+
+  _outputStream(fd) {
+    const child = this;
+    const stream = new Readable({
+      read() {
+        if (!child.pid) {
+          stream._waitingForSpawn = true;
+          return;
+        }
+        if (stream._readingChild) return;
+        stream._readingChild = true;
+        hostCall("proc", "read", [child.pid, fd]).then(
+          (chunk) => {
+            stream._readingChild = false;
+            if (chunk === null || chunk === undefined) {
+              stream._childEOF = true;
+              stream._resolveChildEOF();
+              stream.push(null);
+            } else {
+              stream.push(Buffer.from(base64ToBytes(chunk)));
+            }
+          },
+          (error) => {
+            stream._readingChild = false;
+            stream._rejectChildEOF(error);
+            stream.destroy(error);
+            child.emit("error", error);
+          },
+        );
+      },
+    });
+    stream._childEOF = false;
+    stream._childEOFPromise = new Promise((resolve, reject) => {
+      stream._resolveChildEOF = resolve;
+      stream._rejectChildEOF = reject;
+    });
+    return stream;
+  }
+
+  _resumeOutput(stream) {
+    if (stream._waitingForSpawn) {
+      stream._waitingForSpawn = false;
+      stream._readableState.reading = false;
+    }
+    stream._pull();
   }
 
   _start(file, args, options) {
     if (this._started) return;
     this._started = true;
-    const input = this._input.length ? bytesToBase64(Buffer.concat(this._input)) : null;
     const { pid, exit } = startChild({
       shell: !!options.shell,
       command: file,
@@ -994,19 +1048,23 @@ class ChildProcess extends EventEmitter {
       cwd: options.cwd,
       env: childEnv(options.env),
       timeout: options.timeout,
-      input,
+      streaming: true,
       // `detached` only makes a process group; only an unread child may answer before it exits.
       detached: !!options.detached && (Array.isArray(options.stdio) ? options.stdio[1] : options.stdio) === "ignore",
-    }, (pid) => Promise.all([pipeChild(pid, 1, this.stdout), pipeChild(pid, 2, this.stderr)]));
+    }, () => Promise.all([this.stdout._childEOFPromise, this.stderr._childEOFPromise]));
     this.pid = pid;
-    if (pid) queueMicrotask(() => this.emit("spawn"));
+    if (pid) {
+      this._resolveStarted();
+      this._resumeOutput(this.stdout);
+      this._resumeOutput(this.stderr);
+      queueMicrotask(() => this.emit("spawn"));
+    } else {
+      this._rejectStarted(new Error("Could not start child process."));
+    }
     exit.then(
       (raw) => {
         this.exitCode = raw.status;
-        this.stdin.emit("finish");
-        this.stdout.end(Buffer.from(base64ToBytes(raw.stdout)));
-        this.stderr.end(Buffer.from(base64ToBytes(raw.stderr)));
-        // One host reply carries both, but a reader still expects the output before the exit code.
+        this._release();
         queueMicrotask(() => {
           this.emit("exit", raw.status, raw.signal ?? null);
           this.emit("close", raw.status, raw.signal ?? null);
@@ -1016,9 +1074,14 @@ class ChildProcess extends EventEmitter {
         // Close the streams even on failure: a consumer that awaits stdout (execa does) would
         // otherwise see `undefined` where Node guarantees an empty string.
         this.exitCode = 1;
-        this.stdin.emit("finish");
-        this.stdout.end();
-        this.stderr.end(Buffer.from(String(error?.message ?? error), "utf8"));
+        this._release();
+        for (const stream of [this.stdout, this.stderr]) {
+          if (!stream._childEOF) {
+            stream._childEOF = true;
+            stream._resolveChildEOF();
+            stream.push(null);
+          }
+        }
         this.emit("error", error);
         queueMicrotask(() => this.emit("close", 1, null));
       },
@@ -1027,6 +1090,13 @@ class ChildProcess extends EventEmitter {
 
   kill(signal) {
     return this.exitCode === null && signalChild(this, signal);
+  }
+
+  _release() {
+    if (!this.pid) return;
+    try {
+      hostCallSync("proc", "release", [this.pid]);
+    } catch {}
   }
 
   // Node uses these to detach a child from the event loop. Nothing here keeps the runtime alive, so
@@ -1088,34 +1158,11 @@ function decorateProcessError(error, label) {
 function startChild(spec, drain) {
   try {
     const pid = hostCallSync("proc", "start", [spec]);
-    const exit = spec.detached
-      ? Promise.resolve({ stdout: "", stderr: "", status: 0 })
-      : Promise.resolve(drain?.(pid)).then(() => hostCall("proc", "wait", [pid]));
+    const exit = Promise.resolve(drain?.(pid)).then(() => hostCall("proc", "wait", [pid]));
     return { pid, exit };
   } catch (error) {
     return { pid: undefined, exit: Promise.reject(error) };
   }
-}
-
-async function pipeChild(pid, fd, stream) {
-  let held = Buffer.alloc(0);
-  for (let chunk; (chunk = await hostCall("proc", "read", [pid, fd])); ) {
-    const bytes = Buffer.concat([held, Buffer.from(base64ToBytes(chunk))]);
-    const cut = utf8Boundary(bytes);
-    held = bytes.subarray(cut);
-    if (cut) stream.write(bytes.subarray(0, cut));
-  }
-  if (held.length) stream.write(held);
-}
-
-/// Holds back a trailing partial UTF-8 character so a chunk never splits one.
-function utf8Boundary(bytes) {
-  for (let i = bytes.length - 1; i >= Math.max(0, bytes.length - 3); i--) {
-    if ((bytes[i] & 0xc0) === 0x80) continue;
-    const need = bytes[i] >= 0xf0 ? 4 : bytes[i] >= 0xe0 ? 3 : bytes[i] >= 0xc0 ? 2 : 1;
-    return bytes.length - i < need ? i : bytes.length;
-  }
-  return bytes.length;
 }
 
 /// Node's `ChildProcess.kill` reports an undeliverable signal by returning false, never by throwing.
@@ -1136,6 +1183,11 @@ function runAsync(spec, options, callback, label) {
   const promise = exit
     .finally(() => {
       exited = true;
+      if (pid) {
+        try {
+          hostCallSync("proc", "release", [pid]);
+        } catch {}
+      }
     })
     .then((raw) => normalizeExecResult(raw, options))
     .catch((error) => {

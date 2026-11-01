@@ -5,6 +5,7 @@ struct ClipboardScreen: PaletteScreen {
     let core: AppCore
     let vm: PaletteState
     @State private var annotationItem: ClipboardItem?
+    @State private var devOpsResult: ClipboardDevOpsResult?
 
     private var metrics: InterfaceMetrics { core.settings.interfaceSize.metrics }
     let openActions: () -> Void
@@ -29,7 +30,8 @@ struct ClipboardScreen: PaletteScreen {
         guard let item = item(at: selection) else { return nil }
         return ClipboardActionsMenu.content(
             item: item, core: core, store: store, target: vm.pasteTarget,
-            onAnnotate: { annotationItem = item })
+            onAnnotate: { annotationItem = item },
+            onDevOpsAction: { runDevOpsAction($0, on: item) })
     }
 
     func activate(at selection: Int) {
@@ -127,6 +129,9 @@ struct ClipboardScreen: PaletteScreen {
                     old, new in
                     follow(from: old, to: new)
                 }
+                .onChange(of: item(at: vm.selection)?.id) { _, itemID in
+                    if devOpsResult?.itemID != itemID { devOpsResult = nil }
+                }
                 .sheet(item: $annotationItem) { item in
                     if let imageURL = store.imageURL(for: item) {
                         ClipboardImageAnnotationSheet(imageURL: imageURL) { image in
@@ -172,8 +177,26 @@ struct ClipboardScreen: PaletteScreen {
                 Rectangle()
                     .fill(Theme.Colors.separator)
                     .frame(width: 1)
-                ClipboardPreview(item: selected) { annotationItem = $0 }
+                ClipboardPreview(
+                    item: selected,
+                    devOpsResult: selected.flatMap { $0.id == devOpsResult?.itemID ? devOpsResult : nil },
+                    onAnnotate: { annotationItem = $0 },
+                    onDevOpsAction: { utility in
+                        guard let selected else { return }
+                        runDevOpsAction(utility, on: selected)
+                    },
+                    onCopyDevOpsResult: core.clipboardCoordinator.copyDeveloperUtilityOutput)
             }
+        }
+    }
+
+    private func runDevOpsAction(_ action: ClipboardDevOpsAction, on item: ClipboardItem) {
+        guard item.kind == .text, let text = item.text else { return }
+        do {
+            let output = try action.developerUtility.transform(text)
+            devOpsResult = ClipboardDevOpsResult(itemID: item.id, action: action, output: output)
+        } catch {
+            core.showMessage(error.localizedDescription, tone: .danger)
         }
     }
 }
@@ -188,7 +211,8 @@ private struct ClipFollowKey: Equatable {
 enum ClipboardActionsMenu {
     static func content(
         item: ClipboardItem, core: AppCore, store: ClipboardStore, target: PasteTarget?,
-        onAnnotate: @escaping () -> Void
+        onAnnotate: @escaping () -> Void,
+        onDevOpsAction: @escaping (ClipboardDevOpsAction) -> Void
     ) -> PopoverMenuContent {
         let defaultAction = core.settings.clipboardDefaultAction
         // Chord order puts the default first, beside the ↵ it answers.
@@ -210,6 +234,17 @@ enum ClipboardActionsMenu {
             ) {
                 core.clipboardCoordinator.pasteKeepingWindowOpen(item)
             })
+        let devOpsActions = ClipboardDevOpsAction.available(
+            for: item.kind == .text ? item.text ?? "" : "")
+        for (index, action) in devOpsActions.enumerated() {
+            items.append(
+                PopoverMenuItem(
+                    title: action.title, systemImage: action.symbol,
+                    startsSection: index == 0
+                ) {
+                    onDevOpsAction(action)
+                })
+        }
         if item.kind == .text {
             items.append(
                 PopoverMenuItem(

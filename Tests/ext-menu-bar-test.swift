@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import Foundation
 
 extension ExtensionTests {
@@ -35,7 +36,7 @@ extension ExtensionTests {
         manager.synchronize([owner])
         manager.run(owner, command: command)
         for _ in 0..<200 where manager.isRunning { await settle(50) }
-        check("real command settles and unloads", !manager.isRunning && lastRuntime == nil)
+        check("real command settles and retains its runtime", !manager.isRunning && lastRuntime != nil)
         check(
             "real command saves a native item",
             metadata.metadata(extension: owner.manifest.name, command: command.name)
@@ -59,7 +60,9 @@ extension ExtensionTests {
                 controller.menuDidClose(controller.menu)
                 controller.menu.performActionForItem(at: index)
                 for _ in 0..<200 where manager.isRunning { await settle(50) }
-                check("cycle \(cycle) refresh finishes and unloads", !manager.isRunning && lastRuntime == nil)
+                check(
+                    "cycle \(cycle) refresh reuses its runtime",
+                    !manager.isRunning && lastRuntime != nil)
             } else {
                 check("real command offers Refresh", false)
                 controller.menuDidClose(controller.menu)
@@ -73,9 +76,9 @@ extension ExtensionTests {
             check(
                 "real command queues an immediate launchCommand click",
                 hosts.last?.calls.contains("system.launchCommand") == true
-                    && !manager.isRunning && lastRuntime == nil)
+                    && !manager.isRunning && lastRuntime != nil)
         }
-        print("\(passes) passed, \(failures) failed; \(boots) fresh contexts")
+        print("\(passes) passed, \(failures) failed; \(boots) persistent contexts")
     }
 
     @MainActor
@@ -475,6 +478,8 @@ extension ExtensionTests {
     static func menuBarHostChecks() async {
         _ = NSApplication.shared
         NSApp.setActivationPolicy(.accessory)
+        await streamedChildTeardownChecks()
+        await streamedDescendantTeardownChecks()
         await menuBarRenderingChecks()
         menuBarPendingActionChecks()
         await menuBarImageChecks()
@@ -486,11 +491,14 @@ extension ExtensionTests {
         let source = #"""
             const React = require("react");
             const { MenuBarExtra, LocalStorage, environment, confirmAlert } = require("@raycast/api");
+            globalThis.__menuLaunchCount = (globalThis.__menuLaunchCount ?? 0) + 1;
             module.exports.default = function(props) {
               const [loading, setLoading] = React.useState(true);
               const [title, setTitle] = React.useState(environment.launchType);
               const actions = React.useRef(0);
               React.useEffect(() => {
+                LocalStorage.setItem("launchCount", globalThis.__menuLaunchCount);
+                LocalStorage.setItem("launchType", environment.launchType);
                 if (props.launchContext?.origin) LocalStorage.setItem("launch",
                   environment.launchType + ":" + props.arguments.value + ":" + props.launchContext.origin);
               }, []);
@@ -571,7 +579,10 @@ extension ExtensionTests {
                 hosts.append(host)
                 let runtime = ExtensionRuntime(hostAPI: host, runtimeURL: runtimeURL())
                 lastRuntime = runtime
-                return .init(runtime: runtime, stop: {}, enableInteraction: { host.isInteractive = true })
+                return .init(
+                    runtime: runtime, stop: {},
+                    enableInteraction: { host.isInteractive = true },
+                    disableInteraction: { host.isInteractive = false })
             }, onError: { message, _, _ in failures.append(message) })
         defer { manager.stop() }
         manager.synchronize(installed)
@@ -594,9 +605,9 @@ extension ExtensionTests {
         check("install does not run a menu command", boots.isEmpty && metadata.menuBarCommands().isEmpty)
         manager.run(first, command: first.manifest.commands[0])
         await settle(until: {
-            !manager.isRunning && lastRuntime == nil && snapshot(firstRef)?.title == "userInitiated"
+            !manager.isRunning && lastRuntime != nil && snapshot(firstRef)?.title == "userInitiated"
         })
-        check("settled menu keeps only a snapshot", !manager.isRunning && lastRuntime == nil)
+        check("settled menu retains its runtime", !manager.isRunning && lastRuntime != nil)
         check("manual launch snapshots title", snapshot(firstRef)?.title == "userInitiated")
         check(
             "manifest interval schedules next refresh",
@@ -608,8 +619,14 @@ extension ExtensionTests {
                 && controller.menu.items.first { $0.title == "Refresh" }?.representedObject != nil
         }
         controller.menuWillOpen(controller.menu)
-        await settle(until: { boots.count == 2 && menuIsReady() })
-        check("opening a menu reloads its runtime", boots.count == 2 && manager.isRunning)
+        await settle(until: {
+            menuIsReady()
+                && storage.localStorageValue(extension: "first", key: "launchCount") == .number(2)
+        })
+        check(
+            "opening a menu reuses its runtime",
+            boots.count == 1 && manager.isRunning
+                && storage.localStorageValue(extension: "first", key: "launchCount") == .number(2))
         let items = controller.menu.items
         check("native section header", items.first?.isSectionHeader == true && items.first?.title == "Usage")
         check(
@@ -638,7 +655,7 @@ extension ExtensionTests {
             await settle(150)
             check("closing menu does not cancel an async action", manager.isRunning, stateDetails())
             await settle(until: {
-                snapshot(firstRef)?.title == "Updated" && !manager.isRunning && lastRuntime == nil
+                snapshot(firstRef)?.title == "Updated" && !manager.isRunning && lastRuntime != nil
             })
             check(
                 "action writes into its own extension",
@@ -646,9 +663,9 @@ extension ExtensionTests {
                     == .string("left-click")
                     && storage.localStorageValue(extension: "second", key: "clicked") == nil, stateDetails())
             check(
-                "action snapshot updates before unloading",
+                "action snapshot updates while retaining the runtime",
                 snapshot(firstRef)?.title == "Updated"
-                    && !manager.isRunning && lastRuntime == nil, stateDetails())
+                    && !manager.isRunning && lastRuntime != nil, stateDetails())
         } else {
             check("refresh action exists", false)
         }
@@ -685,9 +702,9 @@ extension ExtensionTests {
                 && storage.localStorageValue(extension: "first", key: "completed") == .number(2),
             stateDetails())
         secondController.menuDidClose(secondController.menu)
-        await settle(until: { !manager.isRunning && lastRuntime == nil })
+        await settle(until: { !manager.isRunning && lastRuntime != nil })
         check(
-            "reopened action sessions unload after closing", !manager.isRunning && lastRuntime == nil,
+            "reopened action sessions retain their runtime", !manager.isRunning && lastRuntime != nil,
             stateDetails())
 
         controller.menuWillOpen(controller.menu)
@@ -701,29 +718,29 @@ extension ExtensionTests {
         controller.menuDidClose(controller.menu)
         await settle(until: {
             storage.localStorageValue(extension: "second", key: "launch")
-                == .string("background:kept:payload") && !manager.isRunning && lastRuntime == nil
+                == .string("background:kept:payload") && !manager.isRunning && lastRuntime != nil
         })
         check(
             "scheduled refresh preserves an explicit background launch's payload",
             storage.localStorageValue(extension: "second", key: "launch")
                 == .string("background:kept:payload")
-                && !manager.isRunning, stateDetails())
+                && !manager.isRunning && lastRuntime != nil, stateDetails())
 
         manager.run(first, command: first.manifest.commands[0], type: .background)
         let backgroundBoots = boots.count
-        check("background hosts begin without interactive prompts", hosts.last?.isInteractive == false)
+        check("background hosts begin without interactive prompts", hosts.first?.isInteractive == false)
         controller.menuWillOpen(controller.menu)
         await settle(until: menuIsReady)
         check(
             "opening promotes the existing background host",
             boots.count == backgroundBoots
-                && hosts.last?.isInteractive == true, stateDetails())
+                && hosts.first?.isInteractive == true, stateDetails())
         if let index = controller.menu.items.firstIndex(where: { $0.title == "Confirm" }) {
             controller.menuDidClose(controller.menu)
             controller.menu.performActionForItem(at: index)
             await settle(until: {
                 storage.localStorageValue(extension: "first", key: "confirmed") == .bool(true)
-                    && !manager.isRunning && lastRuntime == nil
+                    && !manager.isRunning && lastRuntime != nil
             })
             check(
                 "actions can confirm after opening a background refresh",
@@ -745,12 +762,12 @@ extension ExtensionTests {
             controller.menu.performActionForItem(at: index)
             await settle(until: {
                 storage.localStorageValue(extension: "first", key: "confirmed") == .bool(true)
-                    && boots.count == beforeEarlyClick + 1 && !manager.isRunning && lastRuntime == nil
+                    && boots.count == beforeEarlyClick && !manager.isRunning && lastRuntime != nil
             })
             check(
-                "clicking immediately after opening runs the fresh action and unloads",
+                "clicking immediately after opening runs in the retained runtime",
                 storage.localStorageValue(extension: "first", key: "confirmed") == .bool(true)
-                    && boots.count == beforeEarlyClick + 1 && !manager.isRunning && lastRuntime == nil,
+                    && boots.count == beforeEarlyClick && !manager.isRunning && lastRuntime != nil,
                 stateDetails())
         } else {
             check("early confirmation action exists", false)
@@ -759,10 +776,14 @@ extension ExtensionTests {
         makeOverdue(firstRef)
         manager.synchronize(installed)
         await settle(until: {
-            boots.last?.1 == .background && !manager.isRunning && lastRuntime == nil
+            storage.localStorageValue(extension: "first", key: "launchType") == .string("background")
+                && !manager.isRunning && lastRuntime != nil
         })
-        check("overdue refresh runs with background launch type", boots.last?.1 == .background)
-        check("background refresh unloads", !manager.isRunning && lastRuntime == nil, stateDetails())
+        check(
+            "overdue refresh uses and retains its background runtime",
+            storage.localStorageValue(extension: "first", key: "launchType") == .string("background")
+                && !manager.isRunning && lastRuntime != nil,
+            stateDetails())
         metadata.flush()
         let restored = ExtensionCommandMetadataStore(fileURL: metadataFile)
         check(
@@ -773,7 +794,9 @@ extension ExtensionTests {
         manager.stop()
         manager.synchronize(installed)
         await settle(150)
-        check("restoring a saved item executes no JavaScript", boots.count == bootCount)
+        check(
+            "stopping releases menu runtimes and restore executes no JavaScript",
+            boots.count == bootCount && lastRuntime == nil)
 
         manager.run(first, command: first.manifest.commands[0])
         manager.run(second, command: second.manifest.commands[0])
@@ -784,12 +807,12 @@ extension ExtensionTests {
             "queued refreshes finish serially",
             boots.suffix(2).map(\.0) == ["first", "second"] && !manager.isRunning)
         manager.run(empty, command: empty.manifest.commands[0])
-        await settle(until: { !manager.isRunning && lastRuntime == nil })
+        await settle(until: { !manager.isRunning && lastRuntime != nil })
         check(
             "null removes item without forgetting activation",
             metadata.metadata(extension: "empty", command: "bar").menuBarEnabled
                 && metadata.metadata(extension: "empty", command: "bar").menuBarSnapshot == nil
-                && !manager.isRunning, stateDetails())
+                && !manager.isRunning && lastRuntime != nil, stateDetails())
         let (foreground, _, recorder) = makeRuntime()
         defer { foreground.shutdown() }
         try? await foreground.boot(config: .current(supportDirectory: directory))
@@ -851,8 +874,120 @@ extension ExtensionTests {
             !manager.isRunning && lastRuntime == nil
                 && failures.last?.contains("timed out") == true)
         manager.synchronize([])
+        await settle(150)
         check(
-            "uninstall prunes every menu and schedule",
-            metadata.menuBarCommands().isEmpty && !manager.isRunning)
+            "uninstall prunes menus, schedules and retained runtimes",
+            metadata.menuBarCommands().isEmpty && !manager.isRunning && lastRuntime == nil)
+    }
+
+    static func streamedChildTeardownChecks() async {
+        let shims = ExtensionNodeShims()
+        let argsJSON =
+            #"[{"command":"/bin/sh","args":["-c","exec 1>&- 2>&-; exec sleep 3"],"streaming":true}]"#
+        let response = shims.perform(api: "proc", method: "start", argsJSON: argsJSON)
+        guard
+            let responseData = response.data(using: .utf8),
+            let envelope = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
+            envelope["ok"] as? Bool == true,
+            let pid = (envelope["value"] as? NSNumber).flatMap({ Int32(exactly: $0.doubleValue) })
+        else {
+            check("streamed child starts for teardown check", false, response)
+            return
+        }
+
+        var outputClosed = false
+        do {
+            let stdout = try await ExtensionAsyncProcess.read([.number(Double(pid)), .number(1)])
+            let stderr = try await ExtensionAsyncProcess.read([.number(Double(pid)), .number(2)])
+            outputClosed = stdout == nil && stderr == nil
+        } catch {
+            check("streamed child closes both pipes before exit", false, String(describing: error))
+        }
+        check("streamed child closes both pipes before exit", outputClosed)
+
+        let waiter = Task { () throws -> String? in
+            let result = try await ExtensionAsyncProcess.wait(.number(Double(pid)))
+            return result["signal"] as? String
+        }
+        try? await Task.sleep(for: .milliseconds(100))
+        shims.closeFiles()
+        do {
+            let signal = try await waiter.value
+            check(
+                "runtime teardown signals child while wait drains closed pipes",
+                signal == "SIGTERM",
+                "signal=\(String(describing: signal))")
+        } catch {
+            check("runtime teardown completes streamed child wait", false, String(describing: error))
+        }
+    }
+
+    static func streamedDescendantTeardownChecks() async {
+        let shims = ExtensionNodeShims()
+        let argsJSON =
+            #"[{"command":"/bin/sh","args":["-c","/bin/sleep 30 & printf '%s\\n' \"$!\"; exit 0"],"streaming":true}]"#
+        let response = shims.perform(api: "proc", method: "start", argsJSON: argsJSON)
+        guard
+            let responseData = response.data(using: .utf8),
+            let envelope = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
+            envelope["ok"] as? Bool == true,
+            let pid = (envelope["value"] as? NSNumber).flatMap({ Int32(exactly: $0.doubleValue) })
+        else {
+            check("streamed shell starts for descendant teardown check", false, response)
+            return
+        }
+
+        let output: String?
+        do {
+            let encoded = try await ExtensionAsyncProcess.read([.number(Double(pid)), .number(1)])
+            output = encoded.flatMap { Data(base64Encoded: $0) }
+                .flatMap { String(data: $0, encoding: .utf8) }
+        } catch {
+            check("streamed shell reports descendant pid", false, String(describing: error))
+            shims.closeFiles()
+            return
+        }
+        guard
+            let descendantPID = output.flatMap({ Int32($0.trimmingCharacters(in: .whitespacesAndNewlines)) })
+        else {
+            check("streamed shell reports descendant pid", false, String(describing: output))
+            shims.closeFiles()
+            return
+        }
+        defer { _ = Darwin.kill(descendantPID, SIGKILL) }
+
+        let completion = DispatchSemaphore(value: 0)
+        let waiter = Task.detached { () -> Int? in
+            defer { completion.signal() }
+            do {
+                return try await ExtensionAsyncProcess.wait(.number(Double(pid)))["status"] as? Int
+            } catch {
+                return nil
+            }
+        }
+        try? await Task.sleep(for: .milliseconds(100))
+        shims.closeFiles()
+        let completedDuringTeardown = await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                continuation.resume(
+                    returning: completion.wait(timeout: .now() + .seconds(2)) == .success)
+            }
+        }
+        if !completedDuringTeardown { _ = Darwin.kill(descendantPID, SIGKILL) }
+        let status = await waiter.value
+
+        var descendantStopped = false
+        for _ in 0..<50 {
+            if Darwin.kill(descendantPID, 0) != 0 {
+                descendantStopped = true
+                break
+            }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        check(
+            "runtime teardown kills inherited-output descendant and unblocks wait",
+            completedDuringTeardown && status != nil && descendantStopped,
+            "completed=\(completedDuringTeardown), status=\(String(describing: status)), "
+                + "descendantStopped=\(descendantStopped)")
     }
 }

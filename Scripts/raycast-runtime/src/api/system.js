@@ -180,6 +180,10 @@ export function open(target, application) {
   return hostCall("system", "open", [String(target), app ?? null]);
 }
 
+export function openTerminal(executable, args = []) {
+  return hostCall("system", "openTerminal", [executable, args]);
+}
+
 /// Raycast shows an app picker for Action.OpenWith; Swift resolves the candidates and presents them.
 export function openWith(path) {
   return hostCall("system", "openWith", [String(path)]);

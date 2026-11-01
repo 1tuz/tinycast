@@ -377,8 +377,14 @@ struct ExtensionTests {
                 ["name": "browser", "type": "appPicker"]
             ],
             "commands": [
-                ["name": "search", "title": "Search", "mode": "view", "keywords": ["find"]],
-                ["name": "toggle", "title": "Toggle", "mode": "no-view"],
+                [
+                    "name": "search", "title": "Search", "mode": "view", "keywords": ["find"],
+                    "devOpsCategory": "git"
+                ],
+                [
+                    "name": "toggle", "title": "Toggle", "mode": "no-view",
+                    "devOpsCategory": "unknown"
+                ],
                 ["name": "bar", "title": "Bar", "mode": "menu-bar"],
                 [
                     "name": "args", "title": "Args", "mode": "view",
@@ -405,6 +411,8 @@ struct ExtensionTests {
             "a light host reports light",
             launchContext(isDarkAppearance: false).jsonString().contains("\"appearance\":\"light\""))
         check("keywords", manifest.commands[0].keywords == ["find"])
+        check("explicit DevOps category", manifest.commands[0].devOpsCategory == .git)
+        check("unknown DevOps category stays unset", manifest.commands[1].devOpsCategory == nil)
         check("arguments", manifest.commands[3].arguments.first?.name == "q")
         check("argument required", manifest.commands[3].arguments.first?.required == true)
         // A blank optional argument arrives as "": `Number(args.x)` is NaN for undefined.

@@ -126,12 +126,14 @@ run window-switch-test     $L/SearchRelevance.swift \
 run index file-search-performance $FS/Model/*.swift $FILE_INDEX
 run ranking-test           $L/SearchRelevance.swift $L/ScriptRomanization.swift \
                            $L/LauncherMatch.swift $L/LauncherRankingStore.swift
+run terminal-aware-recent-test $L/DevOpsCommandCategory.swift $L/TerminalAwareRecentOrder.swift
 run scopes-test            $L/SearchScopes.swift
 run app-name-test          Tinycast/Platform/AppDisplayName.swift \
                            Tinycast/Platform/BundleLocalization.swift \
                            $L/SearchRelevance.swift
 run favorites-test         $L/FavoriteSlots.swift
 run app-installation-test  $L/SearchRelevance.swift $L/ScriptRomanization.swift \
+                           $L/DevOpsCommandCategory.swift \
                            $L/LauncherMatch.swift $L/EntryNaming.swift $L/LauncherOrder.swift \
                            $L/LauncherRankingStore.swift $L/LauncherSuggestions.swift $L/SearchScopes.swift \
                            Tinycast/Features/Launcher/Service/AppIndex.swift \
@@ -150,7 +152,9 @@ run app-installation-test  $L/SearchRelevance.swift $L/ScriptRomanization.swift 
 run launcher-file-test     $L/LauncherFileFormat.swift \
                            Tinycast/Features/Settings/Model/SettingsFileJSON.swift
 run launcher-settings-file-test \
-                           $L/LauncherFileFormat.swift $L/CommandID.swift $L/CommandCatalog.swift \
+                           $L/LauncherFileFormat.swift $L/CommandID.swift \
+                           $L/DevOpsCommandCategory.swift $L/CommandDevOpsMetadata.swift \
+                           $L/CommandCatalog.swift \
                            Tinycast/Features/Launcher/Service/LauncherSettingsFile.swift \
                            Tinycast/Features/Launcher/Service/AliasStore.swift \
                            Tinycast/Features/Launcher/Service/VisibilityStore.swift \
@@ -190,6 +194,9 @@ run clipboard-test         Tinycast/Features/Clipboard/Model/ClipboardStore.swif
                            Tinycast/Features/Clipboard/Model/ColorSpaces.swift
 run clipboard-coordinator-test Tinycast/Features/Clipboard/UI/ClipboardCoordinator.swift \
                            Tinycast/Features/Clipboard/Model/*.swift \
+                           Tinycast/Features/QuickActions/Model/DeveloperUtility.swift \
+                           Tinycast/Features/QuickActions/Model/IPv4CIDR.swift \
+                           Tinycast/Features/QuickActions/Model/JWTDecoder.swift \
                            Tinycast/Platform/Images/ImageDerivative.swift \
                            Tinycast/Palette/PaletteState.swift Tinycast/Palette/PaletteMode.swift \
                            Tinycast/Palette/HoverArming.swift \
@@ -210,9 +217,21 @@ run clipboard-thumbnail-test Tinycast/Features/Clipboard/Model/ClipboardStore.sw
                            Tinycast/Platform/Images/ThumbnailCache.swift
 # `Q` is the URL detector a drag payload builds its link with, rather than a second one.
 Q=Tinycast/Features/Quicklinks/Model/QuicklinkDestination.swift
-run clipboard-search-test  Tinycast/Features/Clipboard/Model/*.swift Tinycast/Platform/Images/ImageDerivative.swift $Q
-run paste-sequence-test    Tinycast/Features/Clipboard/Model/*.swift Tinycast/Platform/Images/ImageDerivative.swift $Q
-run clipboard-text-test    Tinycast/Features/Clipboard/Model/*.swift Tinycast/Platform/Images/ImageDerivative.swift $Q \
+run clipboard-search-test  Tinycast/Features/Clipboard/Model/*.swift \
+                           Tinycast/Features/QuickActions/Model/DeveloperUtility.swift \
+                           Tinycast/Features/QuickActions/Model/IPv4CIDR.swift \
+                           Tinycast/Features/QuickActions/Model/JWTDecoder.swift \
+                           Tinycast/Platform/Images/ImageDerivative.swift $Q
+run paste-sequence-test    Tinycast/Features/Clipboard/Model/*.swift \
+                           Tinycast/Features/QuickActions/Model/DeveloperUtility.swift \
+                           Tinycast/Features/QuickActions/Model/IPv4CIDR.swift \
+                           Tinycast/Features/QuickActions/Model/JWTDecoder.swift \
+                           Tinycast/Platform/Images/ImageDerivative.swift $Q
+run clipboard-text-test    Tinycast/Features/Clipboard/Model/*.swift \
+                           Tinycast/Features/QuickActions/Model/DeveloperUtility.swift \
+                           Tinycast/Features/QuickActions/Model/IPv4CIDR.swift \
+                           Tinycast/Features/QuickActions/Model/JWTDecoder.swift \
+                           Tinycast/Platform/Images/ImageDerivative.swift $Q \
                            Tinycast/Features/Clipboard/Service/ClipboardTextExtractor.swift \
                            Tinycast/Features/Clipboard/Service/ClipboardTextIndexer.swift \
                            Tinycast/Features/Clipboard/Service/ClipboardTextWorker.swift \
@@ -411,6 +430,7 @@ run ext-icon-test          Tinycast/Platform/Appearance.swift \
                            Tinycast/DesignSystem/InterfaceMetrics.swift \
                            Tinycast/Features/Extensions/Model/ExtensionBootConfig.swift \
                            Tinycast/Features/Extensions/Model/ExtensionLaunchType.swift \
+                           $L/DevOpsCommandCategory.swift \
                            Tinycast/Features/Extensions/Model/ExtensionManifest.swift \
                            Tinycast/Features/Extensions/Model/ExtensionRefreshPolicy.swift \
                            Tinycast/Features/Extensions/Model/ExtensionRefreshState.swift \
@@ -500,6 +520,7 @@ run window-file-test       Tinycast/Features/WindowManagement/Model/WindowComman
                            Tinycast/Platform/LocalizedResource.swift
 run custom-command-test    Tinycast/Platform/PseudoTerminal.swift \
                            Tinycast/Platform/ProcessExit.swift \
+                           Tinycast/Features/Kube/Service/TerminalCommandLauncher.swift \
                            Tinycast/Features/CustomCommands/Model/CustomCommand.swift \
                            Tinycast/Features/CustomCommands/Model/RaycastScriptImport.swift \
                            Tinycast/Features/CustomCommands/UI/CustomCommandEditorSession.swift \
@@ -649,11 +670,13 @@ run symbols-test           $E/Service/SymbolCatalog.swift
 run ext-cleanup-test       $E/Service/ExtensionCleanup.swift \
                            $E/Service/ExtensionCatalog.swift \
                            Tinycast/Platform/AppDisplayName.swift \
+                           $L/DevOpsCommandCategory.swift \
                            $E/Model/ExtensionManifest.swift \
                            $E/Model/ExtensionLaunchType.swift \
                            $E/Model/ExtensionRefreshPolicy.swift \
                            $E/Model/ExtensionRefreshState.swift
-run ext-refresh-test       $E/Model/ExtensionManifest.swift \
+run ext-refresh-test       $L/DevOpsCommandCategory.swift \
+                           $E/Model/ExtensionManifest.swift \
                            Tinycast/Platform/AppDisplayName.swift \
                            $E/Model/ExtensionLaunchType.swift \
                            $E/Model/ExtensionRefreshPolicy.swift \
@@ -701,6 +724,7 @@ run slow ext-test          -parse-as-library \
                            $E/Model/ExtensionGridLayout.swift \
                            $E/Model/ExtensionSearchState.swift \
                            $E/Model/ExtensionManifest.swift \
+                           $L/DevOpsCommandCategory.swift \
                            $E/Model/ExtensionRefreshPolicy.swift \
                            $E/Model/ExtensionRefreshState.swift \
                            $E/Model/RenderNode.swift \
@@ -721,6 +745,8 @@ run slow ext-test          -parse-as-library \
                            Tinycast/Platform/Compression/Zlib.swift \
                            Tinycast/Features/Clipboard/Model/ColorValue.swift \
                            Tinycast/Features/Clipboard/Model/ColorSpaces.swift
+run extension-terminal-request-test \
+                           Tinycast/Features/Extensions/Model/ExtensionTerminalRequest.swift
 run settings-history-test  Tinycast/Features/Settings/SettingsTab.swift \
                            Tinycast/Features/Settings/SettingsHistory.swift \
                            Tinycast/Features/Settings/SettingsAnchor.swift \
@@ -819,11 +845,63 @@ run quick-action-test      Tinycast/Features/Settings/AppSettingsKey.swift \
                            Tinycast/Features/QuickActions/Settings/QuickActionSettingsStore.swift \
                            Tinycast/Features/Clipboard/Model/ColorValue.swift \
                            Tinycast/Features/Clipboard/Model/ColorSpaces.swift \
+                           Tinycast/Features/Launcher/Model/CommandID.swift \
+                           Tinycast/Features/HotKeys/Model/HotKeyAction.swift \
+                           Tinycast/Features/Quicklinks/Model/Quicklink.swift \
+                           Tinycast/Features/Quicklinks/Model/QuicklinkDestination.swift \
+                           Tinycast/Features/SystemActions/Model/SystemAction.swift \
+                           Tinycast/Features/WindowManagement/Model/WindowCommand.swift \
+                           Tinycast/Features/Snippets/Model/Snippet.swift \
                            Tinycast/Platform/LocalizedResource.swift
 run developer-utility-test Tinycast/Features/QuickActions/Model/DeveloperUtility.swift \
+                           Tinycast/Features/QuickActions/Model/DeveloperUtilityTransformer.swift \
+                           Tinycast/Features/QuickActions/Model/YAMLJSONConverter.swift \
+                           Tinycast/Features/QuickActions/Model/BlockYAMLParser.swift \
+                           Tinycast/Features/QuickActions/Model/BlockYAMLEmitter.swift \
+                           Tinycast/Features/QuickActions/Model/CronExpression.swift \
+                           Tinycast/Features/QuickActions/Model/JWTDecoder.swift \
+                           Tinycast/Features/QuickActions/Model/IPv4CIDR.swift \
+                           Tinycast/Features/QuickActions/Model/KubernetesSecretDecoder.swift \
+                           Tinycast/Platform/LocalizedResource.swift \
                            Tinycast/Features/QuickActions/Model/BuiltInQuickAction.swift \
                            Tinycast/Features/Clipboard/Model/ColorValue.swift \
                            Tinycast/Features/Clipboard/Model/ColorSpaces.swift
+run clipboard-devops-action-test Tinycast/Features/QuickActions/Model/DeveloperUtility.swift \
+                                 Tinycast/Features/QuickActions/Model/IPv4CIDR.swift \
+                                 Tinycast/Features/Clipboard/Model/ClipboardDevOpsAction.swift \
+                                 Tinycast/Platform/LocalizedResource.swift
+run launcher-devops-card-test Tinycast/Features/QuickActions/Model/DeveloperUtility.swift \
+                              Tinycast/Features/QuickActions/Model/IPv4CIDR.swift \
+                              Tinycast/Features/QuickActions/Model/JWTDecoder.swift \
+                              Tinycast/Features/Launcher/Model/DevOpsLeadCard.swift \
+                              Tinycast/Platform/LocalizedResource.swift
+run kube-context-test      Tinycast/Features/Kube/Model/KubeContext.swift \
+                           Tinycast/Features/Kube/Model/KubeConfigReader.swift \
+                           Tinycast/Features/Kube/Service/KubeConfigLoader.swift \
+                           Tinycast/Features/Kube/Service/KubeContextStore.swift \
+                           Tinycast/Features/QuickActions/Model/BlockYAMLParser.swift
+run process-command-runner-test Tinycast/Platform/ProcessCommandRunner.swift \
+                           Tinycast/Platform/ProcessExit.swift
+run kube-pods-test        Tinycast/Features/Kube/Model/KubeContext.swift \
+                           Tinycast/Features/Kube/Model/KubePod.swift
+run port-forward-test     Tinycast/Platform/PseudoTerminal.swift \
+                           Tinycast/Platform/ProcessExit.swift \
+                           Tinycast/Platform/ExecutableLocator.swift \
+                           Tinycast/Features/CustomCommands/Service/ShellCommandRunner.swift \
+                           Tinycast/Features/Kube/Model/KubeContext.swift \
+                           Tinycast/Features/Kube/Model/KubePod.swift \
+                           Tinycast/Features/Kube/Model/PortForwardRequest.swift \
+                           Tinycast/Features/Kube/Model/PortForwardSession.swift \
+                           Tinycast/Features/Kube/Service/PortForwardManager.swift
+run ansible-test         Tinycast/Platform/ProcessCommandRunner.swift \
+                           Tinycast/Platform/ProcessExit.swift \
+                           Tinycast/Platform/PseudoTerminal.swift \
+                           Tinycast/Platform/ExecutableLocator.swift \
+                           Tinycast/Features/CustomCommands/Service/ShellCommandRunner.swift \
+                           Tinycast/Features/Ansible/Model/AnsibleInventory.swift \
+                           Tinycast/Features/Ansible/Model/AnsiblePlaybookRun.swift \
+                           Tinycast/Features/Ansible/Service/AnsibleRunner.swift \
+                           Tinycast/Features/Ansible/Service/AnsibleRunHistoryStore.swift
 run ephemeral-snippet-test Tinycast/Features/Snippets/Model/EphemeralSnippet.swift
 run workflow-test         Tinycast/Features/Workflows/Model/Workflow.swift \
                            Tinycast/Features/Launcher/Model/CommandID.swift \
