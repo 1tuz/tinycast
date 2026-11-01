@@ -65,7 +65,7 @@ jobs:
 
       # Import the stable self-signed identity into a temp keychain so every release is signed with
       # the SAME cert — that constant signature is what keeps users' Accessibility (TCC) grant alive
-      # across updates. Generate/rotate the secrets per docs/signing.md.
+      # across updates. Configure secrets and SIGNING_CERT_SHA1 per docs/signing.md.
       - name: Import signing certificate
         id: signing
         env:
@@ -84,16 +84,29 @@ jobs:
           security unlock-keychain -p "$KPW" "$KEYCHAIN"
           security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "${P12_PASSWORD}" -A -T /usr/bin/codesign
           # Let codesign use the key without an interactive prompt.
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$KPW" "$KEYCHAIN" >/dev/null
+          if ! security set-key-partition-list -S apple-tool:,apple: -s -k "$KPW" "$KEYCHAIN" >/dev/null; then
+            echo "::error::Could not grant codesign access to the imported certificate."
+            exit 1
+          fi
           # Prepend the imported identity so codesign can resolve its certificate hash.
           KEYCHAINS=()
           while IFS= read -r keychain; do
             [ -z "$keychain" ] || KEYCHAINS+=("$keychain")
           done < <(security list-keychains -d user | sed -e 's/"//g' -e 's/^[[:space:]]*//')
-          security list-keychains -d user -s "$KEYCHAIN" "${KEYCHAINS[@]}"
-          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | awk '/^[[:space:]]*[0-9]+[)]/ { print $2; count++ } END { if (count != 1) exit 1 }')"
+          if ! security list-keychains -d user -s "$KEYCHAIN" "${KEYCHAINS[@]}"; then
+            echo "::error::Could not add the imported keychain to the signing search list."
+            exit 1
+          fi
+          IDENTITY="${{ vars.SIGNING_CERT_SHA1 }}"
           if [ -z "$IDENTITY" ]; then
-            echo "::error::Expected exactly one valid signing identity in the imported certificate."
+            echo "::error::SIGNING_CERT_SHA1 repository variable is not set."
+            exit 1
+          fi
+          IDENTITIES="$(security find-identity -v -p codesigning "$KEYCHAIN")"
+          printf '%s\n' "$IDENTITIES"
+          IDENTITY_COUNT="$(printf '%s\n' "$IDENTITIES" | awk -v expected="$IDENTITY" '$2 == expected { count++ } END { print count+0 }')"
+          if [ "$IDENTITY_COUNT" -ne 1 ]; then
+            echo "::error::SIGNING_CERT_SHA1 must match one valid identity in the imported P12."
             exit 1
           fi
           echo "identity=$IDENTITY" >> "$GITHUB_OUTPUT"
@@ -236,15 +249,28 @@ jobs:
           security set-keychain-settings -lut 21600 "$KEYCHAIN"
           security unlock-keychain -p "$KPW" "$KEYCHAIN"
           security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "${P12_PASSWORD}" -A -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$KPW" "$KEYCHAIN" >/dev/null
+          if ! security set-key-partition-list -S apple-tool:,apple: -s -k "$KPW" "$KEYCHAIN" >/dev/null; then
+            echo "::error::Could not grant codesign access to the imported certificate."
+            exit 1
+          fi
           KEYCHAINS=()
           while IFS= read -r keychain; do
             [ -z "$keychain" ] || KEYCHAINS+=("$keychain")
           done < <(security list-keychains -d user | sed -e 's/"//g' -e 's/^[[:space:]]*//')
-          security list-keychains -d user -s "$KEYCHAIN" "${KEYCHAINS[@]}"
-          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | awk '/^[[:space:]]*[0-9]+[)]/ { print $2; count++ } END { if (count != 1) exit 1 }')"
+          if ! security list-keychains -d user -s "$KEYCHAIN" "${KEYCHAINS[@]}"; then
+            echo "::error::Could not add the imported keychain to the signing search list."
+            exit 1
+          fi
+          IDENTITY="${{ vars.SIGNING_CERT_SHA1 }}"
           if [ -z "$IDENTITY" ]; then
-            echo "::error::Expected exactly one valid signing identity in the imported certificate."
+            echo "::error::SIGNING_CERT_SHA1 repository variable is not set."
+            exit 1
+          fi
+          IDENTITIES="$(security find-identity -v -p codesigning "$KEYCHAIN")"
+          printf '%s\n' "$IDENTITIES"
+          IDENTITY_COUNT="$(printf '%s\n' "$IDENTITIES" | awk -v expected="$IDENTITY" '$2 == expected { count++ } END { print count+0 }')"
+          if [ "$IDENTITY_COUNT" -ne 1 ]; then
+            echo "::error::SIGNING_CERT_SHA1 must match one valid identity in the imported P12."
             exit 1
           fi
           echo "identity=$IDENTITY" >> "$GITHUB_OUTPUT"
