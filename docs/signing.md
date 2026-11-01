@@ -1,13 +1,16 @@
 # Signing
 
-Tinycast is signed with a **stable self-signed identity** called `Tinycast Self-Signed`. Keeping the
-_same_ identity on every build is what makes macOS remember the Accessibility permission across
-rebuilds and updates — ad-hoc signing changes every build and macOS forgets the grant.
+Local builds use a **stable self-signed identity** called `Tinycast Self-Signed`. Keeping the same
+certificate on every build is what makes macOS remember the Accessibility permission across
+rebuilds and updates — ad-hoc signing changes every build and macOS forgets the grant. CI releases
+must use the certificate that the installed app trusts. The release workflow reads its identity hash
+from the imported P12, so its keychain label does not matter.
 
 An Apple Developer ID certificate now exists, but nothing is signed with it yet. Why that switch is
 staged rather than immediate is [below](#the-developer-id-migration).
 
-You create this identity **once**. The same identity is used for:
+Create this identity **once** for local builds. CI also needs a P12 containing the signing identity
+used by the installed app:
 
 - **local dev builds** — so Accessibility persists while you develop (the Xcode project signs with it), and
 - **CI releases** — exported into two GitHub secrets the release workflow imports.
@@ -47,8 +50,9 @@ Now local builds (Xcode, VS Code F5, `xcodebuild`) sign with it, and you grant A
 
 ## 2. Generate the CI secrets
 
-The release workflow needs the same identity as two repo secrets. Export it, base64-encode it, and
-pick a password:
+The release workflow needs the same identity as two repo secrets. It resolves the certificate hash
+from the imported bundle, so its keychain label does not matter. The certificate must match the app
+that will receive the update. Export it, base64-encode it, and pick a password:
 
 ```sh
 # Pick a random password for the exported bundle.
@@ -66,15 +70,16 @@ Then set the two secrets on the repo (via `gh`, authed as the repo owner, or pas
 UI under **Settings → Secrets and variables → Actions**):
 
 ```sh
-gh secret set SIGNING_P12_BASE64   --repo abue-ammar/tinycast < /tmp/signing.p12.base64
-gh secret set SIGNING_P12_PASSWORD --repo abue-ammar/tinycast --body "$P12_PASSWORD"
+gh secret set SIGNING_P12_BASE64   --repo 1tuz/tinycast < /tmp/signing.p12.base64
+gh secret set SIGNING_P12_PASSWORD --repo 1tuz/tinycast --body "$P12_PASSWORD"
 rm -f /tmp/signing.p12.base64   # holds your private key — delete it
 ```
 
-If you ever lose the secrets, just re-run this section — as long as the `Tinycast Self-Signed`
-identity is still in your keychain, the exported identity is the same, so users are unaffected. If you
-lose the identity entirely, recreate it (step 1) and re-do this; existing users will re-grant
-Accessibility once on their next update, then it's stable again.
+If you lose the GitHub secrets but keep the signing identity, export the same identity again and
+replace both secrets. The P12 must contain exactly one valid code-signing identity; the release
+workflow fails if it contains zero or multiple identities. Keep a secure backup of the P12. A newly
+generated self-signed certificate has a different leaf, so an older app will reject its update. Users
+must install one build manually to move to the new signer.
 
 ## Hardened runtime
 
