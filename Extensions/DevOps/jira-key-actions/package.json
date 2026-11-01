@@ -1,0 +1,37 @@
+{
+  "name": "jira-key-actions",
+  "title": "Jira Key Actions",
+  "description": "Local Jira Key Actions using your installed CLI and configuration.",
+  "author": "tinycast",
+  "version": "1.0.0",
+  "platforms": [
+    "macOS"
+  ],
+  "categories": [
+    "Developer Tools"
+  ],
+  "commands": [
+    {
+      "name": "index",
+      "title": "Jira Key Actions",
+      "description": "Open Jira Key Actions",
+      "mode": "view"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "jiraURL",
+      "title": "Jira base URL",
+      "type": "textfield",
+      "required": false,
+      "default": ""
+    },
+    {
+      "name": "projectRoots",
+      "title": "Project roots (one absolute path per line)",
+      "type": "textfield",
+      "required": false,
+      "default": ""
+    }
+  ]
+}

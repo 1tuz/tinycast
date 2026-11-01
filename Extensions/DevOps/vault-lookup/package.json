@@ -1,0 +1,22 @@
+{
+  "name": "vault-lookup",
+  "title": "Vault Lookup",
+  "description": "Local Vault Lookup using your installed CLI and configuration.",
+  "author": "tinycast",
+  "version": "1.0.0",
+  "platforms": [
+    "macOS"
+  ],
+  "categories": [
+    "Developer Tools"
+  ],
+  "commands": [
+    {
+      "name": "index",
+      "title": "Vault Lookup",
+      "description": "Open Vault Lookup",
+      "mode": "view"
+    }
+  ],
+  "preferences": []
+}
