@@ -3,6 +3,7 @@ import SwiftUI
 
 struct AboutView: View {
     @Environment(AppCore.self) private var core
+    @Environment(AppSettings.self) private var settings
 
     private static var version: String {
         let short = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
@@ -46,7 +47,8 @@ struct AboutView: View {
     }
 
     private var hero: some View {
-        VStack(spacing: Theme.Spacing.xl) {
+        @Bindable var settings = settings
+        return VStack(spacing: Theme.Spacing.xl) {
             Image(nsImage: Self.appIcon)
                 .resizable()
                 .interpolation(.high)
@@ -75,6 +77,12 @@ struct AboutView: View {
                 }
                 .buttonStyle(.link)
                 .font(.caption)
+                Toggle(isOn: $settings.automaticallyCheckForUpdates) {
+                    SettingsRowTitle(.aboutAbout, "Automatically check for updates")
+                    Text("You can still check for updates manually.")
+                }
+                .toggleStyle(.switch)
+                .frame(maxWidth: 420)
             }
 
             Text("A tiny, native macOS launcher.")

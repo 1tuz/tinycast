@@ -900,7 +900,7 @@ caches, TCC grants and login item, so this cannot disturb an installed copy.
 
 ### Settings and backup
 
-- General → Automatically check for updates defaults on; turn it off and relaunch: it stays off,
+- About → Automatically check for updates defaults on; turn it off and relaunch: it stays off,
   no background check or update prompt occurs, and Check for Updates still works. Re-enable it:
   checks resume. Settings search for "updates" reveals the toggle; settings.json edits and a backup
   round trip preserve the choice.
