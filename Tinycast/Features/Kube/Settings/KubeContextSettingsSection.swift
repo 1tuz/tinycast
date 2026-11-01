@@ -10,7 +10,7 @@ struct KubeContextSettingsSection: View {
 
     var body: some View {
         Section {
-            Toggle(isOn: Binding(get: { store.isEnabled }, set: store.setEnabled)) {
+            Toggle(isOn: Binding(get: { store.isEnabled }, set: { enabled in store.setEnabled(enabled) })) {
                 SettingsRowTitle(.generalKubernetes, "Enable Kube Context Guard")
                 Text("Reads kubeconfig only while enabled.")
             }

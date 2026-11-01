@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-26
+    runs-on: xcode-27
     # Consumed by the `universal` job, so the channel identity is derived in exactly one place.
     outputs:
       full_version: ${{ steps.meta.outputs.full_version }}
@@ -31,17 +31,6 @@ jobs:
       bundle_id: ${{ steps.meta.outputs.bundle_id }}
     steps:
       - uses: actions/checkout@v7
-
-      - name: Select Xcode 26
-        run: |
-          XCODE_PATH="$(find /Applications -maxdepth 1 -type d -name 'Xcode_26*.app' -print | sort -V | tail -n1)"
-          if [ -z "$XCODE_PATH" ]; then
-            echo "::error::No Xcode 26.x found on this runner. Installed Xcodes:"
-            find /Applications -maxdepth 1 -type d -name 'Xcode*.app' -print || true
-            exit 1
-          fi
-          echo "Using $XCODE_PATH"
-          echo "DEVELOPER_DIR=$XCODE_PATH/Contents/Developer" >> "$GITHUB_ENV"
 
       - name: Compute release metadata
         id: meta
@@ -210,24 +199,13 @@ jobs:
   universal:
     needs: build
     if: github.event.inputs.channel == 'stable'
-    runs-on: macos-26
+    runs-on: xcode-27
     env:
       VERSION: ${{ needs.build.outputs.full_version }}
       DISPLAY_NAME: ${{ needs.build.outputs.display_name }}
       BUNDLE_ID: ${{ needs.build.outputs.bundle_id }}
     steps:
       - uses: actions/checkout@v7
-
-      - name: Select Xcode 26
-        run: |
-          XCODE_PATH="$(find /Applications -maxdepth 1 -type d -name 'Xcode_26*.app' -print | sort -V | tail -n1)"
-          if [ -z "$XCODE_PATH" ]; then
-            echo "::error::No Xcode 26.x found on this runner. Installed Xcodes:"
-            find /Applications -maxdepth 1 -type d -name 'Xcode*.app' -print || true
-            exit 1
-          fi
-          echo "Using $XCODE_PATH"
-          echo "DEVELOPER_DIR=$XCODE_PATH/Contents/Developer" >> "$GITHUB_ENV"
 
       # The SAME identity as the thin build, and a hard failure if it is missing: the in-app updater
       # compares the staged bundle's leaf certificate against the running app's before installing.
