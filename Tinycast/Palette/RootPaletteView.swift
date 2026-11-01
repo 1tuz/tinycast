@@ -397,9 +397,17 @@ struct RootPaletteView: View {
     }
 
     /// Split from `body` for the same reason `keyHandlers` is: one chain cannot carry them all.
-    @ViewBuilder
     private func stateObservers(_ content: some View) -> some View {
-        emojiObservers(content)
+        let focused = focusObservers(emojiObservers(content))
+        let searched = searchObservers(focused)
+        let filtered = filterObservers(searched)
+        let navigated = navigationObservers(filtered)
+        let menuTracked = menuObservers(navigated)
+        return presentationObservers(menuTracked)
+    }
+
+    private func focusObservers(_ content: some View) -> some View {
+        content
             // Every show bumps focusToken so the search field refocuses.
             .onChange(of: vm.focusToken) {
                 resetCompactSelection()
@@ -412,6 +420,10 @@ struct RootPaletteView: View {
             .onChange(of: compactCommands) {
                 compactSelection.reconcile(commands: compactCommands)
             }
+    }
+
+    private func searchObservers(_ content: some View) -> some View {
+        content
             // A preserved screen re-summons as it was left, so a menu must end with the palette.
             .modifier(PaletteHideObserver { if menuOpen { closeMenus() } })
             .onChange(of: vm.query) {
@@ -434,6 +446,10 @@ struct RootPaletteView: View {
                 extensions.dispatch(handler: handler, arguments: [vm.query])
             }
             .modifier(ExtensionSelectionForwarder(screen: extensionScreen, selection: vm.selection))
+    }
+
+    private func filterObservers(_ content: some View) -> some View {
+        content
             // A narrower list means the old index points at a different row, or at none.
             .onChange(of: vm.clipboardFilter) { land(restoringSelection: true) }
             // The filter is part of the query, so narrowing re-runs it rather than thinning rows.
@@ -472,6 +488,10 @@ struct RootPaletteView: View {
                     Task { await extensions.stop() }
                 }
             }
+    }
+
+    private func navigationObservers(_ content: some View) -> some View {
+        content
             // `prepare` may change nothing else, so this still lands the list as freshly opened.
             .onChange(of: vm.resetToken) {
                 if menuOpen { closeMenus() }
@@ -488,6 +508,10 @@ struct RootPaletteView: View {
             .onChange(of: vm.favoriteSlotToken) {
                 if let index = vm.favoriteSlotIndex { performShortcut(.favoriteSlot(index)) }
             }
+    }
+
+    private func menuObservers(_ content: some View) -> some View {
+        content
             // One optional makes "exactly one menu" structural; this only presents it.
             .onChange(of: openMenu) {
                 guard menuOpen else { return }
@@ -497,6 +521,10 @@ struct RootPaletteView: View {
             .onChange(of: menuSelection) { syncMenuPanel(presenting: false) }
             .onChange(of: vm.menuQuery) { menuQueryChanged() }
             .onDisappear(perform: paletteDisappeared)
+    }
+
+    private func presentationObservers(_ content: some View) -> some View {
+        content
             // The first show builds this view after `prepare`, so no handler saw that reset.
             .onAppear(perform: paletteAppeared)
             .modifier(SearchFieldHiding(hidden: hidesSearchField, apply: applySearchFieldHiding))
