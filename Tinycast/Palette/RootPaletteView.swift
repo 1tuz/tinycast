@@ -391,6 +391,11 @@ struct RootPaletteView: View {
         focusPendingArgument()
     }
 
+    private func paletteDisappeared() {
+        menuPanel.hide()
+        (hostWindow as? PalettePanel)?.onHeaderFieldBoundaryArrow = nil
+    }
+
     /// Split from `body` for the same reason `keyHandlers` is: one chain cannot carry them all.
     @ViewBuilder
     private func stateObservers(_ content: some View) -> some View {
@@ -491,10 +496,7 @@ struct RootPaletteView: View {
             // The hosted tree is its own hierarchy, so the highlight has to be pushed into it.
             .onChange(of: menuSelection) { syncMenuPanel(presenting: false) }
             .onChange(of: vm.menuQuery) { menuQueryChanged() }
-            .onDisappear {
-                menuPanel.hide()
-                (hostWindow as? PalettePanel)?.onHeaderFieldBoundaryArrow = nil
-            }
+            .onDisappear(perform: paletteDisappeared)
             // The first show builds this view after `prepare`, so no handler saw that reset.
             .onAppear(perform: paletteAppeared)
             .modifier(SearchFieldHiding(hidden: hidesSearchField, apply: applySearchFieldHiding))
