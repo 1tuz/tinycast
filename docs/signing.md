@@ -78,7 +78,7 @@ rm -f /tmp/signing.p12.base64   # holds your private key — delete it
 ```
 
 If you lose the GitHub secrets but keep the signing identity, export the same identity again and
-replace both secrets. The configured hash must match exactly one valid identity in the P12. Keep a
+replace both secrets. The configured hash must match a signing identity in the P12. Keep a
 secure backup of the P12. A newly generated self-signed certificate has a different leaf, so an older
 app will reject its update. Users must install one build manually to move to the new signer.
 

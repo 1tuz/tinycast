@@ -102,11 +102,10 @@ jobs:
             echo "::error::SIGNING_CERT_SHA1 repository variable is not set."
             exit 1
           fi
-          IDENTITIES="$(security find-identity -v -p codesigning "$KEYCHAIN")"
+          IDENTITIES="$(security find-identity -p codesigning "$KEYCHAIN")"
           printf '%s\n' "$IDENTITIES"
-          IDENTITY_COUNT="$(printf '%s\n' "$IDENTITIES" | awk -v expected="$IDENTITY" '$2 == expected { count++ } END { print count+0 }')"
-          if [ "$IDENTITY_COUNT" -ne 1 ]; then
-            echo "::error::SIGNING_CERT_SHA1 must match one valid identity in the imported P12."
+          if ! printf '%s\n' "$IDENTITIES" | awk -v expected="$IDENTITY" '$2 == expected { found=1 } END { exit !found }'; then
+            echo "::error::SIGNING_CERT_SHA1 must match one signing identity in the imported P12."
             exit 1
           fi
           echo "identity=$IDENTITY" >> "$GITHUB_OUTPUT"
@@ -266,11 +265,10 @@ jobs:
             echo "::error::SIGNING_CERT_SHA1 repository variable is not set."
             exit 1
           fi
-          IDENTITIES="$(security find-identity -v -p codesigning "$KEYCHAIN")"
+          IDENTITIES="$(security find-identity -p codesigning "$KEYCHAIN")"
           printf '%s\n' "$IDENTITIES"
-          IDENTITY_COUNT="$(printf '%s\n' "$IDENTITIES" | awk -v expected="$IDENTITY" '$2 == expected { count++ } END { print count+0 }')"
-          if [ "$IDENTITY_COUNT" -ne 1 ]; then
-            echo "::error::SIGNING_CERT_SHA1 must match one valid identity in the imported P12."
+          if ! printf '%s\n' "$IDENTITIES" | awk -v expected="$IDENTITY" '$2 == expected { found=1 } END { exit !found }'; then
+            echo "::error::SIGNING_CERT_SHA1 must match one signing identity in the imported P12."
             exit 1
           fi
           echo "identity=$IDENTITY" >> "$GITHUB_OUTPUT"
