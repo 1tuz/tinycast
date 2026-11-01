@@ -75,7 +75,8 @@ struct KubePodsScreen: View {
             Picker(
                 "Filter",
                 selection: Binding(
-                    get: { coordinator.filter }, set: coordinator.setFilter)
+                    get: { coordinator.filter },
+                    set: { newValue in coordinator.setFilter(newValue) })
             ) {
                 Text("All").tag(KubePodFilter.all)
                 Text("Problems").tag(KubePodFilter.problems)
