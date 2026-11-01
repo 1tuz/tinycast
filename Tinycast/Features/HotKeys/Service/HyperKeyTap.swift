@@ -56,7 +56,9 @@ final class HyperKeyTap {
     @discardableResult
     func install() -> Bool {
         guard session == nil else { return true }
-        let engine = HyperKeyEngine(route: route, includesShift: includesShift)
+        var engine = HyperKeyEngine()
+        engine.route = route
+        engine.includesShift = includesShift
         session = Session(engine: engine) { [weak self] route, effect in
             self?.handle(effect, from: route)
         }

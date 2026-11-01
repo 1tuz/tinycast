@@ -385,6 +385,12 @@ struct RootPaletteView: View {
         refreshActionsMenu()
     }
 
+    private func paletteAppeared() {
+        searchFocused = !screen.hidesSearchField
+        land()
+        focusPendingArgument()
+    }
+
     /// Split from `body` for the same reason `keyHandlers` is: one chain cannot carry them all.
     @ViewBuilder
     private func stateObservers(_ content: some View) -> some View {
@@ -490,11 +496,7 @@ struct RootPaletteView: View {
                 (hostWindow as? PalettePanel)?.onHeaderFieldBoundaryArrow = nil
             }
             // The first show builds this view after `prepare`, so no handler saw that reset.
-            .onAppear {
-                searchFocused = !screen.hidesSearchField
-                land()
-                focusPendingArgument()
-            }
+            .onAppear(perform: paletteAppeared)
             .modifier(SearchFieldHiding(hidden: hidesSearchField, apply: applySearchFieldHiding))
             // Several paths flip `paletteIsCollapsed`, so resize the window to match.
             .onChange(of: core.paletteCoordinator.paletteIsCollapsed) {
