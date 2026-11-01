@@ -10,6 +10,7 @@ final class WorkflowCoordinator {
     private let settings: AppSettings
     private let hotKeys: HotKeyManager
     var onRunCommand: ((CommandID) -> Void)?
+    var onRunCustomCommand: ((UUID, [String]) -> Void)?
 
     @ObservationIgnored private var timeTimer: Timer?
     @ObservationIgnored private var clipboardTimer: Timer?
@@ -38,9 +39,12 @@ final class WorkflowCoordinator {
 
     func run(_ id: UUID) {
         guard allows(id), let workflow = store.workflow(id: id),
-            let command = workflow.command
+            let action = workflow.commandAction
         else { return }
-        onRunCommand?(command)
+        switch action {
+        case .builtIn(let command): onRunCommand?(command)
+        case .customCommand(let id, let arguments): onRunCustomCommand?(id, arguments)
+        }
     }
 
     func applyEnabled() { applyTriggers() }

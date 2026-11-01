@@ -21,6 +21,7 @@ struct WorkflowSettingsSection: View {
                         WorkflowSettingsRow(
                             workflow: workflow,
                             availableCommands: availableCommands,
+                            availableCustomCommands: availableCustomCommands,
                             isFolderUnavailable: core.workflowCoordinator.unavailableFolderIDs.contains(
                                 workflow.id),
                             update: core.workflows.update,
@@ -43,11 +44,24 @@ struct WorkflowSettingsSection: View {
     private var availableCommands: [CommandID] {
         Workflow.availableCommands.filter(core.appIndex.isCommandEnabled)
     }
+
+    private var availableCustomCommands: [CustomCommand] {
+        guard settings.customCommandsEnabled else { return [] }
+        return core.customCommands.commands.filter(\.isEnabled)
+    }
+}
+
+private enum WorkflowActionChoice: String, Identifiable {
+    case builtIn
+    case customCommand
+
+    var id: String { rawValue }
 }
 
 private struct WorkflowSettingsRow: View {
     let workflow: Workflow
     let availableCommands: [CommandID]
+    let availableCustomCommands: [CustomCommand]
     let isFolderUnavailable: Bool
     let update: (Workflow) -> Void
     let delete: () -> Void
@@ -62,19 +76,28 @@ private struct WorkflowSettingsRow: View {
                 }
             }
             triggerSettings
-            Picker("Run command", selection: value(\.commandID)) {
-                ForEach(availableCommands, id: \.rawValue) { command in
-                    Text(command.name).tag(command.rawValue)
+            Picker("Action type", selection: actionChoice) {
+                Text("Built-in").tag(WorkflowActionChoice.builtIn)
+                Text("Custom Command").tag(WorkflowActionChoice.customCommand)
+                    .disabled(availableCustomCommands.isEmpty && workflow.customCommandID == nil)
+            }
+            if workflow.customCommandID == nil {
+                Picker("Run command", selection: value(\.commandID)) {
+                    ForEach(availableCommands, id: \.rawValue) { command in
+                        Text(command.name).tag(command.rawValue)
+                    }
+                    if !availableCommands.contains(where: { $0.rawValue == workflow.commandID }) {
+                        Text(
+                            CommandID(rawValue: workflow.commandID).map {
+                                "\($0.name) (Unavailable)"
+                            } ?? "Unavailable command"
+                        )
+                        .tag(workflow.commandID)
+                        .disabled(true)
+                    }
                 }
-                if !availableCommands.contains(where: { $0.rawValue == workflow.commandID }) {
-                    Text(
-                        CommandID(rawValue: workflow.commandID).map {
-                            "\($0.name) (Unavailable)"
-                        } ?? "Unavailable command"
-                    )
-                    .tag(workflow.commandID)
-                    .disabled(true)
-                }
+            } else {
+                customCommandSettings
             }
             HStack {
                 Spacer()
@@ -88,6 +111,69 @@ private struct WorkflowSettingsRow: View {
             .lineLimit(1)
         }
         .padding(.vertical, Theme.Spacing.xs)
+    }
+
+    private var actionChoice: Binding<WorkflowActionChoice> {
+        Binding(
+            get: { workflow.customCommandID == nil ? .builtIn : .customCommand },
+            set: { choice in
+                var updated = workflow
+                switch choice {
+                case .builtIn:
+                    updated.selectBuiltIn(updated.command ?? availableCommands.first ?? .about)
+                case .customCommand:
+                    guard let command = availableCustomCommands.first else { return }
+                    updated.selectCustomCommand(command.id)
+                }
+                update(updated)
+            })
+    }
+
+    @ViewBuilder
+    private var customCommandSettings: some View {
+        let selectedID = workflow.customCommandID
+        Picker("Custom Command", selection: Binding(
+            get: { selectedID?.uuidString ?? "" },
+            set: { value in
+                guard let id = UUID(uuidString: value) else { return }
+                var updated = workflow
+                updated.selectCustomCommand(id)
+                update(updated)
+            })) {
+            ForEach(availableCustomCommands) { command in
+                Text(command.name).tag(command.id.uuidString)
+            }
+            if let selectedID,
+                !availableCustomCommands.contains(where: { $0.id == selectedID })
+            {
+                Text("Unavailable Custom Command").tag(selectedID.uuidString).disabled(true)
+            }
+        }
+        if let selectedID,
+            let command = availableCustomCommands.first(where: { $0.id == selectedID })
+        {
+            ForEach(command.arguments.indices, id: \.self) { index in
+                TextField(
+                    command.arguments[index].name,
+                    text: argumentValue(at: index, count: command.arguments.count))
+            }
+        } else {
+            Text("This custom command is unavailable or disabled.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func argumentValue(at index: Int, count: Int) -> Binding<String> {
+        Binding(
+            get: { workflow.arguments(for: count)[index] },
+            set: { value in
+                var updated = workflow
+                var arguments = updated.arguments(for: count)
+                arguments[index] = value
+                updated.customCommandArguments = arguments
+                update(updated)
+            })
     }
 
     @ViewBuilder

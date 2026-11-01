@@ -259,6 +259,18 @@ final class CustomCommandCoordinator {
         perform(command, arguments: arguments)
     }
 
+    func runWorkflowCommand(id: UUID, arguments: [String]) {
+        guard settings.workflowsEnabled, settings.customCommandsEnabled,
+            let command = store.command(id: id), command.isEnabled,
+            arguments.count == command.arguments.count
+        else { return }
+        let values = Dictionary(uniqueKeysWithValues: arguments.enumerated().map {
+            (CustomCommandArgument.fieldID(at: $0.offset), $0.element)
+        })
+        guard let positional = command.positionalValues(from: values) else { return }
+        perform(command, arguments: positional)
+    }
+
     /// The launcher fallback: a one-off shell line, streamed into the window every run uses.
     func runShellCommand(_ text: String) {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
