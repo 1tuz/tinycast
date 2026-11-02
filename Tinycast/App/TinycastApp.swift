@@ -33,7 +33,9 @@ struct TinycastApp: App {
                 .environment(AppCore.shared.kubeContextCoordinator)
                 .environment(AppCore.shared)
         } label: {
-            DevOpsMenuBarLabel().environment(AppCore.shared.kubeContextCoordinator)
+            DevOpsMenuBarLabel()
+                .environment(AppCore.shared.kubeContextCoordinator)
+                .environment(AppCore.shared)
         }
     }
 
