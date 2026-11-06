@@ -47,6 +47,25 @@ final class QuickAICoordinator {
         send(prompt)
     }
 
+    /// The speech service only produces text. The selected AI provider handles the reply.
+    func composeVoicePrompt(_ input: String) {
+        guard settings.aiEnabled else { return }
+        let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        applyOpenPolicy()
+        paletteCoordinator.showPalette(mode: .ai)
+        palette.query = text
+    }
+
+    func sendVoicePrompt(_ input: String) {
+        guard settings.aiEnabled else { return }
+        let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        applyOpenPolicy()
+        paletteCoordinator.showPalette(mode: .ai)
+        send(text)
+    }
+
     /// Off leaves the screen too, so the palette never shows a feature that is gone.
     func leave() {
         if palette.mode == .ai || palette.mode == .aiHistory { palette.prepare(mode: .launcher) }

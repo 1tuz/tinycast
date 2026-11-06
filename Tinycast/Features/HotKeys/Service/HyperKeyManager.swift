@@ -17,6 +17,10 @@ final class HyperKeyManager: HealthCheckable {
     private(set) var status: Status = .off
 
     @ObservationIgnored var onProblem: ((String) -> Void)?
+    @ObservationIgnored var voiceHoldEnabled: (() -> Bool)?
+    @ObservationIgnored var onVoiceHoldStart: (() -> Void)?
+    @ObservationIgnored var onVoiceHoldStop: (() -> Void)?
+    @ObservationIgnored var onVoiceHoldCancel: (() -> Void)?
     @ObservationIgnored weak var healthTicker: HealthTicker?
 
     @ObservationIgnored private let settings: AppSettings
@@ -44,6 +48,10 @@ final class HyperKeyManager: HealthCheckable {
     func start() {
         secureInput.onChange = { [weak self] _ in self?.secureInputChanged() }
         tap.onUnmappedCapsLock = { [weak self] in self?.repairRemap() }
+        tap.shouldStartVoiceHold = { [weak self] in self?.voiceHoldEnabled?() ?? false }
+        tap.onVoiceHoldStart = { [weak self] in self?.onVoiceHoldStart?() }
+        tap.onVoiceHoldStop = { [weak self] in self?.onVoiceHoldStop?() }
+        tap.onVoiceHoldCancel = { [weak self] in self?.onVoiceHoldCancel?() }
         remapper.clearLeftovers()
         observeSettings()
         observeSystem()

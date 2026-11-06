@@ -8,9 +8,10 @@ TMP="${RUNNER_TEMP:-$(mktemp -d)}"
 
 echo "::group::structure"
 test -f Tinycast.xcodeproj/project.pbxproj || { echo "::error::missing Xcode project"; exit 1; }
-test ! -d Tinycast/Features/Dictation || { echo "::error::Dictation sources must be absent"; exit 1; }
-if rg -n -i 'VoiceAsk|Voice Ask|CodexRealtime|MicrophoneCapture|thread/realtime|NSMicrophoneUsageDescription|audio-input|Dictation' Tinycast Tests docs project.yml; then
-  echo "::error::voice input or microphone capture remains in the fork"
+test ! -d Tinycast/Features/Dictation || { echo "::error::Upstream Dictation sources must be absent"; exit 1; }
+test -f Tinycast/Features/VoiceAsk/SpeechRuntimeVoiceAsk.swift || { echo "::error::Speech Runtime Voice Ask missing"; exit 1; }
+if rg -n -i 'CodexRealtime|thread/realtime' Tinycast/Features/VoiceAsk; then
+  echo "::error::obsolete cloud audio path detected"
   exit 1
 fi
 rg -q 'static let repository = "1tuz/tinycast"' Tinycast/Features/Updates/Model/ReleaseFeed.swift \

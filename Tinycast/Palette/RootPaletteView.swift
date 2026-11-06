@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct RootPaletteView: View {
+    @AppStorage("speechVoice.enabled") private var speechVoiceEnabled = false
     @Environment(AppCore.self) private var core
     @Environment(PaletteState.self) private var vm
     @Environment(AppIndex.self) private var appIndex
@@ -787,6 +788,18 @@ struct RootPaletteView: View {
             if tabOpensChat {
                 headerGutter(width: metrics.spacing.md)
                 quickAITabHint
+            }
+            if !isCollapsed, settings.aiEnabled,
+               (vm.mode == .launcher || vm.mode == .ai),
+               speechVoiceEnabled {
+                headerGutter(width: metrics.spacing.sm)
+                BarButton(chrome: .rounded, action: { core.speechVoice.toggleFromPalette() }) {
+                    Image(systemName: core.speechVoice.isActive ? "stop.circle.fill" : "mic.fill")
+                        .font(metrics.typography.bar)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .frame(width: 25, height: 16)
+                }
+                .help(core.speechVoice.isActive ? "Stop Voice Ask" : "Local Voice Ask")
             }
             if !isCollapsed, vm.mode == .clipboard {
                 headerGutter(width: metrics.spacing.md)

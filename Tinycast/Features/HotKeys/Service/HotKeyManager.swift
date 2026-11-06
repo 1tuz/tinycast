@@ -5,6 +5,8 @@ import Foundation
 @Observable
 final class HotKeyManager {
     var onTogglePalette: (() -> Void)?
+    var onVoiceAskKeyDown: (() -> Void)?
+    var onVoiceAskKeyUp: (() -> Void)?
     /// The launcher's own command funnel, so a shortcut and a palette row run the same thing.
     var onRunCommand: ((CommandID) -> Void)?
     var onRunCustomCommand: ((UUID) -> Void)?
@@ -247,7 +249,7 @@ final class HotKeyManager {
             index(id, bound: binding != nil, key: boundSnippetKey)
         case .extensionCommand(let entryID):
             index(entryID, bound: binding != nil, key: boundExtensionCommandKey)
-        case .workflow, .togglePalette, .command, .systemAction, .windowCommand:
+        case .workflow, .togglePalette, .voiceAsk, .command, .systemAction, .windowCommand:
             break
         }
         candidateActionsCache = nil
@@ -284,7 +286,7 @@ final class HotKeyManager {
         let originalActions = actions.reduce(into: [KeyShortcut: HotKeyAction]()) { result, action in
             if let shortcut = binding(for: action)?.shortcut { result[shortcut] = action }
         }
-        for action in actions {
+        for action in actions where action != .voiceAsk {
             guard let equivalent = binding(for: action)?.shortcut?.secureInputEquivalent(of: chord)
             else { continue }
             let original = originalActions[equivalent]
@@ -373,6 +375,8 @@ final class HotKeyManager {
         switch action {
         case .togglePalette:
             return String(localized: "App Launcher")
+        case .voiceAsk:
+            return "Voice Ask (Speech Runtime)"
         case .command(let id):
             return id.name
         case .app(let bundleID), .settingsPane(let bundleID):
@@ -407,6 +411,16 @@ final class HotKeyManager {
     /// Hands a combo to Carbon; a modifier-only binding has no per-action registration.
     private func register(_ action: HotKeyAction) {
         guard let shortcut = binding(for: action)?.shortcut else { return }
+        if action == .voiceAsk {
+            center.register(
+                id: action.defaultsKey, shortcut: shortcut,
+                onKeyDown: { [weak self] _ in
+                    guard let self, self.allowsAction?(action) ?? true else { return }
+                    self.onVoiceAskKeyDown?()
+                },
+                onKeyUp: { [weak self] in self?.onVoiceAskKeyUp?() })
+            return
+        }
         center.register(
             id: action.defaultsKey, shortcut: shortcut,
             onKeyDown: { [weak self] _ in self?.perform(action) })
@@ -415,7 +429,7 @@ final class HotKeyManager {
     /// Rebuilt wholesale, so the map can't drift from what is on disk.
     private func syncModifierTaps() {
         modifierTaps = [:]
-        for action in candidateActions {
+        for action in candidateActions where action != .voiceAsk {
             guard let binding = binding(for: action), binding.usesModifierTapMonitor else { continue }
             modifierTaps[binding] = action
         }
@@ -427,6 +441,7 @@ final class HotKeyManager {
         guard allowsAction?(action) ?? true else { return }
         switch action {
         case .togglePalette: onTogglePalette?()
+        case .voiceAsk: onVoiceAskKeyDown?()
         case .command(let id): onRunCommand?(id)
         case .app(let bundleID): AppLauncher.toggle(bundleID: bundleID)
         case .settingsPane(let bundleID): AppLauncher.openSettingsPane(bundleID: bundleID)

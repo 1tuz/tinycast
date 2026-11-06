@@ -20,6 +20,12 @@ final class HyperKeyTap {
     nonisolated static let syntheticTag: Int64 = 0x5459_4354
 
     var onUnmappedCapsLock: (() -> Void)?
+    var shouldStartVoiceHold: (() -> Bool)?
+    var onVoiceHoldStart: (() -> Void)?
+    var onVoiceHoldStop: (() -> Void)?
+    var onVoiceHoldCancel: (() -> Void)?
+    private var voiceHoldTask: Task<Void, Never>?
+    private var voiceHoldStarted = false
 
     private var route: HyperKeyRoute?
     private var includesShift = true
@@ -39,6 +45,7 @@ final class HyperKeyTap {
     func configure(route: HyperKeyRoute?, includesShift: Bool, quickPress: HyperKeyQuickPress) {
         self.quickPress = quickPress
         guard route != self.route || includesShift != self.includesShift else { return }
+        cancelVoiceHold()
         self.route = route
         self.includesShift = includesShift
         guard session?.configure(route: route, includesShift: includesShift) == true else { return }
@@ -46,6 +53,7 @@ final class HyperKeyTap {
     }
 
     func cancelHold() {
+        cancelVoiceHold()
         guard session?.cancelHold() == true else { return }
         Self.postModifierRelease()
     }
@@ -57,9 +65,10 @@ final class HyperKeyTap {
     func install() -> Bool {
         guard session == nil else { return true }
         let engine = HyperKeyEngine(route: route, includesShift: includesShift)
-        session = Session(engine: engine) { [weak self] route, effect in
-            self?.handle(effect, from: route)
-        }
+        session = Session(
+            engine: engine,
+            deliver: { [weak self] route, effect in self?.handle(effect, from: route) },
+            voiceDeliver: { [weak self] route, event in self?.handleVoice(event, from: route) })
         return session != nil
     }
 
@@ -77,8 +86,48 @@ final class HyperKeyTap {
         case .unmappedCapsLock:
             onUnmappedCapsLock?()
         case .unusedPress(let duration):
-            performQuickPress(heldFor: duration)
+            if voiceHoldStarted { stopVoiceHold() }
+            else { performQuickPress(heldFor: duration) }
         }
+    }
+
+    private func handleVoice(_ event: Session.VoiceEvent, from route: HyperKeyRoute) {
+        guard session != nil, route == self.route else { return }
+        switch event {
+        case .began:
+            cancelVoiceHold()
+            voiceHoldTask = Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(250))
+                guard let self, !Task.isCancelled,
+                      self.session?.isUnusedHold == true,
+                      !IsSecureEventInputEnabled(),
+                      self.shouldStartVoiceHold?() == true else { return }
+                self.voiceHoldTask = nil
+                self.voiceHoldStarted = true
+                self.onVoiceHoldStart?()
+            }
+        case .interrupted:
+            cancelVoiceHold()
+        case .released:
+            if voiceHoldStarted { stopVoiceHold() }
+            else { voiceHoldTask?.cancel(); voiceHoldTask = nil }
+        }
+    }
+
+    private func stopVoiceHold() {
+        voiceHoldTask?.cancel()
+        voiceHoldTask = nil
+        guard voiceHoldStarted else { return }
+        voiceHoldStarted = false
+        onVoiceHoldStop?()
+    }
+
+    private func cancelVoiceHold() {
+        voiceHoldTask?.cancel()
+        voiceHoldTask = nil
+        guard voiceHoldStarted else { return }
+        voiceHoldStarted = false
+        onVoiceHoldCancel?()
     }
 
     private func performQuickPress(heldFor duration: TimeInterval) {
@@ -158,6 +207,7 @@ final class HyperKeyTap {
 
     /// One installed tap and the thread that serves it, so a busy main thread never stalls typing.
     fileprivate final class Session: Sendable {
+        enum VoiceEvent: Sendable { case began, interrupted, released }
         // Core Foundation allows cross-thread port and run-loop calls; only the worker runs the loop.
         private struct Installation: @unchecked Sendable {
             let port: CFMachPort
@@ -173,13 +223,16 @@ final class HyperKeyTap {
 
         private let state: Mutex<State>
         private let deliver: @MainActor @Sendable (HyperKeyRoute, HyperKeyEngine.Effect) -> Void
+        private let voiceDeliver: @MainActor @Sendable (HyperKeyRoute, VoiceEvent) -> Void
 
         init?(
             engine: HyperKeyEngine,
-            deliver: @escaping @MainActor @Sendable (HyperKeyRoute, HyperKeyEngine.Effect) -> Void
+            deliver: @escaping @MainActor @Sendable (HyperKeyRoute, HyperKeyEngine.Effect) -> Void,
+            voiceDeliver: @escaping @MainActor @Sendable (HyperKeyRoute, VoiceEvent) -> Void
         ) {
             state = Mutex(State(engine: engine))
             self.deliver = deliver
+            self.voiceDeliver = voiceDeliver
             let events: CGEventMask =
                 (1 << CGEventType.keyDown.rawValue)
                 | (1 << CGEventType.keyUp.rawValue)
@@ -203,6 +256,8 @@ final class HyperKeyTap {
         var isEnabled: Bool {
             state.withLock { $0.installation.map { CGEvent.tapIsEnabled(tap: $0.port) } } ?? false
         }
+
+        var isUnusedHold: Bool { state.withLock { $0.engine.isUnusedHold } }
 
         var runLoopSourceIsValid: Bool {
             state.withLock { $0.installation?.source.map(CFRunLoopSourceIsValid) } ?? false
@@ -260,9 +315,15 @@ final class HyperKeyTap {
             let unchanged = Unmanaged.passUnretained(event)
             if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
                 // Whatever was held went unseen while disabled, so the hold is stale.
-                let needsRelease = state.withLock { state in
+                let (route, interrupted, needsRelease) = state.withLock { state in
                     if let port = state.installation?.port { CGEvent.tapEnable(tap: port, enable: true) }
-                    return state.engine.reset()
+                    let route = state.engine.route
+                    let interrupted = state.engine.isUnusedHold
+                    let release = state.engine.reset()
+                    return (route, interrupted, release)
+                }
+                if interrupted, let route {
+                    Task { @MainActor [voiceDeliver] in voiceDeliver(route, .interrupted) }
                 }
                 if needsRelease { HyperKeyTap.postModifierRelease() }
                 return unchanged
@@ -274,15 +335,30 @@ final class HyperKeyTap {
             let flags = event.flags.rawValue
             let isAutorepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
             let now = ProcessInfo.processInfo.systemUptime
-            let (route, result) = state.withLock { state in
+            let (route, result, voiceEvent) = state.withLock { state in
                 let route = state.engine.route
+                let unusedBefore = state.engine.isUnusedHold
                 let insideSecureInput = keyCode == route?.tapKeyCode && IsSecureEventInputEnabled()
-                return (
-                    route,
-                    state.engine.handle(
-                        type: type, keyCode: keyCode, flags: flags, isAutorepeat: isAutorepeat, at: now,
-                        insideSecureInput: insideSecureInput)
-                )
+                let result = state.engine.handle(
+                    type: type, keyCode: keyCode, flags: flags, isAutorepeat: isAutorepeat, at: now,
+                    insideSecureInput: insideSecureInput)
+                let unusedAfter = state.engine.isUnusedHold
+                let event: VoiceEvent?
+                if !unusedBefore && unusedAfter {
+                    event = .began
+                } else if unusedBefore && !unusedAfter {
+                    let ownRelease = keyCode == route?.tapKeyCode
+                        && (type == .keyUp || type == .flagsChanged)
+                    // Original-function keys already yield .unusedPress to the main actor.
+                    if ownRelease && result.effect != nil { event = nil }
+                    else { event = ownRelease ? .released : .interrupted }
+                } else {
+                    event = nil
+                }
+                return (route, result, event)
+            }
+            if let route, let voiceEvent {
+                Task { @MainActor [voiceDeliver] in voiceDeliver(route, voiceEvent) }
             }
             if let route, let effect = result.effect {
                 Task { @MainActor [deliver] in deliver(route, effect) }

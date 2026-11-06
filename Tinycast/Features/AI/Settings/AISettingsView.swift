@@ -1,6 +1,9 @@
 import SwiftUI
 
 struct AISettingsView: View {
+    @AppStorage("speechVoice.enabled") private var speechEnabled = false
+    @AppStorage("speechVoice.model") private var speechModel = "parakeet-ultra"
+    @AppStorage("speechVoice.autoSend") private var speechAutoSend = false
     @Environment(AppCore.self) private var core
     @Environment(AISettingsStore.self) private var settings
     @Environment(AppSettings.self) private var appSettings
@@ -34,6 +37,7 @@ struct AISettingsView: View {
             Group {
                 defaultModelSection
                 chatSection
+                speechVoiceSection
                 conversationsSection
                 systemPromptSection
                 MCPSettingsSection()
@@ -57,6 +61,30 @@ struct AISettingsView: View {
         .onChange(of: subscription.models) { syncSelection() }
         .onChange(of: subscription.phase) { syncSelection() }
         .onChange(of: installedAI.statuses) { syncSelection() }
+    }
+
+    private var speechVoiceSection: some View {
+        Section {
+            Toggle("Enable local Voice Ask", isOn: $speechEnabled)
+            LabeledContent("Speech Runtime model") {
+                TextField("parakeet-ultra", text: $speechModel)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 220)
+            }
+            Toggle("Send transcript automatically to Quick AI", isOn: $speechAutoSend)
+            LabeledContent("Global shortcut") { ShortcutRecorder(action: .voiceAsk) }
+            LabeledContent("Service") {
+                Text(core.speechVoice.availability)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.trailing)
+            }
+            Button("Check connection") { core.speechVoice.checkAvailability() }
+        } header: {
+            Text("Voice Ask · Speech Runtime")
+        } footer: {
+            Text("Local recognition through Speech Runtime.app at 127.0.0.1:8477. Hold an unused Hyper key for push-to-talk. The service remains independent of Tinycast.")
+        }
+        .onAppear { core.speechVoice.checkAvailability() }
     }
 
     private var defaultModelSection: some View {

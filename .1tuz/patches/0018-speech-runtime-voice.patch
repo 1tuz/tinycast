@@ -1,0 +1,1149 @@
+diff --git a/Tinycast/App/AppCore.swift b/Tinycast/App/AppCore.swift
+--- a/Tinycast/App/AppCore.swift
++++ b/Tinycast/App/AppCore.swift
+@@ -220,5 +220,6 @@
+     @ObservationIgnored private(set) lazy var quickAICoordinator = QuickAICoordinator(
+         chats: aiChats, settings: settings, palette: palette,
+         paletteCoordinator: paletteCoordinator, core: self)
++    @ObservationIgnored private(set) lazy var speechVoice = SpeechRuntimeVoiceAsk(core: self)
+ 
+     @ObservationIgnored private lazy var windowController = PaletteWindowController(core: self)
+@@ -352,2 +353,4 @@
+             hotKeys.onTogglePalette = { [weak self] in self?.paletteCoordinator.togglePalette() }
++            hotKeys.onVoiceAskKeyDown = { [weak self] in self?.speechVoice.hotKeyDown() }
++            hotKeys.onVoiceAskKeyUp = { [weak self] in self?.speechVoice.hotKeyUp() }
+             hotKeys.onRunCommand = { [weak self] id in self?.launcherCoordinator.runCommand(id) }
+@@ -430,2 +433,9 @@
+             hyperKey.onProblem = { [weak self] in self?.showMessage($0, tone: .danger) }
++            hyperKey.voiceHoldEnabled = { [weak self] in
++                self?.settings.aiEnabled == true
++                    && UserDefaults.standard.bool(forKey: "speechVoice.enabled")
++            }
++            hyperKey.onVoiceHoldStart = { [weak self] in self?.speechVoice.beginHyperHold() }
++            hyperKey.onVoiceHoldStop = { [weak self] in self?.speechVoice.endHyperHold() }
++            hyperKey.onVoiceHoldCancel = { [weak self] in self?.speechVoice.cancelHyperHold() }
+             hyperKey.start()
+@@ -510,2 +520,2 @@
+-        case .togglePalette, .command, .systemAction, .windowCommand:
++        case .togglePalette, .voiceAsk, .command, .systemAction, .windowCommand:
+             return nil
+diff --git a/Tinycast/Features/AI/Settings/AISettingsView.swift b/Tinycast/Features/AI/Settings/AISettingsView.swift
+--- a/Tinycast/Features/AI/Settings/AISettingsView.swift
++++ b/Tinycast/Features/AI/Settings/AISettingsView.swift
+@@ -1,2 +1,5 @@
+ struct AISettingsView: View {
++    @AppStorage("speechVoice.enabled") private var speechEnabled = false
++    @AppStorage("speechVoice.model") private var speechModel = "parakeet-ultra"
++    @AppStorage("speechVoice.autoSend") private var speechAutoSend = false
+     @Environment(AppCore.self) private var core
+@@ -34,3 +37,4 @@
+                 defaultModelSection
+                 chatSection
++                speechVoiceSection
+                 conversationsSection
+@@ -61,1 +65,25 @@
++    private var speechVoiceSection: some View {
++        Section {
++            Toggle("Enable local Voice Ask", isOn: $speechEnabled)
++            LabeledContent("Speech Runtime model") {
++                TextField("parakeet-ultra", text: $speechModel)
++                    .textFieldStyle(.roundedBorder)
++                    .frame(maxWidth: 220)
++            }
++            Toggle("Send transcript automatically to Quick AI", isOn: $speechAutoSend)
++            LabeledContent("Global shortcut") { ShortcutRecorder(action: .voiceAsk) }
++            LabeledContent("Service") {
++                Text(core.speechVoice.availability)
++                    .foregroundStyle(.secondary)
++                    .multilineTextAlignment(.trailing)
++            }
++            Button("Check connection") { core.speechVoice.checkAvailability() }
++        } header: {
++            Text("Voice Ask · Speech Runtime")
++        } footer: {
++            Text("Local recognition through Speech Runtime.app at 127.0.0.1:8477. Hold an unused Hyper key for push-to-talk. The service remains independent of Tinycast.")
++        }
++        .onAppear { core.speechVoice.checkAvailability() }
++    }
++
+     private var defaultModelSection: some View {
+diff --git a/Tinycast/Features/AI/UI/QuickAICoordinator.swift b/Tinycast/Features/AI/UI/QuickAICoordinator.swift
+--- a/Tinycast/Features/AI/UI/QuickAICoordinator.swift
++++ b/Tinycast/Features/AI/UI/QuickAICoordinator.swift
+@@ -40,2 +40,21 @@
++    /// The speech service only produces text. The selected AI provider handles the reply.
++    func composeVoicePrompt(_ input: String) {
++        guard settings.aiEnabled else { return }
++        let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
++        guard !text.isEmpty else { return }
++        applyOpenPolicy()
++        paletteCoordinator.showPalette(mode: .ai)
++        palette.query = text
++    }
++
++    func sendVoicePrompt(_ input: String) {
++        guard settings.aiEnabled else { return }
++        let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
++        guard !text.isEmpty else { return }
++        applyOpenPolicy()
++        paletteCoordinator.showPalette(mode: .ai)
++        send(text)
++    }
++
+     /// Off leaves the screen too, so the palette never shows a feature that is gone.
+     func leave() {
+diff --git a/Tinycast/Features/HotKeys/Model/HotKeyAction.swift b/Tinycast/Features/HotKeys/Model/HotKeyAction.swift
+--- a/Tinycast/Features/HotKeys/Model/HotKeyAction.swift
++++ b/Tinycast/Features/HotKeys/Model/HotKeyAction.swift
+@@ -3,4 +3,5 @@
+ enum HotKeyAction: Hashable, Sendable {
+     /// Fixed actions with no command row of their own.
+     case togglePalette
++    case voiceAsk
+     /// Parameterised over the catalog, so a new built-in command is bindable with no case here.
+@@ -24,2 +25,3 @@
+         case .togglePalette: "hotkey.togglePalette"
++        case .voiceAsk: "hotkey.voiceAsk"
+         case .command(let id): "hotkey." + id.rawValue
+@@ -48,4 +50,4 @@
+     static let builtInActions: [HotKeyAction] =
+-        [.togglePalette] + CommandID.allCases.compactMap(\.hotKeyAction)
++        [.togglePalette, .voiceAsk] + CommandID.allCases.compactMap(\.hotKeyAction)
+ 
+ }
+diff --git a/Tinycast/Features/HotKeys/Model/HyperKeyEngine.swift b/Tinycast/Features/HotKeys/Model/HyperKeyEngine.swift
+--- a/Tinycast/Features/HotKeys/Model/HyperKeyEngine.swift
++++ b/Tinycast/Features/HotKeys/Model/HyperKeyEngine.swift
+@@ -21,5 +21,7 @@
+     private(set) var isActive = false
+     private var downAt: TimeInterval?
+     private var used = false
++    /// An unused physical Hyper hold may start local push-to-talk after the tap window.
++    var isUnusedHold: Bool { isActive && !used }
+ 
+     private enum DeviceFlags {
+diff --git a/Tinycast/Features/HotKeys/Service/HotKeyManager.swift b/Tinycast/Features/HotKeys/Service/HotKeyManager.swift
+--- a/Tinycast/Features/HotKeys/Service/HotKeyManager.swift
++++ b/Tinycast/Features/HotKeys/Service/HotKeyManager.swift
+@@ -6,3 +6,5 @@
+ final class HotKeyManager {
+     var onTogglePalette: (() -> Void)?
++    var onVoiceAskKeyDown: (() -> Void)?
++    var onVoiceAskKeyUp: (() -> Void)?
+     /// The launcher's own command funnel, so a shortcut and a palette row run the same thing.
+@@ -250,2 +252,2 @@
+-        case .workflow, .togglePalette, .command, .systemAction, .windowCommand:
++        case .workflow, .togglePalette, .voiceAsk, .command, .systemAction, .windowCommand:
+             break
+@@ -300,2 +302,2 @@
+-        for action in actions {
++        for action in actions where action != .voiceAsk {
+             guard let equivalent = binding(for: action)?.shortcut?.secureInputEquivalent(of: chord)
+@@ -377,3 +379,5 @@
+         case .togglePalette:
+             return String(localized: "App Launcher")
++        case .voiceAsk:
++            return "Voice Ask (Speech Runtime)"
+         case .command(let id):
+@@ -407,6 +411,16 @@
+     private func register(_ action: HotKeyAction) {
+         guard let shortcut = binding(for: action)?.shortcut else { return }
++        if action == .voiceAsk {
++            center.register(
++                id: action.defaultsKey, shortcut: shortcut,
++                onKeyDown: { [weak self] _ in
++                    guard let self, self.allowsAction?(action) ?? true else { return }
++                    self.onVoiceAskKeyDown?()
++                },
++                onKeyUp: { [weak self] in self?.onVoiceAskKeyUp?() })
++            return
++        }
+         center.register(
+             id: action.defaultsKey, shortcut: shortcut,
+             onKeyDown: { [weak self] _ in self?.perform(action) })
+     }
+@@ -419,2 +433,2 @@
+-        for action in candidateActions {
++        for action in candidateActions where action != .voiceAsk {
+             guard let binding = binding(for: action), binding.usesModifierTapMonitor else { continue }
+@@ -434,2 +448,3 @@
+         case .togglePalette: onTogglePalette?()
++        case .voiceAsk: onVoiceAskKeyDown?()
+         case .command(let id): onRunCommand?(id)
+diff --git a/Tinycast/Features/HotKeys/Service/HyperKeyManager.swift b/Tinycast/Features/HotKeys/Service/HyperKeyManager.swift
+--- a/Tinycast/Features/HotKeys/Service/HyperKeyManager.swift
++++ b/Tinycast/Features/HotKeys/Service/HyperKeyManager.swift
+@@ -14,2 +14,6 @@
+     @ObservationIgnored var onProblem: ((String) -> Void)?
++    @ObservationIgnored var voiceHoldEnabled: (() -> Bool)?
++    @ObservationIgnored var onVoiceHoldStart: (() -> Void)?
++    @ObservationIgnored var onVoiceHoldStop: (() -> Void)?
++    @ObservationIgnored var onVoiceHoldCancel: (() -> Void)?
+     @ObservationIgnored weak var healthTicker: HealthTicker?
+@@ -46,4 +50,8 @@
+     func start() {
+         secureInput.onChange = { [weak self] _ in self?.secureInputChanged() }
+         tap.onUnmappedCapsLock = { [weak self] in self?.repairRemap() }
++        tap.shouldStartVoiceHold = { [weak self] in self?.voiceHoldEnabled?() ?? false }
++        tap.onVoiceHoldStart = { [weak self] in self?.onVoiceHoldStart?() }
++        tap.onVoiceHoldStop = { [weak self] in self?.onVoiceHoldStop?() }
++        tap.onVoiceHoldCancel = { [weak self] in self?.onVoiceHoldCancel?() }
+         remapper.clearLeftovers()
+diff --git a/Tinycast/Features/HotKeys/Service/HyperKeyTap.swift b/Tinycast/Features/HotKeys/Service/HyperKeyTap.swift
+--- a/Tinycast/Features/HotKeys/Service/HyperKeyTap.swift
++++ b/Tinycast/Features/HotKeys/Service/HyperKeyTap.swift
+@@ -21,3 +21,9 @@
+     var onUnmappedCapsLock: (() -> Void)?
++    var shouldStartVoiceHold: (() -> Bool)?
++    var onVoiceHoldStart: (() -> Void)?
++    var onVoiceHoldStop: (() -> Void)?
++    var onVoiceHoldCancel: (() -> Void)?
++    private var voiceHoldTask: Task<Void, Never>?
++    private var voiceHoldStarted = false
+ 
+     private var route: HyperKeyRoute?
+@@ -39,3 +45,4 @@
+         self.quickPress = quickPress
+         guard route != self.route || includesShift != self.includesShift else { return }
++        cancelVoiceHold()
+         self.route = route
+@@ -47,4 +54,5 @@
+     func cancelHold() {
++        cancelVoiceHold()
+         guard session?.cancelHold() == true else { return }
+         Self.postModifierRelease()
+     }
+@@ -58,4 +66,5 @@
+-        session = Session(engine: engine) { [weak self] route, effect in
+-            self?.handle(effect, from: route)
+-        }
++        session = Session(
++            engine: engine,
++            deliver: { [weak self] route, effect in self?.handle(effect, from: route) },
++            voiceDeliver: { [weak self] route, event in self?.handleVoice(event, from: route) })
+         return session != nil
+@@ -75,8 +84,48 @@
+         case .unmappedCapsLock:
+             onUnmappedCapsLock?()
+         case .unusedPress(let duration):
+-            performQuickPress(heldFor: duration)
++            if voiceHoldStarted { stopVoiceHold() }
++            else { performQuickPress(heldFor: duration) }
+         }
+     }
+ 
++    private func handleVoice(_ event: Session.VoiceEvent, from route: HyperKeyRoute) {
++        guard session != nil, route == self.route else { return }
++        switch event {
++        case .began:
++            cancelVoiceHold()
++            voiceHoldTask = Task { [weak self] in
++                try? await Task.sleep(for: .milliseconds(250))
++                guard let self, !Task.isCancelled,
++                      self.session?.isUnusedHold == true,
++                      !IsSecureEventInputEnabled(),
++                      self.shouldStartVoiceHold?() == true else { return }
++                self.voiceHoldTask = nil
++                self.voiceHoldStarted = true
++                self.onVoiceHoldStart?()
++            }
++        case .interrupted:
++            cancelVoiceHold()
++        case .released:
++            if voiceHoldStarted { stopVoiceHold() }
++            else { voiceHoldTask?.cancel(); voiceHoldTask = nil }
++        }
++    }
++
++    private func stopVoiceHold() {
++        voiceHoldTask?.cancel()
++        voiceHoldTask = nil
++        guard voiceHoldStarted else { return }
++        voiceHoldStarted = false
++        onVoiceHoldStop?()
++    }
++
++    private func cancelVoiceHold() {
++        voiceHoldTask?.cancel()
++        voiceHoldTask = nil
++        guard voiceHoldStarted else { return }
++        voiceHoldStarted = false
++        onVoiceHoldCancel?()
++    }
++
+     private func performQuickPress(heldFor duration: TimeInterval) {
+@@ -162,2 +211,3 @@
+     fileprivate final class Session: Sendable {
++        enum VoiceEvent: Sendable { case began, interrupted, released }
+         // Core Foundation allows cross-thread port and run-loop calls; only the worker runs the loop.
+@@ -174,10 +224,13 @@
+         private let state: Mutex<State>
+         private let deliver: @MainActor @Sendable (HyperKeyRoute, HyperKeyEngine.Effect) -> Void
++        private let voiceDeliver: @MainActor @Sendable (HyperKeyRoute, VoiceEvent) -> Void
+ 
+         init?(
+             engine: HyperKeyEngine,
+-            deliver: @escaping @MainActor @Sendable (HyperKeyRoute, HyperKeyEngine.Effect) -> Void
++            deliver: @escaping @MainActor @Sendable (HyperKeyRoute, HyperKeyEngine.Effect) -> Void,
++            voiceDeliver: @escaping @MainActor @Sendable (HyperKeyRoute, VoiceEvent) -> Void
+         ) {
+             state = Mutex(State(engine: engine))
+             self.deliver = deliver
++            self.voiceDeliver = voiceDeliver
+             let events: CGEventMask =
+@@ -201,5 +254,7 @@
+         var isEnabled: Bool {
+             state.withLock { $0.installation.map { CGEvent.tapIsEnabled(tap: $0.port) } } ?? false
+         }
+ 
++        var isUnusedHold: Bool { state.withLock { $0.engine.isUnusedHold } }
++
+         var runLoopSourceIsValid: Bool {
+@@ -261,6 +316,12 @@
+-                let needsRelease = state.withLock { state in
++                let (route, interrupted, needsRelease) = state.withLock { state in
+                     if let port = state.installation?.port { CGEvent.tapEnable(tap: port, enable: true) }
+-                    return state.engine.reset()
++                    let route = state.engine.route
++                    let interrupted = state.engine.isUnusedHold
++                    let release = state.engine.reset()
++                    return (route, interrupted, release)
++                }
++                if interrupted, let route {
++                    Task { @MainActor [voiceDeliver] in voiceDeliver(route, .interrupted) }
+                 }
+                 if needsRelease { HyperKeyTap.postModifierRelease() }
+                 return unchanged
+@@ -277,13 +338,28 @@
+-            let (route, result) = state.withLock { state in
++            let (route, result, voiceEvent) = state.withLock { state in
+                 let route = state.engine.route
++                let unusedBefore = state.engine.isUnusedHold
+                 let insideSecureInput = keyCode == route?.tapKeyCode && IsSecureEventInputEnabled()
+-                return (
+-                    route,
+-                    state.engine.handle(
+-                        type: type, keyCode: keyCode, flags: flags, isAutorepeat: isAutorepeat, at: now,
+-                        insideSecureInput: insideSecureInput)
+-                )
++                let result = state.engine.handle(
++                    type: type, keyCode: keyCode, flags: flags, isAutorepeat: isAutorepeat, at: now,
++                    insideSecureInput: insideSecureInput)
++                let unusedAfter = state.engine.isUnusedHold
++                let event: VoiceEvent?
++                if !unusedBefore && unusedAfter {
++                    event = .began
++                } else if unusedBefore && !unusedAfter {
++                    let ownRelease = keyCode == route?.tapKeyCode
++                        && (type == .keyUp || type == .flagsChanged)
++                    // Original-function keys already yield .unusedPress to the main actor.
++                    if ownRelease && result.effect != nil { event = nil }
++                    else { event = ownRelease ? .released : .interrupted }
++                } else {
++                    event = nil
++                }
++                return (route, result, event)
++            }
++            if let route, let voiceEvent {
++                Task { @MainActor [voiceDeliver] in voiceDeliver(route, voiceEvent) }
+             }
+             if let route, let effect = result.effect {
+                 Task { @MainActor [deliver] in deliver(route, effect) }
+             }
+diff --git a/Tinycast/Features/Launcher/Service/VisibilityStore.swift b/Tinycast/Features/Launcher/Service/VisibilityStore.swift
+--- a/Tinycast/Features/Launcher/Service/VisibilityStore.swift
++++ b/Tinycast/Features/Launcher/Service/VisibilityStore.swift
+@@ -80,1 +80,1 @@
+-        case .togglePalette, .quickAction, .customCommand, .windowCommand, .customWindowSize,
++        case .togglePalette, .voiceAsk, .quickAction, .customCommand, .windowCommand, .customWindowSize,
+diff --git a/Tinycast/Info.plist b/Tinycast/Info.plist
+--- a/Tinycast/Info.plist
++++ b/Tinycast/Info.plist
+@@ -65,3 +65,5 @@
+ 	<key>NSCameraUsageDescription</key>
+ 	<string>Tinycast shows a camera preview so you can check yourself, and take a photo to the clipboard.</string>
++	<key>NSMicrophoneUsageDescription</key>
++	<string>Tinycast captures microphone audio only while Voice Ask is running and sends it to the local Speech Runtime service for transcription.</string>
+ 	<key>NSCalendarsFullAccessUsageDescription</key>
+diff --git a/Tinycast/Palette/RootPaletteView.swift b/Tinycast/Palette/RootPaletteView.swift
+--- a/Tinycast/Palette/RootPaletteView.swift
++++ b/Tinycast/Palette/RootPaletteView.swift
+@@ -3,3 +3,4 @@
+ struct RootPaletteView: View {
++    @AppStorage("speechVoice.enabled") private var speechVoiceEnabled = false
+     @Environment(AppCore.self) private var core
+     @Environment(PaletteState.self) private var vm
+@@ -790,5 +791,17 @@
+             if tabOpensChat {
+                 headerGutter(width: metrics.spacing.md)
+                 quickAITabHint
+             }
++            if !isCollapsed, settings.aiEnabled,
++               (vm.mode == .launcher || vm.mode == .ai),
++               speechVoiceEnabled {
++                headerGutter(width: metrics.spacing.sm)
++                BarButton(chrome: .rounded, action: { core.speechVoice.toggleFromPalette() }) {
++                    Image(systemName: core.speechVoice.isActive ? "stop.circle.fill" : "mic.fill")
++                        .font(metrics.typography.bar)
++                        .foregroundStyle(Theme.Colors.textSecondary)
++                        .frame(width: 25, height: 16)
++                }
++                .help(core.speechVoice.isActive ? "Stop Voice Ask" : "Local Voice Ask")
++            }
+             if !isCollapsed, vm.mode == .clipboard {
+diff --git a/Tinycast/Tinycast.entitlements b/Tinycast/Tinycast.entitlements
+--- a/Tinycast/Tinycast.entitlements
++++ b/Tinycast/Tinycast.entitlements
+@@ -16,3 +16,5 @@
+ 	<key>com.apple.security.device.camera</key>
+ 	<true/>
++	<key>com.apple.security.device.audio-input</key>
++	<true/>
+ 	<key>com.apple.security.personal-information.calendars</key>
+diff --git a/Tinycast/Features/VoiceAsk/SpeechRuntimeVoiceAsk.swift b/Tinycast/Features/VoiceAsk/SpeechRuntimeVoiceAsk.swift
+new file mode 100644
+--- /dev/null
++++ b/Tinycast/Features/VoiceAsk/SpeechRuntimeVoiceAsk.swift
+@@ -0,0 +1,742 @@
++import AppKit
++import AVFoundation
++import Foundation
++import Observation
++import SwiftUI
++
++/// Voice input is a client of Speech Runtime, not an additional model host.
++/// The user controls the daemon and model downloads in Speech Runtime.app.
++@MainActor
++@Observable
++final class SpeechRuntimeVoiceAsk {
++    enum Phase: Equatable {
++        case idle, connecting, listening, finishing, failed(String)
++    }
++
++    private(set) var phase: Phase = .idle
++    private(set) var transcript = ""
++    private(set) var level: Float = 0
++    private(set) var availability = "Not checked"
++
++    @ObservationIgnored private unowned let core: AppCore
++    @ObservationIgnored private let microphone = SpeechVoiceMicrophone()
++    @ObservationIgnored private let transcription = SpeechRuntimeTranscriber()
++    @ObservationIgnored private let pill = SpeechVoicePillController()
++    @ObservationIgnored private var runTask: Task<Void, Never>?
++    @ObservationIgnored private var finishTask: Task<Void, Never>?
++    @ObservationIgnored private var pendingFinishCaptureTask: Task<Void, Never>?
++    @ObservationIgnored private var generation = 0
++    @ObservationIgnored private var fromPalette = false
++    @ObservationIgnored private var savedQuery: String?
++    @ObservationIgnored private var earlyAudio = Data()
++    @ObservationIgnored private var stopWhenReady = false
++    @ObservationIgnored private var hyperHold = false
++    @ObservationIgnored private var hotKeyDownAt: ContinuousClock.Instant?
++
++    var isActive: Bool {
++        switch phase {
++        case .connecting, .listening, .finishing: true
++        case .idle, .failed: false
++        }
++    }
++
++    var phaseTitle: String {
++        switch phase {
++        case .idle: "Ready"
++        case .connecting: "Connecting to Speech Runtime…"
++        case .listening: "Listening…"
++        case .finishing: "Recognizing…"
++        case .failed(let message): message
++        }
++    }
++
++    init(core: AppCore) {
++        self.core = core
++        microphone.onAudio = { [weak self] data, level in
++            self?.receiveAudio(data, level: level)
++        }
++        transcription.onFinal = { [weak self] phrase in
++            self?.receiveFinal(phrase)
++        }
++    }
++
++    func toggleFromPalette() {
++        if isActive {
++            requestFinish()
++        } else {
++            start(fromPalette: true)
++        }
++    }
++
++    /// A short tap toggles; holding a separately configured shortcut is push-to-talk.
++    func hotKeyDown() {
++        guard hotKeyDownAt == nil else { return }
++        if isActive {
++            requestFinish()
++            return
++        }
++        hotKeyDownAt = .now
++        start(fromPalette: core.paletteCoordinator.isVisible)
++    }
++
++    func hotKeyUp() {
++        guard let down = hotKeyDownAt else { return }
++        hotKeyDownAt = nil
++        if down.duration(to: .now) >= .milliseconds(250) { requestFinish() }
++    }
++
++    /// This is called only after an unused Hyper key has been held for 250 ms.
++    func beginHyperHold() {
++        guard !isActive else { return }
++        hyperHold = true
++        start(fromPalette: core.paletteCoordinator.isVisible)
++    }
++
++    func endHyperHold() {
++        guard hyperHold else { return }
++        hyperHold = false
++        requestFinish()
++    }
++
++    func cancelHyperHold() {
++        guard hyperHold else { return }
++        cancel()
++    }
++
++    func checkAvailability() {
++        Task {
++            do {
++                let models = try await transcription.checkModels()
++                let names = models.map(\.model).joined(separator: ", ")
++                availability = "Connected" + (names.isEmpty ? "" : " · " + names)
++            } catch {
++                availability = error.localizedDescription
++            }
++        }
++    }
++
++    func cancel() {
++        generation &+= 1
++        runTask?.cancel()
++        runTask = nil
++        finishTask?.cancel()
++        finishTask = nil
++        pendingFinishCaptureTask?.cancel()
++        pendingFinishCaptureTask = nil
++        microphone.stop()
++        transcription.cancel()
++        earlyAudio.removeAll(keepingCapacity: false)
++        level = 0
++        stopWhenReady = false
++        hotKeyDownAt = nil
++        hyperHold = false
++        if let savedQuery { core.palette.query = savedQuery }
++        savedQuery = nil
++        transcript = ""
++        phase = .idle
++        pill.hide()
++    }
++
++    private func start(fromPalette: Bool) {
++        guard UserDefaults.standard.bool(forKey: "speechVoice.enabled") else { return }
++        guard core.settings.aiEnabled else { return }
++        guard !isActive else { return }
++        generation &+= 1
++        let id = generation
++        self.fromPalette = fromPalette
++        phase = .connecting
++        transcript = ""
++        earlyAudio = Data()
++        stopWhenReady = false
++        level = 0
++        if fromPalette {
++            savedQuery = core.palette.query
++            core.palette.query = ""
++        } else {
++            savedQuery = nil
++            pill.show(voice: self)
++        }
++        runTask = Task { [weak self] in
++            await self?.runSession(generation: id)
++        }
++    }
++
++    private func runSession(generation id: Int) async {
++        do {
++            // Capture first: a short Hyper hold must not lose its first words during model load.
++            try await microphone.start()
++            guard id == generation, !Task.isCancelled else { return }
++            let model = UserDefaults.standard.string(forKey: "speechVoice.model")
++                .flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
++                ?? "parakeet-ultra"
++            try await transcription.start(model: model)
++            guard id == generation, !Task.isCancelled else {
++                transcription.cancel()
++                return
++            }
++            if !earlyAudio.isEmpty { transcription.appendAudio(earlyAudio) }
++            earlyAudio.removeAll(keepingCapacity: false)
++            phase = .listening
++            if stopWhenReady { requestFinish() }
++        } catch {
++            guard id == generation else { return }
++            fail(error.localizedDescription)
++        }
++    }
++
++    private func receiveAudio(_ data: Data, level: Float) {
++        guard !data.isEmpty else { return }
++        self.level = level
++        switch phase {
++        case .connecting:
++            // 30 seconds of mono/16 kHz/f32 audio is only 1.92 MiB.
++            // Never silently discard the start of a dictation when ANE is cold.
++            if earlyAudio.count + data.count > 30 * 16_000 * 4 {
++                fail("Speech Runtime did not become ready within 30 seconds of audio")
++            } else {
++                earlyAudio.append(data)
++            }
++        case .listening, .finishing:
++            transcription.appendAudio(data)
++        case .idle, .failed:
++            break
++        }
++    }
++
++    private func receiveFinal(_ phrase: String) {
++        guard isActive else { return }
++        let cleaned = phrase.trimmingCharacters(in: .whitespacesAndNewlines)
++        guard !cleaned.isEmpty else { return }
++        transcript = transcript.isEmpty ? cleaned : transcript + " " + cleaned
++        if fromPalette { core.palette.query = transcript }
++    }
++
++    private func requestFinish() {
++        guard finishTask == nil else { return }
++        switch phase {
++        case .connecting:
++            stopWhenReady = true
++            // Do not keep recording while the model is downloading or compiling.
++            // A released Hyper hold ends capture after its short tail, regardless
++            // of the Speech Runtime connection latency.
++            let id = generation
++            pendingFinishCaptureTask?.cancel()
++            pendingFinishCaptureTask = Task { [weak self] in
++                try? await Task.sleep(for: .milliseconds(280))
++                guard let self, id == self.generation, !Task.isCancelled else { return }
++                self.microphone.stop()
++                self.pendingFinishCaptureTask = nil
++            }
++        case .listening:
++            phase = .finishing
++            let id = generation
++            finishTask = Task { [weak self] in
++                await self?.finish(generation: id)
++            }
++        case .idle, .finishing, .failed:
++            break
++        }
++    }
++
++    private func finish(generation id: Int) async {
++        // Release after the audio tap had time to deliver its last frame.
++        try? await Task.sleep(for: .milliseconds(280))
++        guard id == generation, !Task.isCancelled else { return }
++        pendingFinishCaptureTask?.cancel()
++        pendingFinishCaptureTask = nil
++        microphone.stop()
++        do {
++            let text = try await transcription.finish()
++            guard id == generation, !Task.isCancelled else { return }
++            let result = text.trimmingCharacters(in: .whitespacesAndNewlines)
++            guard !result.isEmpty else {
++                fail("No speech detected")
++                return
++            }
++            savedQuery = nil
++            pill.hide()
++            phase = .idle
++            hotKeyDownAt = nil
++            hyperHold = false
++            finishTask = nil
++            // Only the selected AI chat provider receives the text, never the speech service.
++            if UserDefaults.standard.bool(forKey: "speechVoice.autoSend") {
++                core.quickAICoordinator.sendVoicePrompt(result)
++            } else {
++                core.quickAICoordinator.composeVoicePrompt(result)
++            }
++        } catch {
++            guard id == generation else { return }
++            fail(error.localizedDescription)
++        }
++    }
++
++    private func fail(_ message: String) {
++        generation &+= 1
++        runTask?.cancel()
++        runTask = nil
++        finishTask?.cancel()
++        finishTask = nil
++        pendingFinishCaptureTask?.cancel()
++        pendingFinishCaptureTask = nil
++        microphone.stop()
++        transcription.cancel()
++        earlyAudio.removeAll(keepingCapacity: false)
++        stopWhenReady = false
++        hotKeyDownAt = nil
++        hyperHold = false
++        if let savedQuery { core.palette.query = savedQuery }
++        savedQuery = nil
++        phase = .failed(message)
++        pill.show(voice: self)
++        let id = generation
++        Task { [weak self] in
++            try? await Task.sleep(for: .seconds(3))
++            guard let self, id == self.generation else { return }
++            self.pill.hide()
++            self.phase = .idle
++        }
++    }
++}
++
++private struct SpeechRuntimeModel: Decodable {
++    let model: String
++    let loaded: Bool?
++    let capabilities: Capabilities?
++
++    struct Capabilities: Decodable {
++        let streamingSessions: Bool?
++        enum CodingKeys: String, CodingKey { case streamingSessions = "streaming_sessions" }
++    }
++}
++
++private struct SpeechRuntimeModels: Decodable {
++    let models: [SpeechRuntimeModel]
++}
++
++private struct SpeechRuntimeStream: Decodable {
++    let stream: String
++}
++
++private struct SpeechRuntimeEvents: Decodable {
++    let next: Int
++    let ended: Bool
++    let events: [SpeechRuntimeEvent]
++}
++
++private struct SpeechRuntimeEvent: Decodable {
++    let event: String
++    let data: DataPayload
++
++    struct DataPayload: Decodable {
++        let text: String?
++        let message: String?
++    }
++}
++
++private struct SpeechRuntimeErrorBody: Decodable {
++    let error: String?
++}
++
++private struct SpeechVoiceFailure: LocalizedError {
++    let detail: String
++    var errorDescription: String? { detail }
++}
++
++/// The API is intentionally local and fixed. The client never starts or terminates the daemon.
++@MainActor
++private final class SpeechRuntimeHTTP {
++    private let url = URL(string: "http://127.0.0.1:8477")!
++    private let session: URLSession
++    private let decoder = JSONDecoder()
++
++    init() {
++        let configuration = URLSessionConfiguration.ephemeral
++        configuration.timeoutIntervalForRequest = 12
++        configuration.timeoutIntervalForResource = 180
++        configuration.urlCache = nil
++        session = URLSession(configuration: configuration)
++    }
++
++    private func token() throws -> String {
++        let file = FileManager.default.homeDirectoryForCurrentUser
++            .appendingPathComponent("Library/Application Support/SpeechRuntime/token")
++        guard let raw = try? String(contentsOf: file, encoding: .utf8) else {
++            throw SpeechVoiceFailure(detail: "Speech Runtime token not found. Turn on Speech Runtime.app first.")
++        }
++        let token = raw.trimmingCharacters(in: .whitespacesAndNewlines)
++        guard !token.isEmpty else { throw SpeechVoiceFailure(detail: "Speech Runtime token is empty") }
++        return token
++    }
++
++    private func request(
++        _ method: String, _ path: String, query: [URLQueryItem] = [],
++        body: Data? = nil, contentType: String? = nil,
++        extraHeaders: [String: String] = [:], timeout: TimeInterval = 12
++    ) async throws -> Data {
++        var components = URLComponents(url: url.appendingPathComponent(String(path.dropFirst())),
++                                       resolvingAgainstBaseURL: false)!
++        if !query.isEmpty { components.queryItems = query }
++        var request = URLRequest(url: components.url!)
++        request.httpMethod = method
++        request.timeoutInterval = timeout
++        request.setValue("Bearer " + (try token()), forHTTPHeaderField: "Authorization")
++        if let contentType { request.setValue(contentType, forHTTPHeaderField: "Content-Type") }
++        if let body { request.httpBody = body }
++        for (key, value) in extraHeaders { request.setValue(value, forHTTPHeaderField: key) }
++        let data: Data
++        let response: URLResponse
++        do {
++            (data, response) = try await session.data(for: request)
++        } catch {
++            throw SpeechVoiceFailure(detail: "Cannot reach Speech Runtime at 127.0.0.1:8477: \(error.localizedDescription)")
++        }
++        guard let http = response as? HTTPURLResponse else {
++            throw SpeechVoiceFailure(detail: "Speech Runtime returned an invalid HTTP response")
++        }
++        guard (200..<300).contains(http.statusCode) else {
++            let message = (try? decoder.decode(SpeechRuntimeErrorBody.self, from: data).error)
++                ?? "HTTP \(http.statusCode)"
++            throw SpeechVoiceFailure(detail: "Speech Runtime: \(message)")
++        }
++        return data
++    }
++
++    private func json(_ object: [String: Any]) throws -> Data {
++        try JSONSerialization.data(withJSONObject: object)
++    }
++
++    func models() async throws -> [SpeechRuntimeModel] {
++        try decoder.decode(SpeechRuntimeModels.self, from: await request("GET", "/v1/models")).models
++    }
++
++    func load(_ model: String) async throws {
++        // Cold ANE compilation can take tens of seconds on first use.
++        _ = try await request("POST", "/v1/models/load", body: json(["model": model]),
++                              contentType: "application/json", timeout: 170)
++    }
++
++    func open(_ model: String) async throws -> String {
++        let data = try await request("POST", "/v1/streams", body: json(["model": model]),
++                                     contentType: "application/json")
++        return try decoder.decode(SpeechRuntimeStream.self, from: data).stream
++    }
++
++    func audio(_ stream: String, pcm: Data) async throws {
++        // Speech Runtime requires explicit sample format, not an implicit raw-PCM guess.
++        _ = try await request("POST", "/v1/streams/audio",
++                              query: [URLQueryItem(name: "stream", value: stream)],
++                              body: pcm, contentType: "application/octet-stream",
++                              extraHeaders: ["X-Sample-Format": "f32le", "X-Sample-Rate": "16000"])
++    }
++
++    func events(_ stream: String, since: Int) async throws -> SpeechRuntimeEvents {
++        let data = try await request("GET", "/v1/streams/events", query: [
++            URLQueryItem(name: "stream", value: stream),
++            URLQueryItem(name: "since", value: String(since)),
++            URLQueryItem(name: "wait", value: "0.75")
++        ])
++        return try decoder.decode(SpeechRuntimeEvents.self, from: data)
++    }
++
++    func end(_ stream: String) async throws {
++        _ = try await request("POST", "/v1/streams/end",
++                              query: [URLQueryItem(name: "stream", value: stream)], timeout: 30)
++    }
++
++    func cancel(_ stream: String) async {
++        _ = try? await request("DELETE", "/v1/streams",
++                               query: [URLQueryItem(name: "stream", value: stream)])
++    }
++}
++
++/// Serialises audio uploads and reads completed utterances while capture continues.
++@MainActor
++private final class SpeechRuntimeTranscriber {
++    var onFinal: ((String) -> Void)?
++    private let http = SpeechRuntimeHTTP()
++    private var stream: String?
++    private var upload = Data()
++    private var pendingBytes = 0
++    private var uploadTail: Task<Void, Error>?
++    private var polling: Task<Void, Error>?
++    private var completed: [String] = []
++    private var generation = 0
++    private var isFinishing = false
++    private var uploadFailure: Error?
++
++    func checkModels() async throws -> [SpeechRuntimeModel] { try await http.models() }
++
++    func start(model: String) async throws {
++        cancel()
++        let generation = self.generation
++        let models = try await http.models()
++        guard let selected = models.first(where: { $0.model == model }) else {
++            throw SpeechVoiceFailure(detail: "Model '\(model)' is not configured in Speech Runtime.app")
++        }
++        guard selected.capabilities?.streamingSessions == true else {
++            throw SpeechVoiceFailure(detail: "Model '\(model)' does not support streaming sessions")
++        }
++        if selected.loaded != true { try await http.load(model) }
++        guard generation == self.generation else { throw CancellationError() }
++        let stream = try await http.open(model)
++        guard generation == self.generation else {
++            await http.cancel(stream)
++            throw CancellationError()
++        }
++        self.stream = stream
++        polling = Task { [weak self] in
++            guard let self else { return }
++            try await self.pollEvents(stream: stream, generation: generation)
++        }
++    }
++
++    func appendAudio(_ data: Data) {
++        guard stream != nil, !isFinishing, uploadFailure == nil, !data.isEmpty else { return }
++        // Do not drop packets on a slow server: fail explicitly instead of corrupting the transcript.
++        if pendingBytes + upload.count + data.count > 4 * 16_000 * 4 {
++            uploadFailure = SpeechVoiceFailure(detail: "Speech Runtime audio upload fell behind by four seconds")
++            return
++        }
++        upload.append(data)
++        if upload.count >= 100 * 16 * 4 { flush() }
++    }
++
++    private func flush() {
++        guard let stream, !upload.isEmpty else { return }
++        let data = upload
++        upload.removeAll(keepingCapacity: true)
++        pendingBytes += data.count
++        let previous = uploadTail
++        let generation = self.generation
++        uploadTail = Task { [weak self] in
++            try await previous?.value
++            guard !Task.isCancelled, let self, generation == self.generation else {
++                throw CancellationError()
++            }
++            try await self.http.audio(stream, pcm: data)
++            guard generation == self.generation else { throw CancellationError() }
++            self.pendingBytes -= data.count
++        }
++    }
++
++    private func pollEvents(stream: String, generation: Int) async throws {
++        var since = 0
++        while !Task.isCancelled, generation == self.generation {
++            let next = try await http.events(stream, since: since)
++            since = next.next
++            for event in next.events {
++                if event.event == "final", let text = event.data.text {
++                    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
++                    if !trimmed.isEmpty {
++                        completed.append(trimmed)
++                        onFinal?(trimmed)
++                    }
++                } else if event.event == "error" {
++                    throw SpeechVoiceFailure(detail: event.data.message ?? "Speech Runtime streaming error")
++                }
++            }
++            if next.ended { return }
++        }
++        throw CancellationError()
++    }
++
++    func finish() async throws -> String {
++        guard let stream else { throw SpeechVoiceFailure(detail: "Speech Runtime stream is not open") }
++        isFinishing = true
++        flush()
++        if let uploadFailure { throw uploadFailure }
++        try await uploadTail?.value
++        try await http.end(stream)
++        // The server retains ended-session events briefly so clients can drain them.
++        try await polling?.value
++        let text = completed.joined(separator: " ")
++        reset()
++        return text
++    }
++
++    func cancel() {
++        generation &+= 1
++        uploadTail?.cancel()
++        polling?.cancel()
++        if let stream {
++            Task { [http] in await http.cancel(stream) }
++        }
++        reset()
++    }
++
++    private func reset() {
++        stream = nil
++        upload = Data()
++        pendingBytes = 0
++        uploadTail = nil
++        polling = nil
++        completed = []
++        isFinishing = false
++        uploadFailure = nil
++    }
++}
++
++/// Mic capture is owned by Tinycast. AVAudioEngine's real-time callback never touches UI state.
++@MainActor
++private final class SpeechVoiceMicrophone {
++    var onAudio: ((Data, Float) -> Void)?
++    private let engine = SpeechVoiceAudioEngine()
++
++    func start() async throws {
++        stop()
++        switch AVCaptureDevice.authorizationStatus(for: .audio) {
++        case .authorized: break
++        case .notDetermined:
++            guard await AVCaptureDevice.requestAccess(for: .audio) else {
++                throw SpeechVoiceFailure(detail: "Microphone access denied")
++            }
++        default: throw SpeechVoiceFailure(detail: "Enable microphone access for Tinycast in System Settings")
++        }
++        try engine.start { [weak self] data, level in
++            Task { @MainActor [weak self] in self?.onAudio?(data, level) }
++        }
++    }
++
++    func stop() { engine.stop() }
++}
++
++/// An ordinary object rather than a MainActor AVAudioEngine: callbacks run on the audio thread.
++private final class SpeechVoiceAudioEngine: @unchecked Sendable {
++    private let lock = NSLock()
++    private var engine: AVAudioEngine?
++
++    func start(deliver: @escaping @Sendable (Data, Float) -> Void) throws {
++        stop()
++        let audioEngine = AVAudioEngine()
++        let input = audioEngine.inputNode
++        let inputFormat = input.outputFormat(forBus: 0)
++        guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0,
++              let targetFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
++                                               sampleRate: 16_000, channels: 1, interleaved: false),
++              let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
++            throw SpeechVoiceFailure(detail: "No usable microphone input format")
++        }
++        input.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { buffer, _ in
++            let length = AVAudioFrameCount(ceil(Double(buffer.frameLength) * 16_000 / inputFormat.sampleRate)) + 32
++            guard let output = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: length) else { return }
++            var provided = false
++            var conversionError: NSError?
++            let status = converter.convert(to: output, error: &conversionError) { _, inputStatus in
++                if provided {
++                    inputStatus.pointee = .noDataNow
++                    return nil
++                }
++                provided = true
++                inputStatus.pointee = .haveData
++                return buffer
++            }
++            guard status != .error, output.frameLength > 0,
++                  let samples = output.floatChannelData?[0] else { return }
++            let count = Int(output.frameLength)
++            var peak: Float = 0
++            for i in 0..<count { peak = max(peak, abs(samples[i])) }
++            deliver(Data(bytes: samples, count: count * MemoryLayout<Float>.size), min(peak, 1))
++        }
++        do {
++            try audioEngine.start()
++        } catch {
++            input.removeTap(onBus: 0)
++            throw SpeechVoiceFailure(detail: "Cannot start the microphone: \(error.localizedDescription)")
++        }
++        lock.lock()
++        engine = audioEngine
++        lock.unlock()
++    }
++
++    func stop() {
++        lock.lock()
++        let running = engine
++        engine = nil
++        lock.unlock()
++        if let running {
++            running.inputNode.removeTap(onBus: 0)
++            running.stop()
++        }
++    }
++}
++
++@MainActor
++private final class SpeechVoicePillController {
++    private var panel: NSPanel?
++
++    func show(voice: SpeechRuntimeVoiceAsk) {
++        if panel == nil {
++            let p = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 320, height: 62),
++                            styleMask: [.borderless, .nonactivatingPanel], backing: .buffered,
++                            defer: false)
++            p.isOpaque = false
++            p.backgroundColor = .clear
++            p.hasShadow = true
++            p.level = .floating
++            p.hidesOnDeactivate = false
++            p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
++            p.isMovableByWindowBackground = true
++            panel = p
++        }
++        guard let panel else { return }
++        panel.contentView = NSHostingView(rootView: SpeechVoicePill(voice: voice))
++        if let screen = NSScreen.main ?? NSScreen.screens.first {
++            let frame = screen.visibleFrame
++            panel.setFrameOrigin(NSPoint(x: frame.midX - panel.frame.width / 2,
++                                         y: frame.maxY - panel.frame.height - 24))
++        }
++        panel.orderFrontRegardless()
++    }
++
++    func hide() {
++        panel?.orderOut(nil)
++        panel?.contentView = nil
++        panel = nil
++    }
++}
++
++private struct SpeechVoicePill: View {
++    let voice: SpeechRuntimeVoiceAsk
++
++    var body: some View {
++        HStack(spacing: 10) {
++            Image(systemName: voice.phase == .listening ? "waveform" : "mic.fill")
++                .symbolRenderingMode(.hierarchical)
++            VStack(alignment: .leading, spacing: 3) {
++                Text(voice.phaseTitle).font(.system(size: 12, weight: .semibold)).lineLimit(1)
++                if !voice.transcript.isEmpty {
++                    Text(voice.transcript).font(.system(size: 10)).foregroundStyle(.secondary)
++                        .lineLimit(1)
++                } else {
++                    GeometryReader { geo in
++                        Capsule().fill(.secondary.opacity(0.55))
++                            .frame(width: max(6, geo.size.width * CGFloat(voice.level)), height: 3)
++                            .frame(maxHeight: .infinity, alignment: .center)
++                    }
++                    .frame(height: 8)
++                }
++            }
++            Spacer(minLength: 0)
++            Button { voice.cancel() } label: {
++                Image(systemName: "xmark.circle.fill").font(.system(size: 15))
++            }
++            .buttonStyle(.plain)
++            .help("Cancel dictation")
++        }
++        .padding(.horizontal, 14)
++        .frame(width: 320, height: 60)
++        .modifier(SpeechVoiceGlass())
++    }
++}
++
++private struct SpeechVoiceGlass: ViewModifier {
++    @ViewBuilder
++    func body(content: Content) -> some View {
++        if #available(macOS 26.0, *) {
++            content.glassEffect(.regular, in: Capsule())
++        } else {
++            content.background(.regularMaterial, in: Capsule())
++        }
++    }
++}

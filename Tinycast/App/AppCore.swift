@@ -220,6 +220,7 @@ final class AppCore {
     @ObservationIgnored private(set) lazy var quickAICoordinator = QuickAICoordinator(
         chats: aiChats, settings: settings, palette: palette,
         paletteCoordinator: paletteCoordinator, core: self)
+    @ObservationIgnored private(set) lazy var speechVoice = SpeechRuntimeVoiceAsk(core: self)
 
     @ObservationIgnored private lazy var windowController = PaletteWindowController(core: self)
     @ObservationIgnored private lazy var messageHUD = MessageHUDController(settings: settings)
@@ -346,6 +347,8 @@ final class AppCore {
             snippetListener.healthTicker = healthTicker
 
             hotKeys.onTogglePalette = { [weak self] in self?.paletteCoordinator.togglePalette() }
+            hotKeys.onVoiceAskKeyDown = { [weak self] in self?.speechVoice.hotKeyDown() }
+            hotKeys.onVoiceAskKeyUp = { [weak self] in self?.speechVoice.hotKeyUp() }
             hotKeys.onRunCommand = { [weak self] id in self?.launcherCoordinator.runCommand(id) }
             hotKeys.onRunCustomCommand = { [weak self] id in
                 self?.customCommandCoordinator.runCustomCommand(id: id)
@@ -422,6 +425,13 @@ final class AppCore {
             workflowCoordinator.start()
             // After `hotKeys.start`: Secure Input equivalents are built from the loaded bindings.
             hyperKey.onProblem = { [weak self] in self?.showMessage($0, tone: .danger) }
+            hyperKey.voiceHoldEnabled = { [weak self] in
+                self?.settings.aiEnabled == true
+                    && UserDefaults.standard.bool(forKey: "speechVoice.enabled")
+            }
+            hyperKey.onVoiceHoldStart = { [weak self] in self?.speechVoice.beginHyperHold() }
+            hyperKey.onVoiceHoldStop = { [weak self] in self?.speechVoice.endHyperHold() }
+            hyperKey.onVoiceHoldCancel = { [weak self] in self?.speechVoice.cancelHyperHold() }
             hyperKey.start()
 
             snippetsStore.onSnapshot = { [weak self] snapshot in
@@ -505,7 +515,7 @@ final class AppCore {
             return snippetsStore.record(id: id)?.snippet.name
         case .extensionCommand(let entryID):
             return appIndex.apps.first { $0.kind == .extensionCommand && $0.id == entryID }?.name
-        case .togglePalette, .command, .systemAction, .windowCommand:
+        case .togglePalette, .voiceAsk, .command, .systemAction, .windowCommand:
             return nil
         }
     }

@@ -24,6 +24,8 @@ struct HyperKeyEngine: Sendable {
     private(set) var isActive = false
     private var downAt: TimeInterval?
     private var used = false
+    /// An unused physical Hyper hold may start local push-to-talk after the tap window.
+    var isUnusedHold: Bool { isActive && !used }
 
     private enum DeviceFlags {
         static let leftControlOptionCommand: UInt64 = 0x29
