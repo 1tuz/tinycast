@@ -792,14 +792,7 @@ struct RootPaletteView: View {
             if !isCollapsed, settings.aiEnabled,
                (vm.mode == .launcher || vm.mode == .ai),
                speechVoiceEnabled {
-                headerGutter(width: metrics.spacing.sm)
-                BarButton(chrome: .rounded, action: { core.speechVoice.toggleFromPalette() }) {
-                    Image(systemName: core.speechVoice.isActive ? "stop.circle.fill" : "mic.fill")
-                        .font(metrics.typography.bar)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                        .frame(width: 25, height: 16)
-                }
-                .help(core.speechVoice.isActive ? "Stop Voice Ask" : "Local Voice Ask")
+                speechVoiceBarButton
             }
             if !isCollapsed, vm.mode == .clipboard {
                 headerGutter(width: metrics.spacing.md)
@@ -867,6 +860,19 @@ struct RootPaletteView: View {
         guard !isCollapsed else { return nil }
         let screen = screen
         return screen.headerAccessory(at: selection(in: screen), focus: $argumentFocused)
+    }
+
+    private var speechVoiceBarButton: some View {
+        HStack(spacing: metrics.spacing.sm) {
+            headerGutter(width: metrics.spacing.sm)
+            BarButton(chrome: .rounded, action: { core.speechVoice.toggleFromPalette() }) {
+                Image(systemName: core.speechVoice.isActive ? "stop.circle.fill" : "mic.fill")
+                    .font(metrics.typography.bar)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .frame(width: 25, height: 16)
+            }
+            .help(core.speechVoice.isActive ? "Stop Voice Ask" : "Local Voice Ask")
+        }
     }
 
     /// Nothing else advertises Tab, so the launcher says where it goes.

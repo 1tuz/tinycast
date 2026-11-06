@@ -120,6 +120,11 @@ diff --git a/Tinycast/Features/HotKeys/Model/HyperKeyEngine.swift b/Tinycast/Fea
      private var used = false
 +    /// An unused physical Hyper hold may start local push-to-talk after the tap window.
 +    var isUnusedHold: Bool { isActive && !used }
++    // Swift 6.3 hides the cross-file memberwise init behind the private stored properties.
++    init(route: HyperKeyRoute? = nil, includesShift: Bool = true) {
++        self.route = route
++        self.includesShift = includesShift
++    }
  
      private enum DeviceFlags {
 diff --git a/Tinycast/Features/HotKeys/Service/HotKeyManager.swift b/Tinycast/Features/HotKeys/Service/HotKeyManager.swift
@@ -381,17 +386,29 @@ diff --git a/Tinycast/Palette/RootPaletteView.swift b/Tinycast/Palette/RootPalet
 +            if !isCollapsed, settings.aiEnabled,
 +               (vm.mode == .launcher || vm.mode == .ai),
 +               speechVoiceEnabled {
-+                headerGutter(width: metrics.spacing.sm)
-+                BarButton(chrome: .rounded, action: { core.speechVoice.toggleFromPalette() }) {
-+                    Image(systemName: core.speechVoice.isActive ? "stop.circle.fill" : "mic.fill")
-+                        .font(metrics.typography.bar)
-+                        .foregroundStyle(Theme.Colors.textSecondary)
-+                        .frame(width: 25, height: 16)
-+                }
-+                .help(core.speechVoice.isActive ? "Stop Voice Ask" : "Local Voice Ask")
++                speechVoiceBarButton
 +            }
              if !isCollapsed, vm.mode == .clipboard {
-diff --git a/Tinycast/Tinycast.entitlements b/Tinycast/Tinycast.entitlements
+diff --git a/Tinycast/Palette/RootPaletteView.swift b/Tinycast/Palette/RootPaletteView.swift
+--- a/Tinycast/Palette/RootPaletteView.swift
++++ b/Tinycast/Palette/RootPaletteView.swift
+@@ -865,4 +865,19 @@
++    private var speechVoiceBarButton: some View {
++        HStack(spacing: metrics.spacing.sm) {
++            headerGutter(width: metrics.spacing.sm)
++            BarButton(chrome: .rounded, action: { core.speechVoice.toggleFromPalette() }) {
++                Image(systemName: core.speechVoice.isActive ? "stop.circle.fill" : "mic.fill")
++                    .font(metrics.typography.bar)
++                    .foregroundStyle(Theme.Colors.textSecondary)
++                    .frame(width: 25, height: 16)
++            }
++            .help(core.speechVoice.isActive ? "Stop Voice Ask" : "Local Voice Ask")
++        }
++    }
++
+     /// Nothing else advertises Tab, so the launcher says where it goes.
+     private var quickAITabHint: some View {
+
 --- a/Tinycast/Tinycast.entitlements
 +++ b/Tinycast/Tinycast.entitlements
 @@ -16,3 +16,5 @@
@@ -406,7 +423,7 @@ new file mode 100644
 +++ b/Tinycast/Features/VoiceAsk/SpeechRuntimeVoiceAsk.swift
 @@ -0,0 +1,742 @@
 +import AppKit
-+import AVFoundation
++@preconcurrency import AVFoundation
 +import Foundation
 +import Observation
 +import SwiftUI
