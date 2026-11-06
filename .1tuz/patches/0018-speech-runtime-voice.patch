@@ -114,13 +114,12 @@ diff --git a/Tinycast/Features/HotKeys/Model/HotKeyAction.swift b/Tinycast/Featu
 diff --git a/Tinycast/Features/HotKeys/Model/HyperKeyEngine.swift b/Tinycast/Features/HotKeys/Model/HyperKeyEngine.swift
 --- a/Tinycast/Features/HotKeys/Model/HyperKeyEngine.swift
 +++ b/Tinycast/Features/HotKeys/Model/HyperKeyEngine.swift
-@@ -21,5 +21,7 @@
+@@ -21,5 +21,11 @@
      private(set) var isActive = false
      private var downAt: TimeInterval?
      private var used = false
 +    /// An unused physical Hyper hold may start local push-to-talk after the tap window.
 +    var isUnusedHold: Bool { isActive && !used }
-+    // Swift 6.3 hides the cross-file memberwise init behind the private stored properties.
 +    init(route: HyperKeyRoute? = nil, includesShift: Bool = true) {
 +        self.route = route
 +        self.includesShift = includesShift
@@ -378,7 +377,7 @@ diff --git a/Tinycast/Palette/RootPaletteView.swift b/Tinycast/Palette/RootPalet
 +    @AppStorage("speechVoice.enabled") private var speechVoiceEnabled = false
      @Environment(AppCore.self) private var core
      @Environment(PaletteState.self) private var vm
-@@ -790,5 +791,17 @@
+@@ -790,5 +791,10 @@
              if tabOpensChat {
                  headerGutter(width: metrics.spacing.md)
                  quickAITabHint
@@ -392,7 +391,7 @@ diff --git a/Tinycast/Palette/RootPaletteView.swift b/Tinycast/Palette/RootPalet
 diff --git a/Tinycast/Palette/RootPaletteView.swift b/Tinycast/Palette/RootPaletteView.swift
 --- a/Tinycast/Palette/RootPaletteView.swift
 +++ b/Tinycast/Palette/RootPaletteView.swift
-@@ -865,4 +865,19 @@
+@@ -859,2 +859,15 @@
 +    private var speechVoiceBarButton: some View {
 +        HStack(spacing: metrics.spacing.sm) {
 +            headerGutter(width: metrics.spacing.sm)
@@ -409,6 +408,112 @@ diff --git a/Tinycast/Palette/RootPaletteView.swift b/Tinycast/Palette/RootPalet
      /// Nothing else advertises Tab, so the launcher says where it goes.
      private var quickAITabHint: some View {
 
+diff --git a/Tinycast/Palette/RootPaletteView.swift b/Tinycast/Palette/RootPaletteView.swift
+--- a/Tinycast/Palette/RootPaletteView.swift
++++ b/Tinycast/Palette/RootPaletteView.swift
+@@ -470,6 +470,9 @@
+             // `prepare` may change nothing else, so this still lands the list as freshly opened.
+-            .onChange(of: vm.resetToken) {
+-                if menuOpen { closeMenus() }
+-                land()
+-            }
++            lifecycleObservers(
++                content
++                    .onChange(of: vm.resetToken) {
++                        if menuOpen { closeMenus() }
++                        land()
++                    }
++            )
+             // ⌘. arrives as a token rather than a key press. See `PaletteState.pinChordToken`.
+diff --git a/Tinycast/Palette/RootPaletteView.swift b/Tinycast/Palette/RootPaletteView.swift
+--- a/Tinycast/Palette/RootPaletteView.swift
++++ b/Tinycast/Palette/RootPaletteView.swift
+@@ -475,40 +475,47 @@
+-            // ⌘. arrives as a token rather than a key press. See `PaletteState.pinChordToken`.
+-            .onChange(of: vm.pinChordToken) { performShortcut(.pin) }
+-            .onChange(of: vm.queryRewriteToken) {
+-                if menuOpen { closeMenus() }
+-                searchFocused = true
+-                // Next turn, past the refocus that selects all, so typing extends the answer.
+-                Task { @MainActor in (hostWindow as? PalettePanel)?.moveFieldEditorCaretToEnd() }
+-            }
+-            .onChange(of: vm.favoriteSlotToken) {
+-                if let index = vm.favoriteSlotIndex { performShortcut(.favoriteSlot(index)) }
+-            }
+-            // One optional makes "exactly one menu" structural; this only presents it.
+-            .onChange(of: openMenu) {
+-                guard menuOpen else { return }
+-                syncMenuPanel(presenting: true)
+-            }
+-            // The hosted tree is its own hierarchy, so the highlight has to be pushed into it.
+-            .onChange(of: menuSelection) { syncMenuPanel(presenting: false) }
+-            .onChange(of: vm.menuQuery) { menuQueryChanged() }
+-            .onDisappear {
+-                menuPanel.hide()
+-                (hostWindow as? PalettePanel)?.onHeaderFieldBoundaryArrow = nil
+-            }
+-            // The first show builds this view after `prepare`, so no handler saw that reset.
+-            .onAppear {
+-                searchFocused = !screen.hidesSearchField
+-                land()
+-                focusPendingArgument()
+-            }
+-            .modifier(SearchFieldHiding(hidden: hidesSearchField, apply: applySearchFieldHiding))
+-            // Several paths flip `paletteIsCollapsed`, so resize the window to match.
+-            .onChange(of: core.paletteCoordinator.paletteIsCollapsed) {
+-                resetCompactSelection()
+-                core.paletteCoordinator.syncPaletteSize()
+-            }
+-    }
++    }
++
++    /// The screen lifecycle tail, split so `stateObservers` stays within type-checker reach.
++    @ViewBuilder
++    private func lifecycleObservers(_ content: some View) -> some View {
++        content
++            // ⌘. arrives as a token rather than a key press. See `PaletteState.pinChordToken`.
++            .onChange(of: vm.pinChordToken) { performShortcut(.pin) }
++            .onChange(of: vm.queryRewriteToken) {
++                if menuOpen { closeMenus() }
++                searchFocused = true
++                // Next turn, past the refocus that selects all, so typing extends the answer.
++                Task { @MainActor in (hostWindow as? PalettePanel)?.moveFieldEditorCaretToEnd() }
++            }
++            .onChange(of: vm.favoriteSlotToken) {
++                if let index = vm.favoriteSlotIndex { performShortcut(.favoriteSlot(index)) }
++            }
++            // One optional makes "exactly one menu" structural; this only presents it.
++            .onChange(of: openMenu) {
++                guard menuOpen else { return }
++                syncMenuPanel(presenting: true)
++            }
++            // The hosted tree is its own hierarchy, so the highlight has to be pushed into it.
++            .onChange(of: menuSelection) { syncMenuPanel(presenting: false) }
++            .onChange(of: vm.menuQuery) { menuQueryChanged() }
++            .onDisappear {
++                menuPanel.hide()
++                (hostWindow as? PalettePanel)?.onHeaderFieldBoundaryArrow = nil
++            }
++            // The first show builds this view after `prepare`, so no handler saw that reset.
++            .onAppear {
++                searchFocused = !screen.hidesSearchField
++                land()
++                focusPendingArgument()
++            }
++            .modifier(SearchFieldHiding(hidden: hidesSearchField, apply: applySearchFieldHiding))
++            // Several paths flip `paletteIsCollapsed`, so resize the window to match.
++            .onChange(of: core.paletteCoordinator.paletteIsCollapsed) {
++                resetCompactSelection()
++                core.paletteCoordinator.syncPaletteSize()
++            }
++    }
++
+
+     /// Split from `body`: one chain of this length is past what the type-checker will infer.
+     @ViewBuilder
+     private func keyHandlers(_ content: some View, selection sel: Int) -> some View {
+
+diff --git a/Tinycast/Tinycast.entitlements b/Tinycast/Tinycast.entitlements
 --- a/Tinycast/Tinycast.entitlements
 +++ b/Tinycast/Tinycast.entitlements
 @@ -16,3 +16,5 @@
@@ -421,7 +526,7 @@ diff --git a/Tinycast/Features/VoiceAsk/SpeechRuntimeVoiceAsk.swift b/Tinycast/F
 new file mode 100644
 --- /dev/null
 +++ b/Tinycast/Features/VoiceAsk/SpeechRuntimeVoiceAsk.swift
-@@ -0,0 +1,742 @@
+@@ -0,0 +1,757 @@
 +import AppKit
 +@preconcurrency import AVFoundation
 +import Foundation
@@ -1044,16 +1149,15 @@ new file mode 100644
 +        input.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { buffer, _ in
 +            let length = AVAudioFrameCount(ceil(Double(buffer.frameLength) * 16_000 / inputFormat.sampleRate)) + 32
 +            guard let output = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: length) else { return }
-+            var provided = false
++            let provider = AudioBufferProvider(buffer: buffer)
 +            var conversionError: NSError?
 +            let status = converter.convert(to: output, error: &conversionError) { _, inputStatus in
-+                if provided {
-+                    inputStatus.pointee = .noDataNow
-+                    return nil
++                if let pending = provider.take() {
++                    inputStatus.pointee = .haveData
++                    return pending
 +                }
-+                provided = true
-+                inputStatus.pointee = .haveData
-+                return buffer
++                inputStatus.pointee = .noDataNow
++                return nil
 +            }
 +            guard status != .error, output.frameLength > 0,
 +                  let samples = output.floatChannelData?[0] else { return }
@@ -1162,5 +1266,21 @@ new file mode 100644
 +        } else {
 +            content.background(.regularMaterial, in: Capsule())
 +        }
++    }
++}
++
++/// AVAudioConverter's callback may run more than once; the one-shot handoff needs a mutable cell.
++private final class AudioBufferProvider: @unchecked Sendable {
++    private let lock = NSLock()
++    private var buffer: AVAudioPCMBuffer?
++
++    init(buffer: AVAudioPCMBuffer) { self.buffer = buffer }
++
++    func take() -> AVAudioPCMBuffer? {
++        lock.lock()
++        defer { lock.unlock() }
++        let pending = buffer
++        buffer = nil
++        return pending
 +    }
 +}

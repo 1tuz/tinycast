@@ -469,10 +469,19 @@ struct RootPaletteView: View {
                 }
             }
             // `prepare` may change nothing else, so this still lands the list as freshly opened.
-            .onChange(of: vm.resetToken) {
-                if menuOpen { closeMenus() }
-                land()
-            }
+            lifecycleObservers(
+                content
+                    .onChange(of: vm.resetToken) {
+                        if menuOpen { closeMenus() }
+                        land()
+                    }
+            )
+    }
+
+    /// The screen lifecycle tail, split so `stateObservers` stays within type-checker reach.
+    @ViewBuilder
+    private func lifecycleObservers(_ content: some View) -> some View {
+        content
             // ⌘. arrives as a token rather than a key press. See `PaletteState.pinChordToken`.
             .onChange(of: vm.pinChordToken) { performShortcut(.pin) }
             .onChange(of: vm.queryRewriteToken) {
@@ -509,6 +518,7 @@ struct RootPaletteView: View {
                 core.paletteCoordinator.syncPaletteSize()
             }
     }
+
 
     /// Split from `body`: one chain of this length is past what the type-checker will infer.
     @ViewBuilder

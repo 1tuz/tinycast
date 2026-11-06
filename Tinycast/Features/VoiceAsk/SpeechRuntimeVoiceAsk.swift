@@ -620,16 +620,15 @@ private final class SpeechVoiceAudioEngine: @unchecked Sendable {
         input.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { buffer, _ in
             let length = AVAudioFrameCount(ceil(Double(buffer.frameLength) * 16_000 / inputFormat.sampleRate)) + 32
             guard let output = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: length) else { return }
-            var provided = false
+            let provider = AudioBufferProvider(buffer: buffer)
             var conversionError: NSError?
             let status = converter.convert(to: output, error: &conversionError) { _, inputStatus in
-                if provided {
-                    inputStatus.pointee = .noDataNow
-                    return nil
+                if let pending = provider.take() {
+                    inputStatus.pointee = .haveData
+                    return pending
                 }
-                provided = true
-                inputStatus.pointee = .haveData
-                return buffer
+                inputStatus.pointee = .noDataNow
+                return nil
             }
             guard status != .error, output.frameLength > 0,
                   let samples = output.floatChannelData?[0] else { return }
@@ -738,5 +737,21 @@ private struct SpeechVoiceGlass: ViewModifier {
         } else {
             content.background(.regularMaterial, in: Capsule())
         }
+    }
+}
+
+/// AVAudioConverter's callback may run more than once; the one-shot handoff needs a mutable cell.
+private final class AudioBufferProvider: @unchecked Sendable {
+    private let lock = NSLock()
+    private var buffer: AVAudioPCMBuffer?
+
+    init(buffer: AVAudioPCMBuffer) { self.buffer = buffer }
+
+    func take() -> AVAudioPCMBuffer? {
+        lock.lock()
+        defer { lock.unlock() }
+        let pending = buffer
+        buffer = nil
+        return pending
     }
 }
