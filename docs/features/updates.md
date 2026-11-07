@@ -1,7 +1,7 @@
 # Updates
 
-By default, Tinycast checks GitHub Releases once a day and offers the newest release for its own
-channel in a native window with its release notes, installs it and relaunches. There is no Sparkle and
+By default, Tinycast checks GitHub Releases once a day and offers the newest release in a native
+window with its release notes, installs it and relaunches. There is no Sparkle and
 no appcast: the release feed the website already reads is the feed the app reads.
 
 ## Invariants
@@ -29,9 +29,9 @@ no appcast: the release feed the website already reads is the feed the app reads
   copy installed before the Developer ID switch has, and it goes away once none is left. `notarized`
   is deliberately not in the requirement — it resolves the ticket through `syspolicyd` or the
   network, so an offline Mac would refuse a bundle the chain already proves is ours.
-- **A build only ever updates within its own channel.** The channels are separate bundle ids installed
-  side by side; crossing would mean installing a different app. `com.tinycast.app.dev` never updates
-  at all, and does not advertise the command.
+- **Only `com.tinycast.app` updates itself, and only on non-prerelease tags.** Historical
+  `-beta.N` tags from the retired channel sit in the release list and are never offered.
+  `com.tinycast.app.dev` never updates at all, and does not advertise the command.
 - **Nothing is installed unless every check passes.** Bundle id, version and signature are all checked
   on the expanded copy before `replaceItemAt` runs, and the running app survives any failure untouched.
 - **Relaunching goes through `NSApp.terminate`, never `exit`.** That is what flushes a pending note
@@ -69,24 +69,24 @@ no appcast: the release feed the website already reads is the feed the app reads
   plain and `ReleaseNotes` spells them as Markdown links on the way to the window. Both point at
   `ReleaseFeed.repository`, the one place the repo is named.
 
-## Channel and version
+## Version
 
 `ReleaseChannel` is derived from the bundle id, and nothing else:
 
 | Bundle id | Channel | Takes |
 | --- | --- | --- |
 | `com.tinycast.app` | `.stable` | releases |
-| `com.tinycast.app.beta` | `.beta` | prereleases |
 | anything else | `.development` | nothing |
 
 `AppVersion` parses `MAJOR.MINOR.PATCH` and `MAJOR.MINOR.PATCH-beta.N` with semver precedence: a
-prerelease sorts below the release it leads to, and `beta.10` above `beta.9`. Everything else parses
-to nil, so an off-shape tag can never be offered as an update. A release whose tag disagrees with
-its `prerelease` flag is treated as mis-published and skipped.
+prerelease sorts below the release it leads to, and `beta.10` above `beta.9`. The `-beta.N` form is
+kept readable so the historical tags from the retired channel are recognized and then refused by the
+channel, not offered. Everything else parses to nil, so an off-shape tag can never be offered as an
+update. A release whose tag disagrees with its `prerelease` flag is treated as mis-published and
+skipped.
 
-The Intel build is *not* a channel. It shares the stable tag, version, bundle id and signature, so it
-resolves to `.stable` like any other; `ReleaseArchitecture` picks its asset, and nothing about
-identity changes.
+The Intel build shares the stable tag, version, bundle id and signature, so it resolves to `.stable`
+like any other; `ReleaseArchitecture` picks its asset, and nothing about identity changes.
 
 ## Checking
 
@@ -116,8 +116,7 @@ One route, whatever the install came from:
 
 1. Stream the zip into `~/Library/Caches/<bundle-id>/Updates/`, with real byte progress and a Cancel
    that actually aborts the transfer.
-2. `ditto -x -k` it into a staging folder, and take whatever `.app` lands there — the bundle is named
-   for its channel, so it is `Tinycast Beta.app` on beta.
+2. `ditto -x -k` it into a staging folder, and take whatever `.app` lands there.
 3. Check quarantine natively; clear it if somehow present, and refuse the update if it survives.
 4. Verify the bundle id, the version, and that the code signature is valid and proves the bundle is
    ours — by the pinned Developer ID requirement, or by the running app's own leaf certificate.

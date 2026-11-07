@@ -101,21 +101,19 @@ struct UpdatesTests {
 
     static func derivesChannels() {
         let stable = ReleaseChannel(bundleID: "com.tinycast.app")
-        let beta = ReleaseChannel(bundleID: "com.tinycast.app.beta")
+        let legacyBeta = ReleaseChannel(bundleID: "com.tinycast.app.beta")
         let dev = ReleaseChannel(bundleID: "com.tinycast.app.dev")
 
-        expect(stable == .stable, "the stable bundle id is the stable channel")
-        expect(beta == .beta, "the beta bundle id is the beta channel")
+        expect(stable == .stable, "the shipping bundle id is the stable channel")
+        expect(legacyBeta == .development, "the retired beta bundle id no longer updates")
         expect(dev == .development, "the dev bundle id is a local build")
         expect(ReleaseChannel(bundleID: nil) == .development, "a missing bundle id never updates")
 
-        expect(stable.updatesItself && beta.updatesItself, "both shipped channels update")
+        expect(stable.updatesItself, "the shipped app updates itself")
         expect(!dev.updatesItself, "a local build does not update itself")
 
         expect(stable.accepts(prerelease: false), "stable takes releases")
-        expect(!stable.accepts(prerelease: true), "stable never crosses to a prerelease")
-        expect(beta.accepts(prerelease: true), "beta takes prereleases")
-        expect(!beta.accepts(prerelease: false), "beta never crosses to a stable release")
+        expect(!stable.accepts(prerelease: true), "stable never takes a prerelease")
         expect(
             !dev.accepts(prerelease: true) && !dev.accepts(prerelease: false),
             "a local build accepts nothing at all")
@@ -162,8 +160,10 @@ struct UpdatesTests {
             "and selects the zip asset")
         expect(stable?.publishedAt != nil, "and parses the ISO-8601 timestamp")
 
-        let beta = ReleaseFeed.newest(from: body, channel: .beta, architecture: .appleSilicon)
-        expect(beta?.version == AppVersion("0.4.0-beta.2"), "beta takes the newest prerelease")
+        expect(
+            ReleaseFeed.newest(from: body, channel: .stable, architecture: .appleSilicon)?.version
+                != AppVersion("0.4.0-beta.2"),
+            "historical beta tags in the feed are never offered, however new they are")
 
         expect(
             ReleaseFeed.newest(from: body, channel: .development, architecture: .appleSilicon) == nil,

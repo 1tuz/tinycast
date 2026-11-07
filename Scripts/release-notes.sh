@@ -6,8 +6,7 @@ BODY_OUT="${1:?usage: release-notes.sh <body.md> <discord.md>}"
 DISCORD_OUT="${2:?usage: release-notes.sh <body.md> <discord.md>}"
 
 REPO="${REPO:-abue-ammar/tinycast}"
-CHANNEL="${CHANNEL:?CHANNEL is required (beta|stable)}"
-TAG="${TAG:?TAG is required, e.g. v0.9.13-beta.61}"
+TAG="${TAG:?TAG is required, e.g. v0.3.0}"
 SHA="${SHA:-$(git rev-parse HEAD)}"
 VERSION="${VERSION:-${TAG#v}}"
 DISPLAY_NAME="${DISPLAY_NAME:-Tinycast}"
@@ -18,12 +17,8 @@ MARKER="<!-- tinycast:install -->"
 DISCORD_BUDGET=1200
 DISCORD_BULLETS=15
 
-# Beta and stable tags share commits on main, so "the previous release" is only right per channel.
-if [ "$CHANNEL" = "stable" ]; then
-    CHANNEL_FILTER='test("-beta\\.") | not'
-else
-    CHANNEL_FILTER='test("-beta\\.")'
-fi
+# Historical beta tags share the release list; the previous release is the newest non-beta tag.
+CHANNEL_FILTER='test("-beta\\.") | not'
 PREVIOUS="$(gh release list --repo "$REPO" --limit 200 --json tagName,isDraft --jq \
     "[.[] | select(.isDraft | not) | .tagName
       | select(. != \"${TAG}\") | select(${CHANNEL_FILTER})] | first // empty")"
@@ -45,7 +40,7 @@ CHANGELOG="$(printf '%s\n' "$GENERATED" | sed -E \
 {
     printf '%s\n\n' "$CHANGELOG"
     printf '%s\n\n' "$MARKER"
-    printf '**Channel:** %s · **Version:** %s · **Bundle ID:** `%s`\n' "$CHANNEL" "$VERSION" "$BUNDLE_ID"
+    printf '**Version:** %s · **Bundle ID:** `%s`\n' "$VERSION" "$BUNDLE_ID"
     printf 'Built from %s.' "$SHA"
     if [ -n "$COMPARE_URL" ]; then printf ' [Full changelog](%s)' "$COMPARE_URL"; fi
     printf '\n\n'

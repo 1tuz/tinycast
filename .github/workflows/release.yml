@@ -1,20 +1,14 @@
 name: Release
 
-# Shown in the Actions list instead of a bare "Release" — carries the version + channel.
-run-name: "Tinycast ${{ inputs.version }} · ${{ inputs.channel }} #${{ github.run_number }}"
+# Shown in the Actions list instead of a bare "Release" — carries the version.
+run-name: "Tinycast ${{ inputs.version }} #${{ github.run_number }}"
 
-# Manually triggered from the Actions tab. Pick a channel and a base version;
-# beta builds get an auto-incrementing suffix so re-running never collides.
+# Manually triggered from the Actions tab with a version.
 on:
   workflow_dispatch:
     inputs:
-      channel:
-        description: "Release channel"
-        type: choice
-        options: [beta, stable]
-        default: beta
       version:
-        description: "Base version, e.g. 0.2.0 (no channel suffix)"
+        description: "Version, e.g. 0.3.0"
         type: string
         required: true
 
@@ -24,7 +18,7 @@ permissions:
 jobs:
   build:
     runs-on: macos-26
-    # Consumed by the `universal` job, so the channel identity is derived in exactly one place.
+    # Consumed by the `universal` job, so the identity is derived in exactly one place.
     outputs:
       full_version: ${{ steps.meta.outputs.full_version }}
       display_name: ${{ steps.meta.outputs.display_name }}
@@ -46,21 +40,14 @@ jobs:
       - name: Compute release metadata
         id: meta
         run: |
-          CHANNEL="${{ github.event.inputs.channel }}"
-          BASE_VERSION="${{ github.event.inputs.version }}"
-          # Each channel is a distinct, side-by-side app: its own display name + bundle id.
-          case "$CHANNEL" in
-            beta)   SUFFIX="-beta.${GITHUB_RUN_NUMBER}";  DISPLAY="Tinycast Beta";  BUNDLE="com.tinycast.app.beta";  PRERELEASE=true ;;
-            stable) SUFFIX="";                            DISPLAY="Tinycast";       BUNDLE="com.tinycast.app";       PRERELEASE=false ;;
-          esac
-          FULL="${BASE_VERSION}${SUFFIX}"
+          FULL="${{ github.event.inputs.version }}"
           {
             echo "full_version=${FULL}"
-            echo "display_name=${DISPLAY}"
-            echo "bundle_id=${BUNDLE}"
+            echo "display_name=Tinycast"
+            echo "bundle_id=com.tinycast.app"
             echo "dmg_file=Tinycast-${FULL}.dmg"
             echo "zip_file=Tinycast-${FULL}.zip"
-            echo "prerelease=${PRERELEASE}"
+            echo "prerelease=false"
           } >> "$GITHUB_OUTPUT"
 
       # Import the stable self-signed identity into a temp keychain so every release is signed with
@@ -85,7 +72,7 @@ jobs:
           rm -f "$RUNNER_TEMP/cert.p12"
 
       # Build the signed .app into an ephemeral DerivedData dir. Channel identity (name, bundle id,
-      # version) comes from build-setting overrides so beta/stable ship side-by-side.
+      # version) comes from build-setting overrides.
       - name: Build app
         env:
           VERSION: ${{ steps.meta.outputs.full_version }}
@@ -93,7 +80,7 @@ jobs:
           BUNDLE_ID: ${{ steps.meta.outputs.bundle_id }}
           BUILD_NUMBER: ${{ github.run_number }}
         run: |
-          # ARCHS pinned to what this channel has always shipped: trusting ARCHS_STANDARD is what
+          # ARCHS pinned to what has always shipped: trusting ARCHS_STANDARD is what
           # let a thin arm64 build reach Intel users once already (compat/README.md).
           xcodebuild -project Tinycast.xcodeproj -scheme Tinycast -configuration Release \
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
@@ -154,7 +141,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          CHANNEL: ${{ github.event.inputs.channel }}
           TAG: v${{ steps.meta.outputs.full_version }}
           SHA: ${{ github.sha }}
           VERSION: ${{ steps.meta.outputs.full_version }}
@@ -182,7 +168,6 @@ jobs:
 
   universal:
     needs: build
-    if: github.event.inputs.channel == 'stable'
     runs-on: macos-26
     env:
       VERSION: ${{ needs.build.outputs.full_version }}
@@ -238,7 +223,7 @@ jobs:
             build
 
       # A silently-dropped ARCHS override would publish a thin build under the universal name, which
-      # is the one mistake this whole channel exists to prevent. A thin bundled helper is the quiet
+      # is the one mistake the universal job exists to prevent. A thin bundled helper is the quiet
       # version of it: the app still boots on Intel and only its OCR stops working.
       - name: Assert both slices on the shipping binaries
         run: |

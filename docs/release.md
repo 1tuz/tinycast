@@ -37,8 +37,9 @@ Three things a release must keep true, or the updater skips it:
 
 - **It carries a `.zip` asset this Mac can run.** A DMG-only release is not installable and is not
   offered, and an Intel build is offered nothing rather than a thin arm64 zip.
-- **The tag parses as `vMAJOR.MINOR.PATCH` or `vMAJOR.MINOR.PATCH-beta.N`,** and agrees with the
-  `prerelease` flag. A tag of any other shape is treated as mis-published and skipped.
+- **The tag parses as `vMAJOR.MINOR.PATCH` and is not marked prerelease.** Historical
+  `-beta.N` tags sit in the list from the retired channel; a tag of any other shape is treated as
+  mis-published and skipped.
 - **It is not a draft.**
 
 **Both casks declare `auto_updates true`.** That is Homebrew's flag for an app that manages its own
@@ -59,23 +60,17 @@ gate — it neither runs the harnesses nor builds the app, so the whole bar in
 `.github/workflows/release.yml` builds and publishes a DMG from GitHub Actions, no local machine
 needed. Run it from the **Actions** tab (`Release` → **Run workflow**) and pick:
 
-- **channel** — `beta` or `stable`. Each builds a distinct app (`Tinycast Beta.app` / `Tinycast.app`)
-  with its own bundle id, alongside the local `Tinycast Dev.app`. Beta gets an auto-incrementing
-  `-beta.N` suffix (`N` = the Actions run number) so re-running never collides; stable ships the
-  version as-is.
-- **version** — base semver, e.g. `0.2.0`.
+- **version** — semver, e.g. `0.3.0`. One app, one bundle id (`com.tinycast.app`), alongside the
+  local `Tinycast Dev.app`.
 
 Its first step is `Scripts/check-migrations.sh`: a migration that a stable release already shipped
 stops the run until it is deleted ([migrations.md](migrations.md)). The check reads tags and history,
 so the checkout fetches every commit without blobs.
 
-It builds on an `xcode-27` runner with the newest released Xcode 27 and publishes a GitHub Release
-tagged `v<full-version>` with a versioned DMG and zip asset, marked prerelease for beta. On success
-it also bumps the matching cask in the tap and announces the release on Discord. A stable run also
-dispatches the Website workflow, because the site reads the latest version and the
-[changelog](https://tinycast.dev/changelog/) from GitHub at build time.
+It builds on a `macos-26` runner with Xcode 26 and publishes a GitHub Release
+tagged `v<full-version>` with a versioned DMG and zip asset.
 
-A stable run then fans out to a second job, `universal`, which rebuilds the same commit with
+The run then fans out to a second job, `universal`, which rebuilds the same commit with
 `ARCHS="arm64 x86_64"` and attaches `Tinycast-Universal-<version>.dmg` / `.zip` to the release the
 first job created, then bumps `tinycast-universal`. macOS 26 is the last release that boots on Intel,
 and those Macs need both slices. Both jobs pin `ARCHS` explicitly and assert the slices on *every*
@@ -92,7 +87,7 @@ Channel builds override `TINYCAST_BUNDLE_IDENTIFIER`, not the target-wide `PRODU
 It is safe to run by hand against any tag — it only reads:
 
 ```sh
-CHANNEL=beta TAG=v0.9.13-beta.61 ./Scripts/release-notes.sh /tmp/body.md /tmp/discord.md
+TAG=v0.3.0 ./Scripts/release-notes.sh /tmp/body.md /tmp/discord.md
 ```
 
 The changelog itself comes from GitHub's own release-notes API, which lists every merged PR with its
@@ -102,26 +97,11 @@ server-side by `gh release create`, and no release, bot or version-bump commit e
 
 Two details the script exists for:
 
-- **The previous tag is picked per channel.** Beta and stable tags interleave on `main` — the same
-  commit can carry both — so "the previous release" is only ever right within one channel. A stable
-  release therefore spans every beta since the last stable.
+- **The previous tag skips historical beta tags.** The release list carries old `-beta.N` tags;
+  they never count as the previous release, so a new release spans everything since the last
+  non-beta tag.
 - **The body is split by `<!-- tinycast:install -->`.** Everything above it is the changelog;
   everything below is the Homebrew and quarantine text, which only a download page needs. The update
   window cuts at that marker — see [features/updates.md](features/updates.md). Full PR URLs are
   shortened to `#304`, which still autolinks on the web and fits a 460pt window.
 
-The Discord announcement carries the same changelog, truncated to fit Discord's component limit, and
-pings `@everyone`.
-
-### Homebrew tap automation
-
-Each job's final step rewrites the `version` + `sha256` of its cask (`tinycast`, `tinycast@beta` or
-`tinycast-universal`) in the [`homebrew-tinycast`](https://github.com/abue-ammar/homebrew-tinycast) tap
-and pushes. It needs a `HOMEBREW_TAP_TOKEN` repo secret — a fine-grained PAT with **Contents:
-read/write** on the tap repo. Without the secret the step logs a warning and skips; the release still
-publishes. The `sed` is anchored to `^  version` / `^  sha256`, so a cask's two-space indent on those
-lines is load-bearing.
-
-Both stable casks install `Tinycast.app` under `com.tinycast.app`, so they `conflicts_with` one
-another and Homebrew routes each Mac by `depends_on`: `tinycast` requires `arch: :arm64`, and
-`tinycast-universal` takes the Intel Macs.
