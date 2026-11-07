@@ -1,0 +1,944 @@
+diff --git a/Tinycast/Features/VoiceAsk/SpeechRuntimeVoiceAsk.swift b/Tinycast/Features/VoiceAsk/SpeechRuntimeVoiceAsk.swift
+--- a/Tinycast/Features/VoiceAsk/SpeechRuntimeVoiceAsk.swift
++++ b/Tinycast/Features/VoiceAsk/SpeechRuntimeVoiceAsk.swift
+@@ -253,13 +253,22 @@
+                 fail("No speech detected")
+                 return
+             }
++            let previousQuery = savedQuery
+             savedQuery = nil
+             pill.hide()
+             phase = .idle
+             hotKeyDownAt = nil
+             hyperHold = false
+             finishTask = nil
+-            // Only the selected AI chat provider receives the text, never the speech service.
++            // Restore a draft before dispatching an action that may close the palette.
++            // Recognition and command matching remain entirely local.
++            let commandsEnabled = UserDefaults.standard.object(forKey: "speechVoice.commandsEnabled") == nil
++                || UserDefaults.standard.bool(forKey: "speechVoice.commandsEnabled")
++            if commandsEnabled {
++                if let previousQuery { core.palette.query = previousQuery }
++                if SpeechVoiceCommandRouter.route(result, core: core) { return }
++            }
++            // Non-command speech still uses the existing Quick AI delivery policy.
+             if UserDefaults.standard.bool(forKey: "speechVoice.autoSend") {
+                 core.quickAICoordinator.sendVoicePrompt(result)
+             } else {
+diff --git a/Tinycast/Features/Notes/UI/NotesCoordinator.swift b/Tinycast/Features/Notes/UI/NotesCoordinator.swift
+--- a/Tinycast/Features/Notes/UI/NotesCoordinator.swift
++++ b/Tinycast/Features/Notes/UI/NotesCoordinator.swift
+@@ -7,5 +7,5 @@
+-    private enum Presentation {
++    private enum Presentation: Equatable {
+         case editor
+         case create
+-        case search
++        case search(query: String?)
+     }
+@@ -173,3 +173,3 @@
+-    func searchNotes() {
+-        request(.search)
++    func searchNotes(query: String? = nil) {
++        request(.search(query: query))
+     }
+@@ -471,5 +471,6 @@
+-        case .search:
++        case .search(let query):
+             // The switcher hangs off the note window, so that window has to exist first.
+             windowController.show(focusEditor: false)
+             openSwitcher()
++            if let query, !query.isEmpty { store.updateSearchQuery(query) }
+         }
+diff --git a/Tinycast/Features/AI/Settings/AISettingsView.swift b/Tinycast/Features/AI/Settings/AISettingsView.swift
+--- a/Tinycast/Features/AI/Settings/AISettingsView.swift
++++ b/Tinycast/Features/AI/Settings/AISettingsView.swift
+@@ -6,2 +6,3 @@
+     @AppStorage("speechVoice.autoSend") private var speechAutoSend = false
++    @AppStorage("speechVoice.commandsEnabled") private var speechCommandsEnabled = true
+     @Environment(AppCore.self) private var core
+@@ -73,2 +73,6 @@
++            Toggle("Run Tinycast voice commands", isOn: $speechCommandsEnabled)
++            Button("Показать все голосовые команды") {
++                SpeechVoiceCommandCatalogWindow.shared.show(core: core)
++            }
+             Toggle("Send transcript automatically to Quick AI", isOn: $speechAutoSend)
+             LabeledContent("Global shortcut") { ShortcutRecorder(action: .voiceAsk) }
+@@ -84,3 +87,3 @@
+         } footer: {
+-            Text("Local recognition through Speech Runtime.app at 127.0.0.1:8477. Hold an unused Hyper key for push-to-talk. The service remains independent of Tinycast.")
++            Text("Speech Runtime handles recognition locally. Recognized commands run through Tinycast; other speech goes to Quick AI. Hold an unused Hyper key for push-to-talk.")
+         }
+diff --git a/Scripts/run-tests.sh b/Scripts/run-tests.sh
+--- a/Scripts/run-tests.sh
++++ b/Scripts/run-tests.sh
+@@ -179,2 +179,5 @@
+ run apple-shortcut-test    Tinycast/Features/AppleShortcuts/Model/*.swift
++run voice-command-test     Tinycast/Features/Launcher/Model/SearchRelevance.swift \
++                           Tinycast/Features/Launcher/Model/ScriptRomanization.swift \
++                           Tinycast/Features/VoiceAsk/SpeechVoiceCommandParser.swift
+ run calc-test              Tinycast/Features/Calculator/Model/*.swift
+diff --git a/Tinycast/Features/VoiceAsk/SpeechVoiceCommandParser.swift b/Tinycast/Features/VoiceAsk/SpeechVoiceCommandParser.swift
+new file mode 100644
+--- /dev/null
++++ b/Tinycast/Features/VoiceAsk/SpeechVoiceCommandParser.swift
+@@ -0,0 +1,382 @@
++import Foundation
++
++/// Pure command grammar. Audio never reaches this layer: only Speech Runtime text.
++/// Matching targets is tolerant of speech-recognition errors; action verbs remain explicit.
++enum SpeechVoiceCommandParser {
++    struct Target: Equatable, Sendable {
++        enum Kind: String, Equatable, Sendable {
++            case application, quicklink, shortcut, customCommand, workflow, layout, room
++        }
++        let kind: Kind
++        let id: String
++        let name: String
++        var aliases: [String] = []
++    }
++
++    enum Intent: Equatable, Sendable {
++        case window(String)
++        case system(String)
++        case volume(Int)
++        case builtIn(String, query: String? = nil)
++        case target(Target.Kind, String)
++    }
++
++    enum Resolution: Equatable, Sendable {
++        case notCommand
++        case unknown(String)
++        case ambiguous([Target])
++        case action(Intent)
++    }
++
++    struct CatalogItem: Sendable {
++        let section: String
++        let title: String
++        let phrases: [String]
++        let feature: String? // Window/notes/file-search availability is assessed in the UI.
++        var targetID: String? = nil // Edited aliases reuse Tinycast's existing AliasStore.
++    }
++
++    private struct Pattern: Sendable {
++        let section: String
++        let title: String
++        let phrases: [String]
++        let intent: Intent
++        var feature: String? = nil
++    }
++
++    private struct NamedRule: Sendable {
++        let prefix: String
++        let kinds: Set<Target.Kind>
++    }
++
++    // The same declarations drive both parsing and the in-app voice command catalog.
++    private static let fixedPatterns: [Pattern] = [
++        .init(section: "Окна", title: "На правую половину", phrases: [
++            "окно справа", "поставь окно справа", "размести окно справа",
++            "окно на правую половину", "помести окно на правую половину",
++            "перемести окно на правую половину", "правая половина экрана"
++        ], intent: .window("right-half"), feature: "windows"),
++        .init(section: "Окна", title: "На левую половину", phrases: [
++            "окно слева", "поставь окно слева", "размести окно слева",
++            "окно на левую половину", "помести окно на левую половину",
++            "перемести окно на левую половину", "левая половина экрана"
++        ], intent: .window("left-half"), feature: "windows"),
++        .init(section: "Окна", title: "Сдвинуть вправо", phrases: [
++            "перемести окно вправо", "сдвинь окно вправо"
++        ], intent: .window("move-right"), feature: "windows"),
++        .init(section: "Окна", title: "Сдвинуть влево", phrases: [
++            "перемести окно влево", "сдвинь окно влево"
++        ], intent: .window("move-left"), feature: "windows"),
++        .init(section: "Окна", title: "Развернуть окно", phrases: [
++            "разверни окно", "максимизируй окно", "увеличь окно на весь экран"
++        ], intent: .window("maximize"), feature: "windows"),
++        .init(section: "Окна", title: "По центру", phrases: [
++            "центрируй окно", "поставь окно по центру", "окно по центру"
++        ], intent: .window("center"), feature: "windows"),
++        .init(section: "Окна", title: "Восстановить размер", phrases: [
++            "верни размер окна", "восстанови размер окна"
++        ], intent: .window("restore"), feature: "windows"),
++        .init(section: "Окна", title: "На следующий монитор", phrases: [
++            "перемести окно на следующий монитор", "окно на следующий монитор",
++            "отправь окно на следующий монитор"
++        ], intent: .window("next-display"), feature: "windows"),
++        .init(section: "Окна", title: "На предыдущий монитор", phrases: [
++            "перемести окно на предыдущий монитор", "окно на предыдущий монитор"
++        ], intent: .window("previous-display"), feature: "windows"),
++        .init(section: "Окна", title: "Следующий рабочий стол", phrases: [
++            "следующий рабочий стол", "переключись на следующий рабочий стол"
++        ], intent: .window("next-space"), feature: "windows"),
++        .init(section: "Окна", title: "Предыдущий рабочий стол", phrases: [
++            "предыдущий рабочий стол", "переключись на предыдущий рабочий стол"
++        ], intent: .window("previous-space"), feature: "windows"),
++        .init(section: "Система", title: "Заблокировать экран", phrases: [
++            "заблокируй экран", "заблокируй мак"
++        ], intent: .system("lock-screen")),
++        .init(section: "Система", title: "Следующий трек", phrases: [
++            "следующий трек", "следующая песня"
++        ], intent: .system("next-track")),
++        .init(section: "Система", title: "Предыдущий трек", phrases: [
++            "предыдущий трек", "предыдущая песня"
++        ], intent: .system("previous-track")),
++        .init(section: "Система", title: "Воспроизведение или пауза", phrases: [
++            "переключи воспроизведение", "плей пауза"
++        ], intent: .system("play-pause")),
++        .init(section: "Система", title: "Переключить беззвучный режим", phrases: [
++            "переключи звук", "переключи режим без звука"
++        ], intent: .system("toggle-mute")),
++        .init(section: "Система", title: "Выключить звук", phrases: [
++            "выключи звук", "убери звук", "громкость ноль"
++        ], intent: .volume(0)),
++        .init(section: "Система", title: "Громче", phrases: [
++            "громче", "увеличь громкость"
++        ], intent: .system("volume-up")),
++        .init(section: "Система", title: "Тише", phrases: [
++            "тише", "уменьши громкость"
++        ], intent: .system("volume-down")),
++        .init(section: "Поиск и данные", title: "История буфера обмена", phrases: [
++            "покажи историю буфера", "открой историю буфера",
++            "покажи буфер обмена", "история буфера обмена"
++        ], intent: .builtIn("clipboard")),
++        .init(section: "Поиск и данные", title: "Открыть заметки", phrases: [
++            "покажи заметки", "открой заметки"
++        ], intent: .builtIn("notes"), feature: "notes"),
++        .init(section: "Календарь", title: "Расписание", phrases: [
++            "покажи расписание", "мое расписание"
++        ], intent: .builtIn("schedule")),
++        .init(section: "Календарь", title: "Следующая встреча", phrases: [
++            "присоединись к следующей встрече", "зайди на следующую встречу"
++        ], intent: .builtIn("meeting")),
++        .init(section: "Окна", title: "Переключить окна", phrases: [
++            "переключи окна", "покажи открытые окна"
++        ], intent: .builtIn("windows")),
++        .init(section: "Поиск и данные", title: "Поиск файлов", phrases: [
++            "найди файл", "поиск файлов", "покажи файлы"
++        ], intent: .builtIn("files"), feature: "files"),
++        .init(section: "Поиск и данные", title: "Поиск заметок", phrases: [
++            "найди заметку", "найди заметки", "поиск заметок"
++        ], intent: .builtIn("searchNotes"), feature: "notes"),
++        .init(section: "Справка", title: "Каталог голосовых команд", phrases: [
++            "покажи голосовые команды", "открой голосовые команды",
++            "какие голосовые команды доступны"
++        ], intent: .builtIn("voiceCatalog"))
++    ]
++
++    // More specific prefixes must win before the generic open/run verbs.
++    private static let namedRules: [NamedRule] = [
++        .init(prefix: "выполни пользовательскую команду", kinds: [.customCommand]),
++        .init(prefix: "выполни команду", kinds: [.customCommand]),
++        .init(prefix: "запусти команду", kinds: [.customCommand]),
++        .init(prefix: "запусти apple shortcut", kinds: [.shortcut]),
++        .init(prefix: "запусти быструю команду", kinds: [.shortcut]),
++        .init(prefix: "запусти сценарий", kinds: [.shortcut, .workflow]),
++        .init(prefix: "запусти workflow", kinds: [.workflow]),
++        .init(prefix: "открой быструю ссылку", kinds: [.quicklink]),
++        .init(prefix: "открой ссылку", kinds: [.quicklink]),
++        .init(prefix: "примени раскладку", kinds: [.layout]),
++        .init(prefix: "примени расположение окон", kinds: [.layout]),
++        .init(prefix: "переключись в комнату", kinds: [.room]),
++        .init(prefix: "открой комнату", kinds: [.room]),
++        .init(prefix: "открой приложение", kinds: [.application]),
++        .init(prefix: "запусти приложение", kinds: [.application]),
++        .init(prefix: "переключись на", kinds: [.application]),
++        .init(prefix: "открой", kinds: [.application]),
++        .init(prefix: "запусти", kinds: [.application, .shortcut, .workflow])
++    ]
++
++    /// Examples are generated from the same verb definitions accepted by parse(_:targets:).
++    static func catalogPhrases(for target: Target) -> [String] {
++        let prefix: String = switch target.kind {
++        case .application: "открой"
++        case .quicklink: "открой ссылку"
++        case .shortcut: "запусти быструю команду"
++        case .customCommand: "выполни команду"
++        case .workflow: "запусти сценарий"
++        case .layout: "примени раскладку"
++        case .room: "открой комнату"
++        }
++        let primary = "\(prefix) \(target.name)"
++        let alternative = namedRules.first {
++            $0.kinds.contains(target.kind) && "\($0.prefix) \(target.name)" != primary
++        }.map { "\($0.prefix) \(target.name)" }
++        let aliases = target.aliases.prefix(3).map { "\(prefix) \($0)" }
++        return [primary] + (alternative.map { [$0] } ?? []) + aliases
++    }
++
++    static func catalogItem(for target: Target) -> CatalogItem {
++        let section: String = switch target.kind {
++        case .application: "Приложения"
++        case .quicklink: "Quicklinks"
++        case .shortcut: "Apple Shortcuts"
++        case .customCommand: "Пользовательские команды"
++        case .workflow: "Сценарии"
++        case .layout: "Раскладки окон"
++        case .room: "Комнаты окон"
++        }
++        let feature: String? = switch target.kind {
++        case .layout, .room: "windows"
++        case .shortcut: "shortcuts"
++        case .quicklink: "quicklinks"
++        case .customCommand: "customCommands"
++        case .workflow: "workflows"
++        case .application: nil
++        }
++        return .init(section: section, title: target.name,
++                     phrases: catalogPhrases(for: target), feature: feature, targetID: target.id)
++    }
++
++    static var builtinCatalog: [CatalogItem] {
++        fixedPatterns.map {
++            .init(section: $0.section, title: $0.title, phrases: $0.phrases, feature: $0.feature)
++        } + [
++            .init(section: "Система", title: "Установить громкость", phrases: [
++                "громкость 25 процентов", "установи громкость 50"
++            ], feature: nil),
++            .init(section: "Поиск и данные", title: "Поиск файла по названию", phrases: [
++                "найди файл docker-compose.yml"
++            ], feature: "files"),
++            .init(section: "Поиск и данные", title: "Поиск заметки по названию", phrases: [
++                "найди заметку Kubernetes"
++            ], feature: "notes")
++        ]
++    }
++
++    static func parse(_ speech: String, targets: [Target] = []) -> Resolution {
++        var original = speech.trimmingCharacters(in: .whitespacesAndNewlines)
++        var phrase = normalize(original)
++        for wake in ["тини каст", "тайни каст", "tinycast", "тини-каст"] {
++            let normalizedWake = normalize(wake)
++            if phrase.hasPrefix(normalizedWake + " ") {
++                let first = original.split(whereSeparator: { $0.isWhitespace }).first.map(String.init) ?? ""
++                let tokens = normalize(first) == normalizedWake
++                    ? 1 : wake.split(whereSeparator: { $0.isWhitespace }).count
++                original = tail(of: original, skipping: tokens)
++                phrase = normalize(original)
++                break
++            }
++        }
++        if phrase.hasSuffix(" пожалуйста") {
++            original = original.replacingOccurrences(
++                of: #"\s+пожалуйста[.!?\s]*$"#, with: "", options: [.regularExpression, .caseInsensitive])
++            phrase = normalize(original)
++        }
++        guard !phrase.isEmpty else { return .notCommand }
++
++        if let fixed = fixedPatterns.first(where: { $0.phrases.contains(phrase) }) {
++            return .action(fixed.intent)
++        }
++
++        for prefix in ["громкость", "установи громкость", "поставь громкость", "сделай громкость"] {
++            if let value = suffix(after: prefix, in: phrase), !value.isEmpty {
++                let words = value.split(separator: " ").map(String.init)
++                if let first = words.first, let percent = Int(first), (0...100).contains(percent),
++                   (words.count == 1 || (words.count == 2 &&
++                     ["процент", "процента", "процентов"].contains(words[1]))) {
++                    return .action(.volume(percent))
++                }
++                return .unknown("Громкость должна быть числом от 0 до 100")
++            }
++        }
++        for prefix in ["найди файл", "найти файл", "найди файлы", "поиск файлов"] {
++            if let rest = suffix(after: prefix, in: phrase), !rest.isEmpty {
++                return .action(.builtIn("files", query: tail(of: original, skipping: prefix.split(separator: " ").count)))
++            }
++        }
++        for prefix in ["найди заметку", "найди заметки", "поиск заметок"] {
++            if let rest = suffix(after: prefix, in: phrase), !rest.isEmpty {
++                return .action(.builtIn("searchNotes", query: tail(of: original, skipping: prefix.split(separator: " ").count)))
++            }
++        }
++
++        for rule in namedRules {
++            guard let rest = suffix(after: rule.prefix, in: phrase) else { continue }
++            guard !rest.isEmpty else { return .unknown("Назови объект команды") }
++            let rawName = tail(of: original, skipping: rule.prefix.split(separator: " ").count)
++            return resolveName(rawName, kinds: rule.kinds, targets: targets)
++        }
++        return .notCommand
++    }
++
++    /// An exact alias always wins. Otherwise choose only a clearly closest candidate.
++    /// The bounded optimal-string-alignment distance counts insertions, deletions,
++    /// substitutions and adjacent swaps, without allowing short-name guesses.
++    static func resolveName(_ raw: String, kinds: Set<Target.Kind>, targets: [Target]) -> Resolution {
++        let original = normalize(raw)
++        let key = romanizedKey(raw)
++        guard !key.isEmpty else { return .unknown("Назови объект команды") }
++        var candidates: [(target: Target, distance: Int)] = []
++        for target in targets where kinds.contains(target.kind) {
++            let names = [target.name] + target.aliases
++            // Only full-name or alias matches count, never a substring of an installed app.
++            var best: Int?
++            for name in names {
++                let candidateKey = romanizedKey(name)
++                if normalize(name) == original || candidateKey == key {
++                    best = 0
++                    break
++                }
++                let allowed = maxErrors(for: max(key.count, candidateKey.count))
++                if allowed == 0 { continue }
++                if let distance = distance(key, candidateKey, limit: allowed) {
++                    best = min(best ?? Int.max, distance)
++                }
++            }
++            if let best { candidates.append((target, best)) }
++        }
++        candidates.sort {
++            if $0.distance != $1.distance { return $0.distance < $1.distance }
++            return $0.target.name.localizedStandardCompare($1.target.name) == .orderedAscending
++        }
++        guard let winner = candidates.first else { return .unknown("Не найдено: \(raw)") }
++        // A fuzzy winner only runs when the next closest name is distinctly worse.
++        let nearby = candidates.filter { $0.distance <= winner.distance + (winner.distance == 0 ? 0 : 1) }
++        if nearby.count != 1 { return .ambiguous(nearby.map(\.target)) }
++        return .action(.target(winner.target.kind, winner.target.id))
++    }
++
++    /// Keep the original Cyrillic for exact matching, and a Latin reading for cross-script ASR.
++    /// Existing Tinycast ScriptRomanization handles Russian, Japanese, Chinese and other scripts.
++    static func romanizedKey(_ input: String) -> String {
++        let folded = normalize(input)
++        let romanized = ScriptRomanization.latin(folded) ?? folded
++        return String(romanized.filter { $0.isLetter || $0.isNumber })
++    }
++
++    private static func maxErrors(for length: Int) -> Int {
++        switch length {
++        case ..<4: 0
++        case 4..<7: 1
++        case 7..<13: 2
++        default: 3
++        }
++    }
++
++    /// Bounded OSA Damerau-Levenshtein: an adjacent transposition costs one edit.
++    private static func distance(_ lhs: String, _ rhs: String, limit: Int) -> Int? {
++        let a = Array(lhs)
++        let b = Array(rhs)
++        guard abs(a.count - b.count) <= limit else { return nil }
++        if a == b { return 0 }
++        var beforePrevious = [Int](repeating: 0, count: b.count + 1)
++        var previous = Array(0...b.count)
++        for i in 1...a.count {
++            var current = [Int](repeating: 0, count: b.count + 1)
++            current[0] = i
++            var smallest = current[0]
++            if !b.isEmpty {
++                for j in 1...b.count {
++                    let cost = a[i - 1] == b[j - 1] ? 0 : 1
++                    current[j] = min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost)
++                    if i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1] {
++                        current[j] = min(current[j], beforePrevious[j - 2] + 1)
++                    }
++                    smallest = min(smallest, current[j])
++                }
++            }
++            if smallest > limit { return nil }
++            beforePrevious = previous
++            previous = current
++        }
++        let result = previous[b.count]
++        return result <= limit ? result : nil
++    }
++
++    /// Lower-case, punctuation/extra spaces and Russian ё are insignificant for commands.
++    static func normalize(_ input: String) -> String {
++        let lower = input.lowercased().replacingOccurrences(of: "ё", with: "е")
++        let scalars = lower.unicodeScalars.map {
++            CharacterSet.alphanumerics.contains($0) ? Character($0) : " "
++        }
++        return String(scalars).split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
++    }
++
++    private static func suffix(after prefix: String, in phrase: String) -> String? {
++        guard phrase == prefix || phrase.hasPrefix(prefix + " ") else { return nil }
++        if phrase == prefix { return "" }
++        return String(phrase.dropFirst(prefix.count + 1))
++    }
++
++    private static func tail(of original: String, skipping count: Int) -> String {
++        original.split(whereSeparator: { $0.isWhitespace }).dropFirst(count)
++            .joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
++    }
++}
+diff --git a/Tinycast/Features/VoiceAsk/SpeechVoiceCommandRouter.swift b/Tinycast/Features/VoiceAsk/SpeechVoiceCommandRouter.swift
+new file mode 100644
+--- /dev/null
++++ b/Tinycast/Features/VoiceAsk/SpeechVoiceCommandRouter.swift
+@@ -0,0 +1,127 @@
++import AppKit
++
++/// Safely executes only resolved, explicitly allowlisted Tinycast commands.
++@MainActor
++enum SpeechVoiceCommandRouter {
++    typealias Parser = SpeechVoiceCommandParser
++
++    static func route(_ speech: String, core: AppCore) -> Bool {
++        switch Parser.parse(speech, targets: availableTargets(core: core)) {
++        case .notCommand:
++            return false
++        case .unknown(let message):
++            core.quickAICoordinator.composeVoicePrompt(speech)
++            core.showMessage(message, tone: .neutral)
++            return true
++        case .ambiguous(let targets):
++            // Never guess if two applications or actions have similarly plausible names.
++            SpeechVoiceCommandCatalogWindow.shared.showChoices(targets, core: core)
++            return true
++        case .action(let intent):
++            execute(intent, core: core)
++            return true
++        }
++    }
++
++    static func availableTargets(core: AppCore) -> [Parser.Target] {
++        var targets: [Parser.Target] = []
++        var seen = Set<String>()
++        for entry in core.appIndex.apps where entry.isPrimaryInstallation && core.visibility.isVisible(entry) {
++            let kind: Parser.Target.Kind
++            switch entry.kind {
++            case .application, .systemSettings: kind = .application
++            case .quicklink: kind = .quicklink
++            case .appleShortcut: kind = .shortcut
++            case .customCommand: kind = .customCommand
++            case .windowLayout, .projectWorkspace: kind = .layout
++            case .windowRoom: kind = .room
++            default: continue
++            }
++            // Two package installations may legitimately share a display name.
++            // Keep unique entries and ask the user rather than picking either one.
++            guard seen.insert(kind.rawValue + ":" + entry.id).inserted else { continue }
++            var aliases = entry.alternateTitles
++            if let userAlias = core.aliases.alias(for: entry.preferenceKey) {
++                aliases.append(userAlias)
++            }
++            if kind == .application { aliases += familiarNames(for: entry.name) }
++            targets.append(.init(kind: kind, id: entry.id, name: entry.name, aliases: aliases))
++        }
++        if core.settings.workflowsEnabled {
++            for workflow in core.workflows.workflows where workflow.isEnabled {
++                targets.append(.init(kind: .workflow, id: workflow.id.uuidString, name: workflow.name))
++            }
++        }
++        return targets
++    }
++
++    private static func familiarNames(for name: String) -> [String] {
++        switch Parser.normalize(name) {
++        case "telegram": ["телеграм"]
++        case "safari": ["сафари"]
++        case "google chrome": ["хром", "гугл хром"]
++        case "finder": ["файндер"]
++        case "terminal": ["терминал"]
++        case "obsidian": ["обсидиан"]
++        case "obsidium": ["обсидиум"]
++        case "cursor": ["курсор"]
++        case "jira": ["джира"]
++        default: []
++        }
++    }
++
++    static func execute(_ intent: Parser.Intent, core: AppCore) {
++        switch intent {
++        case .window(let id):
++            guard let command = WindowCommand.ID(rawValue: id), core.settings.windowManagementEnabled else {
++                core.showMessage("Управление окнами недоступно", tone: .neutral)
++                return
++            }
++            core.windowCommandCoordinator.runWindowCommand(id: command)
++        case .system(let id):
++            guard let command = SystemAction.ID(rawValue: id) else { return }
++            core.systemActionCoordinator.runSystemAction(id: command)
++        case .volume(let percent):
++            do {
++                try SystemActionRunner.setVolume(Float32(percent) / 100)
++                core.showMessage("Громкость: \(percent)%")
++            } catch {
++                core.showMessage(error.localizedDescription, tone: .danger)
++            }
++        case .builtIn(let id, let query):
++            switch id {
++            case "clipboard": core.launcherCoordinator.runCommand(.clipboardHistory)
++            case "notes": core.launcherCoordinator.runCommand(.showNotes)
++            case "schedule": core.launcherCoordinator.runCommand(.mySchedule)
++            case "meeting": core.launcherCoordinator.runCommand(.joinNextMeeting)
++            case "windows": core.launcherCoordinator.runCommand(.switchWindows)
++            case "files": core.fileSearchCoordinator.show(query: query ?? "")
++            case "searchNotes": core.notesCoordinator.searchNotes(query: query)
++            case "voiceCatalog": SpeechVoiceCommandCatalogWindow.shared.show(core: core)
++            default: break
++            }
++        case .target(let kind, let id):
++            if kind == .workflow {
++                guard let workflowID = UUID(uuidString: id), core.workflowCoordinator.allows(workflowID)
++                else { return }
++                core.workflowCoordinator.run(workflowID)
++                return
++            }
++            guard let entry = core.appIndex.apps.first(where: { $0.id == id }),
++                  core.visibility.isVisible(entry) else { return }
++            // A spoken custom command, link or shortcut can modify arbitrary local state.
++            // Require explicit user consent in Tinycast before invoking its normal handler.
++            if [.customCommand, .shortcut, .quicklink].contains(kind) {
++                Task { @MainActor in
++                    guard await core.confirm(
++                        title: "Выполнить голосовую команду?",
++                        message: entry.name,
++                        symbol: "mic.fill", confirmTitle: "Выполнить") else { return }
++                    core.launcherCoordinator.launch(entry)
++                }
++            } else {
++                core.launcherCoordinator.launch(entry)
++            }
++        }
++    }
++}
+diff --git a/Tinycast/Features/VoiceAsk/SpeechVoiceCommandCatalog.swift b/Tinycast/Features/VoiceAsk/SpeechVoiceCommandCatalog.swift
+new file mode 100644
+--- /dev/null
++++ b/Tinycast/Features/VoiceAsk/SpeechVoiceCommandCatalog.swift
+@@ -0,0 +1,253 @@
++import AppKit
++import SwiftUI
++
++/// One native window opened from settings or by saying "покажи голосовые команды".
++/// It also displays disambiguation choices when speech matches multiple targets.
++@MainActor
++final class SpeechVoiceCommandCatalogWindow {
++    static let shared = SpeechVoiceCommandCatalogWindow()
++    private var window: NSWindow?
++
++    func show(core: AppCore) {
++        present(SpeechVoiceCommandCatalogView(core: core), title: "Голосовые команды")
++    }
++
++    func showChoices(_ choices: [SpeechVoiceCommandParser.Target], core: AppCore) {
++        present(SpeechVoiceCommandChoicesView(core: core, choices: choices),
++                title: "Уточните голосовую команду")
++    }
++
++    func close() { window?.orderOut(nil) }
++
++    private func present<Content: View>(_ content: Content, title: String) {
++        if window == nil {
++            let panel = NSWindow(
++                contentRect: NSRect(x: 0, y: 0, width: 730, height: 590),
++                styleMask: [.titled, .closable, .resizable, .miniaturizable],
++                backing: .buffered, defer: false)
++            panel.center()
++            panel.isReleasedWhenClosed = false
++            panel.minSize = NSSize(width: 560, height: 410)
++            window = panel
++        }
++        guard let window else { return }
++        window.title = title
++        window.contentView = NSHostingView(rootView: content)
++        window.makeKeyAndOrderFront(nil)
++        NSApp.activate(ignoringOtherApps: true)
++    }
++}
++
++private struct SpeechVoiceAliasEdit: Identifiable {
++    let id: String
++    let name: String
++    let preferenceKey: String
++}
++
++@MainActor
++private struct SpeechVoiceCommandCatalogView: View {
++    let core: AppCore
++    @State private var search = ""
++    @State private var aliasEdit: SpeechVoiceAliasEdit?
++    @State private var aliasDraft = ""
++
++    private let sections = [
++        "Справка", "Приложения", "Окна", "Раскладки окон", "Комнаты окон", "Система",
++        "Поиск и данные", "Календарь", "Apple Shortcuts", "Сценарии",
++        "Пользовательские команды", "Quicklinks"
++    ]
++
++    private var allItems: [SpeechVoiceCommandParser.CatalogItem] {
++        SpeechVoiceCommandParser.builtinCatalog
++            + SpeechVoiceCommandRouter.availableTargets(core: core)
++                .map { SpeechVoiceCommandParser.catalogItem(for: $0) }
++    }
++
++    private var matchingItems: [SpeechVoiceCommandParser.CatalogItem] {
++        let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
++        guard !query.isEmpty else { return allItems }
++        return allItems.filter { item in
++            item.title.localizedStandardContains(query)
++                || item.section.localizedStandardContains(query)
++                || item.phrases.contains(where: { $0.localizedStandardContains(query) })
++        }
++    }
++
++    private func isEnabled(_ item: SpeechVoiceCommandParser.CatalogItem) -> Bool {
++        guard let feature = item.feature else { return true }
++        switch feature {
++        case "windows": return core.settings.windowManagementEnabled
++        case "files": return core.settings.fileSearchEnabled
++        case "notes": return core.settings.notesEnabled
++        case "shortcuts": return core.settings.appleShortcutsEnabled
++        case "quicklinks": return core.settings.quicklinksEnabled
++        case "customCommands": return core.settings.customCommandsEnabled
++        case "workflows": return core.settings.workflowsEnabled
++        default: return true
++        }
++    }
++
++    var body: some View {
++        VStack(alignment: .leading, spacing: 14) {
++            HStack(spacing: 12) {
++                Image(systemName: "mic.circle")
++                    .font(.system(size: 26))
++                    .foregroundStyle(.secondary)
++                VStack(alignment: .leading, spacing: 3) {
++                    Text("Голосовые команды")
++                        .font(.title2.weight(.semibold))
++                    Text("Произносите команду, удерживая Hyper. Названия допускают небольшие ошибки распознавания.")
++                        .font(.caption)
++                        .foregroundStyle(.secondary)
++                }
++            }
++            HStack(spacing: 8) {
++                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
++                TextField("Поиск команды, приложения или фразы", text: $search)
++                    .textFieldStyle(.plain)
++            }
++            .padding(11)
++            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
++            if !UserDefaults.standard.bool(forKey: "speechVoice.enabled") {
++                Label("Голосовой ввод отключён в настройках AI", systemImage: "mic.slash")
++                    .foregroundStyle(.secondary)
++                    .font(.caption)
++            } else if UserDefaults.standard.object(forKey: "speechVoice.commandsEnabled") != nil
++                        && !UserDefaults.standard.bool(forKey: "speechVoice.commandsEnabled") {
++                Label("Выполнение голосовых команд отключено", systemImage: "exclamationmark.circle")
++                    .foregroundStyle(.secondary)
++                    .font(.caption)
++            }
++            ScrollView {
++                LazyVStack(alignment: .leading, spacing: 18) {
++                    ForEach(sections, id: \.self) { section in
++                        let items = matchingItems.filter { $0.section == section }
++                        if !items.isEmpty {
++                            VStack(alignment: .leading, spacing: 7) {
++                                Text(section.uppercased())
++                                    .font(.caption.weight(.semibold))
++                                    .foregroundStyle(.secondary)
++                                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
++                                    catalogRow(item)
++                                }
++                            }
++                        }
++                    }
++                    if matchingItems.isEmpty {
++                        Text("Совпадений нет")
++                            .foregroundStyle(.secondary)
++                            .frame(maxWidth: .infinity)
++                            .padding(25)
++                    }
++                }
++                .padding(.vertical, 4)
++                .padding(.horizontal, 2)
++            }
++            Text("Выполняется только однозначно распознанная команда. Для сценариев, скриптов и ссылок требуется подтверждение.")
++                .font(.caption)
++                .foregroundStyle(.secondary)
++        }
++        .padding(20)
++        .frame(minWidth: 560, minHeight: 410)
++        .sheet(item: $aliasEdit) { edit in
++            VStack(alignment: .leading, spacing: 14) {
++                Text("Голосовой псевдоним: \(edit.name)")
++                    .font(.headline)
++                TextField("Например: телега", text: $aliasDraft)
++                Text("Используется и обычным поиском Tinycast. Пустое значение удаляет псевдоним.")
++                    .font(.caption).foregroundStyle(.secondary)
++                HStack {
++                    Spacer()
++                    Button("Отмена") { aliasEdit = nil }
++                    Button("Сохранить") {
++                        core.aliases.setAlias(aliasDraft, for: edit.preferenceKey)
++                        aliasEdit = nil
++                    }
++                    .keyboardShortcut(.defaultAction)
++                }
++            }
++            .padding(20)
++            .frame(width: 420)
++        }
++    }
++
++    private func editAlias(_ item: SpeechVoiceCommandParser.CatalogItem) {
++        guard let id = item.targetID,
++              let entry = core.appIndex.apps.first(where: { $0.id == id }) else { return }
++        aliasDraft = core.aliases.alias(for: entry.preferenceKey) ?? ""
++        aliasEdit = SpeechVoiceAliasEdit(id: entry.id, name: entry.name, preferenceKey: entry.preferenceKey)
++    }
++
++    private func catalogRow(_ item: SpeechVoiceCommandParser.CatalogItem) -> some View {
++        let enabled = isEnabled(item)
++        return HStack(alignment: .top, spacing: 10) {
++            VStack(alignment: .leading, spacing: 3) {
++                Text(item.title).font(.body.weight(.medium))
++                Text(item.phrases.joined(separator: " · "))
++                    .font(.caption).foregroundStyle(.secondary)
++                    .textSelection(.enabled)
++            }
++            Spacer(minLength: 4)
++            if let id = item.targetID, core.appIndex.apps.contains(where: { $0.id == id }) {
++                Button { editAlias(item) } label: {
++                    Image(systemName: "pencil.line").foregroundStyle(.secondary)
++                }
++                .buttonStyle(.borderless)
++                .help("Изменить голосовой псевдоним")
++            }
++            if !enabled {
++                Text("Отключено")
++                    .font(.caption2).foregroundStyle(.secondary)
++            }
++        }
++        .padding(10)
++        .frame(maxWidth: .infinity, alignment: .leading)
++        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 9))
++        .opacity(enabled ? 1 : 0.6)
++    }
++}
++
++@MainActor
++private struct SpeechVoiceCommandChoicesView: View {
++    let core: AppCore
++    let choices: [SpeechVoiceCommandParser.Target]
++
++    var body: some View {
++        VStack(alignment: .leading, spacing: 16) {
++            Text("Какую команду выполнить?")
++                .font(.title2.weight(.semibold))
++            Text("Распознанное название подходит нескольким объектам. Ничего не запускается без выбора.")
++                .foregroundStyle(.secondary)
++            ScrollView {
++                LazyVStack(alignment: .leading, spacing: 8) {
++                    ForEach(Array(choices.enumerated()), id: \.offset) { _, choice in
++                        Button {
++                            SpeechVoiceCommandCatalogWindow.shared.close()
++                            SpeechVoiceCommandRouter.execute(.target(choice.kind, choice.id), core: core)
++                        } label: {
++                            HStack {
++                                VStack(alignment: .leading, spacing: 3) {
++                                    Text(choice.name).font(.body.weight(.medium))
++                                    Text(choice.kind.rawValue)
++                                        .font(.caption).foregroundStyle(.secondary)
++                                }
++                                Spacer()
++                                Image(systemName: "chevron.right").foregroundStyle(.secondary)
++                            }
++                            .padding(11)
++                        }
++                        .buttonStyle(.plain)
++                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
++                    }
++                }
++            }
++            HStack {
++                Spacer()
++                Button("Отмена") { SpeechVoiceCommandCatalogWindow.shared.close() }
++                    .keyboardShortcut(.cancelAction)
++            }
++        }
++        .padding(20)
++        .frame(minWidth: 560, minHeight: 340)
++    }
++}
+diff --git a/Tests/voice-command-test.swift b/Tests/voice-command-test.swift
+new file mode 100644
+--- /dev/null
++++ b/Tests/voice-command-test.swift
+@@ -0,0 +1,82 @@
++import Foundation
++
++@main
++struct VoiceCommandTest {
++    static func main() {
++        typealias P = SpeechVoiceCommandParser
++        let apps: [P.Target] = [
++            .init(kind: .application, id: "telegram", name: "Telegram", aliases: ["Телеграм", "Телега"]),
++            .init(kind: .application, id: "telegram-beta", name: "Telegram Beta"),
++            .init(kind: .application, id: "obsidium", name: "Obsidium", aliases: ["Обсидиум"]),
++            .init(kind: .application, id: "safari", name: "Safari"),
++            .init(kind: .application, id: "jira", name: "Jira", aliases: ["Джира"]),
++            .init(kind: .customCommand, id: "clear", name: "Очистка кэша"),
++            .init(kind: .shortcut, id: "work", name: "Рабочее окружение"),
++            .init(kind: .quicklink, id: "link", name: "Документация")
++        ]
++        var tested = 0
++        func expect(_ text: String, _ expected: P.Resolution, line: Int = #line) {
++            let actual = P.parse(text, targets: apps)
++            guard actual == expected else {
++                fatalError("Line \(line): \(text): \(actual) != \(expected)")
++            }
++            tested += 1
++        }
++        expect("Открой Telegram", .action(.target(.application, "telegram")))
++        expect("Открой телеграм", .action(.target(.application, "telegram")))
++        expect("Открой телеграмм", .action(.target(.application, "telegram")))
++        expect("Открой тетеграм", .action(.target(.application, "telegram")))
++        expect("Открой тилеграм", .action(.target(.application, "telegram")))
++        expect("Открой тлеграм", .action(.target(.application, "telegram")))
++        expect("Открой телега", .action(.target(.application, "telegram")))
++        // No hand-written Telegram aliases: Russian ASR still matches the Latin app name.
++        let bareTelegram = [P.Target(kind: .application, id: "plain", name: "Telegram")]
++        guard P.parse("Открой тетеграм", targets: bareTelegram)
++                == .action(.target(.application, "plain")) else {
++            fatalError("Universal fuzzy transliteration needs no per-app aliases")
++        }
++        tested += 1
++        expect("Открой Telegram Beta", .action(.target(.application, "telegram-beta")))
++        expect("Тини каст открой Обсидиум", .action(.target(.application, "obsidium")))
++        expect("Тини-каст открой Обсидиум", .action(.target(.application, "obsidium")))
++        expect("Открой Sfaari", .action(.target(.application, "safari")))
++        expect("Открой Джира", .action(.target(.application, "jira")))
++        expect("Запусти сценарий Рабочее окружение", .action(.target(.shortcut, "work")))
++        expect("Выполни команду Очистка кэша", .action(.target(.customCommand, "clear")))
++        expect("Открой ссылку Документация", .action(.target(.quicklink, "link")))
++        expect("Поставь окно справа", .action(.window("right-half")))
++        expect("Перемести окно вправо", .action(.window("move-right")))
++        expect("Отправь окно на следующий монитор", .action(.window("next-display")))
++        expect("Громкость 25 процентов", .action(.volume(25)))
++        expect("Громкость 101", .unknown("Громкость должна быть числом от 0 до 100"))
++        expect("Найди файл docker-compose.yml", .action(.builtIn("files", query: "docker-compose.yml")))
++        expect("Найди заметку Kubernetes", .action(.builtIn("searchNotes", query: "Kubernetes")))
++        expect("Покажи историю буфера", .action(.builtIn("clipboard")))
++        expect("Присоединись к следующей встрече", .action(.builtIn("meeting")))
++        expect("Покажи голосовые команды", .action(.builtIn("voiceCatalog")))
++        expect("Как открыть Telegram в macOS?", .notCommand)
++        expect("Объясни как изменить громкость", .notCommand)
++        expect("Выключи компьютер", .notCommand)
++        expect("Открой неизвестную программу", .unknown("Не найдено: неизвестную программу"))
++        expect("Открой т", .unknown("Не найдено: т"))
++        let ambiguous = [
++            P.Target(kind: .application, id: "a1", name: "Telegram"),
++            P.Target(kind: .application, id: "a2", name: "Телеграм")
++        ]
++        guard case .ambiguous(let choices) = P.parse("Открой телеграм", targets: ambiguous),
++              choices.count == 2 else {
++            fatalError("Ambiguous target executed instead of offering a choice")
++        }
++        tested += 1
++        // The catalog's static example phrases must be parsed by the same command grammar.
++        for item in P.builtinCatalog {
++            for phrase in item.phrases {
++                guard case .action = P.parse(phrase, targets: apps) else {
++                    fatalError("Catalog advertises unsupported phrase: \(phrase)")
++                }
++                tested += 1
++            }
++        }
++        print("Voice command parser: \(tested) assertions passed")
++    }
++}

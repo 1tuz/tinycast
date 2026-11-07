@@ -1,0 +1,127 @@
+import AppKit
+
+/// Safely executes only resolved, explicitly allowlisted Tinycast commands.
+@MainActor
+enum SpeechVoiceCommandRouter {
+    typealias Parser = SpeechVoiceCommandParser
+
+    static func route(_ speech: String, core: AppCore) -> Bool {
+        switch Parser.parse(speech, targets: availableTargets(core: core)) {
+        case .notCommand:
+            return false
+        case .unknown(let message):
+            core.quickAICoordinator.composeVoicePrompt(speech)
+            core.showMessage(message, tone: .neutral)
+            return true
+        case .ambiguous(let targets):
+            // Never guess if two applications or actions have similarly plausible names.
+            SpeechVoiceCommandCatalogWindow.shared.showChoices(targets, core: core)
+            return true
+        case .action(let intent):
+            execute(intent, core: core)
+            return true
+        }
+    }
+
+    static func availableTargets(core: AppCore) -> [Parser.Target] {
+        var targets: [Parser.Target] = []
+        var seen = Set<String>()
+        for entry in core.appIndex.apps where entry.isPrimaryInstallation && core.visibility.isVisible(entry) {
+            let kind: Parser.Target.Kind
+            switch entry.kind {
+            case .application, .systemSettings: kind = .application
+            case .quicklink: kind = .quicklink
+            case .appleShortcut: kind = .shortcut
+            case .customCommand: kind = .customCommand
+            case .windowLayout, .projectWorkspace: kind = .layout
+            case .windowRoom: kind = .room
+            default: continue
+            }
+            // Two package installations may legitimately share a display name.
+            // Keep unique entries and ask the user rather than picking either one.
+            guard seen.insert(kind.rawValue + ":" + entry.id).inserted else { continue }
+            var aliases = entry.alternateTitles
+            if let userAlias = core.aliases.alias(for: entry.preferenceKey) {
+                aliases.append(userAlias)
+            }
+            if kind == .application { aliases += familiarNames(for: entry.name) }
+            targets.append(.init(kind: kind, id: entry.id, name: entry.name, aliases: aliases))
+        }
+        if core.settings.workflowsEnabled {
+            for workflow in core.workflows.workflows where workflow.isEnabled {
+                targets.append(.init(kind: .workflow, id: workflow.id.uuidString, name: workflow.name))
+            }
+        }
+        return targets
+    }
+
+    private static func familiarNames(for name: String) -> [String] {
+        switch Parser.normalize(name) {
+        case "telegram": ["телеграм"]
+        case "safari": ["сафари"]
+        case "google chrome": ["хром", "гугл хром"]
+        case "finder": ["файндер"]
+        case "terminal": ["терминал"]
+        case "obsidian": ["обсидиан"]
+        case "obsidium": ["обсидиум"]
+        case "cursor": ["курсор"]
+        case "jira": ["джира"]
+        default: []
+        }
+    }
+
+    static func execute(_ intent: Parser.Intent, core: AppCore) {
+        switch intent {
+        case .window(let id):
+            guard let command = WindowCommand.ID(rawValue: id), core.settings.windowManagementEnabled else {
+                core.showMessage("Управление окнами недоступно", tone: .neutral)
+                return
+            }
+            core.windowCommandCoordinator.runWindowCommand(id: command)
+        case .system(let id):
+            guard let command = SystemAction.ID(rawValue: id) else { return }
+            core.systemActionCoordinator.runSystemAction(id: command)
+        case .volume(let percent):
+            do {
+                try SystemActionRunner.setVolume(Float32(percent) / 100)
+                core.showMessage("Громкость: \(percent)%")
+            } catch {
+                core.showMessage(error.localizedDescription, tone: .danger)
+            }
+        case .builtIn(let id, let query):
+            switch id {
+            case "clipboard": core.launcherCoordinator.runCommand(.clipboardHistory)
+            case "notes": core.launcherCoordinator.runCommand(.showNotes)
+            case "schedule": core.launcherCoordinator.runCommand(.mySchedule)
+            case "meeting": core.launcherCoordinator.runCommand(.joinNextMeeting)
+            case "windows": core.launcherCoordinator.runCommand(.switchWindows)
+            case "files": core.fileSearchCoordinator.show(query: query ?? "")
+            case "searchNotes": core.notesCoordinator.searchNotes(query: query)
+            case "voiceCatalog": SpeechVoiceCommandCatalogWindow.shared.show(core: core)
+            default: break
+            }
+        case .target(let kind, let id):
+            if kind == .workflow {
+                guard let workflowID = UUID(uuidString: id), core.workflowCoordinator.allows(workflowID)
+                else { return }
+                core.workflowCoordinator.run(workflowID)
+                return
+            }
+            guard let entry = core.appIndex.apps.first(where: { $0.id == id }),
+                  core.visibility.isVisible(entry) else { return }
+            // A spoken custom command, link or shortcut can modify arbitrary local state.
+            // Require explicit user consent in Tinycast before invoking its normal handler.
+            if [.customCommand, .shortcut, .quicklink].contains(kind) {
+                Task { @MainActor in
+                    guard await core.confirm(
+                        title: "Выполнить голосовую команду?",
+                        message: entry.name,
+                        symbol: "mic.fill", confirmTitle: "Выполнить") else { return }
+                    core.launcherCoordinator.launch(entry)
+                }
+            } else {
+                core.launcherCoordinator.launch(entry)
+            }
+        }
+    }
+}

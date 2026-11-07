@@ -4,6 +4,7 @@ struct AISettingsView: View {
     @AppStorage("speechVoice.enabled") private var speechEnabled = false
     @AppStorage("speechVoice.model") private var speechModel = "parakeet-ultra"
     @AppStorage("speechVoice.autoSend") private var speechAutoSend = false
+    @AppStorage("speechVoice.commandsEnabled") private var speechCommandsEnabled = true
     @Environment(AppCore.self) private var core
     @Environment(AISettingsStore.self) private var settings
     @Environment(AppSettings.self) private var appSettings
@@ -71,6 +72,10 @@ struct AISettingsView: View {
                     .textFieldStyle(.roundedBorder)
                     .frame(maxWidth: 220)
             }
+            Toggle("Run Tinycast voice commands", isOn: $speechCommandsEnabled)
+            Button("Показать все голосовые команды") {
+                SpeechVoiceCommandCatalogWindow.shared.show(core: core)
+            }
             Toggle("Send transcript automatically to Quick AI", isOn: $speechAutoSend)
             LabeledContent("Global shortcut") { ShortcutRecorder(action: .voiceAsk) }
             LabeledContent("Service") {
@@ -82,7 +87,7 @@ struct AISettingsView: View {
         } header: {
             Text("Voice Ask · Speech Runtime")
         } footer: {
-            Text("Local recognition through Speech Runtime.app at 127.0.0.1:8477. Hold an unused Hyper key for push-to-talk. The service remains independent of Tinycast.")
+            Text("Speech Runtime handles recognition locally. Recognized commands run through Tinycast; other speech goes to Quick AI. Hold an unused Hyper key for push-to-talk.")
         }
         .onAppear { core.speechVoice.checkAvailability() }
     }

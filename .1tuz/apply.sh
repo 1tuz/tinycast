@@ -21,6 +21,9 @@ for patch in .1tuz/patches/*.patch; do
   elif [ "$name" = "0018-speech-runtime-voice.patch" ]; then
     # Its minimal textual hunks deliberately do not carry historical blob IDs.
     apply_args=(--whitespace=nowarn)
+  elif [ "$name" = "0019-voice-commands.patch" ]; then
+    # Deterministic voice command routing builds on the restored Voice Ask sources.
+    apply_args=(--whitespace=nowarn)
   fi
   if ! git apply "${apply_args[@]}" "$patch"; then
     failed="$name"

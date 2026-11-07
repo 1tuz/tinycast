@@ -151,7 +151,7 @@ private struct NoteTitlebarActions: View {
                 notes.createNote)
             action(
                 "rectangle.stack", String(localized: "Browse Notes"),
-                String(localized: "Browse Notes  ⌘P"), notes.searchNotes)
+                String(localized: "Browse Notes  ⌘P")) { notes.searchNotes() }
             action(
                 "folder", String(localized: "Open Notes Folder"),
                 String(localized: "Open Notes Folder  ⌘O"), notes.openNotesFolder)

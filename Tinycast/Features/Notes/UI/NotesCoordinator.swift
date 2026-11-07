@@ -4,10 +4,10 @@ import SwiftUI
 @MainActor
 @Observable
 final class NotesCoordinator {
-    private enum Presentation {
+    private enum Presentation: Equatable {
         case editor
         case create
-        case search
+        case search(query: String?)
     }
 
     private let store: NotesStore
@@ -170,8 +170,8 @@ final class NotesCoordinator {
         }
     }
 
-    func searchNotes() {
-        request(.search)
+    func searchNotes(query: String? = nil) {
+        request(.search(query: query))
     }
 
     func openSwitcher() {
@@ -468,10 +468,11 @@ final class NotesCoordinator {
             else { return }
             closeSwitcher()
             windowController.show(focusEditor: true)
-        case .search:
+        case .search(let query):
             // The switcher hangs off the note window, so that window has to exist first.
             windowController.show(focusEditor: false)
             openSwitcher()
+            if let query, !query.isEmpty { store.updateSearchQuery(query) }
         }
     }
 

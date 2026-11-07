@@ -253,13 +253,22 @@ final class SpeechRuntimeVoiceAsk {
                 fail("No speech detected")
                 return
             }
+            let previousQuery = savedQuery
             savedQuery = nil
             pill.hide()
             phase = .idle
             hotKeyDownAt = nil
             hyperHold = false
             finishTask = nil
-            // Only the selected AI chat provider receives the text, never the speech service.
+            // Restore a draft before dispatching an action that may close the palette.
+            // Recognition and command matching remain entirely local.
+            let commandsEnabled = UserDefaults.standard.object(forKey: "speechVoice.commandsEnabled") == nil
+                || UserDefaults.standard.bool(forKey: "speechVoice.commandsEnabled")
+            if commandsEnabled {
+                if let previousQuery { core.palette.query = previousQuery }
+                if SpeechVoiceCommandRouter.route(result, core: core) { return }
+            }
+            // Non-command speech still uses the existing Quick AI delivery policy.
             if UserDefaults.standard.bool(forKey: "speechVoice.autoSend") {
                 core.quickAICoordinator.sendVoicePrompt(result)
             } else {

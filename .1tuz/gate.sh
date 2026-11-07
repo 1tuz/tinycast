@@ -10,6 +10,9 @@ echo "::group::structure"
 test -f Tinycast.xcodeproj/project.pbxproj || { echo "::error::missing Xcode project"; exit 1; }
 test ! -d Tinycast/Features/Dictation || { echo "::error::Upstream Dictation sources must be absent"; exit 1; }
 test -f Tinycast/Features/VoiceAsk/SpeechRuntimeVoiceAsk.swift || { echo "::error::Speech Runtime Voice Ask missing"; exit 1; }
+test -f Tinycast/Features/VoiceAsk/SpeechVoiceCommandRouter.swift || { echo "::error::Voice command router missing"; exit 1; }
+test -f Tinycast/Features/VoiceAsk/SpeechVoiceCommandParser.swift || { echo "::error::Voice command parser missing"; exit 1; }
+test -f Tinycast/Features/VoiceAsk/SpeechVoiceCommandCatalog.swift || { echo "::error::Voice command catalog missing"; exit 1; }
 if rg -n -i 'CodexRealtime|thread/realtime' Tinycast/Features/VoiceAsk; then
   echo "::error::obsolete cloud audio path detected"
   exit 1
@@ -38,7 +41,7 @@ for t in hotkey-test ai-provider-test updates-test ranking-test developer-utilit
   ephemeral-snippet-test quick-action-test file-search-test file-search-session-test \
   calendar-test window-layout-test window-switch-test compact-bar-test \
   clipboard-search-test clipboard-thumbnail-test fallback-test launcher-settings-file-test \
-  settings-backup-test hotkey-dispatch-test workflow-test; do
+  settings-backup-test hotkey-dispatch-test workflow-test voice-command-test; do
   echo "▸ $t"
   if ! ./Scripts/run-tests.sh "$t" > "$TMP/gate-$t.log" 2>&1; then
     echo "::error::harness failed: $t"
