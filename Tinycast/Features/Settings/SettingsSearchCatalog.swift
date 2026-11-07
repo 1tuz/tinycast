@@ -631,6 +631,9 @@ enum SettingsSearchCatalog {
         .init(
             .permissionsCalendars, "Calendars",
             keywords: ["events", "privacy", "grant", "eventkit"]),
+        .init(
+            .permissionsMicrophone, "Microphone",
+            keywords: ["voice", "dictation", "ask", "mic", "privacy", "grant"]),
     ]
 
     private static let backup: [SettingsSearchEntry] = [

@@ -7,6 +7,7 @@ struct PermissionsSettingsView: View {
     @State private var accessibilityTrusted = Permissions.isAccessibilityTrusted()
     @State private var fullDiskAccess = Permissions.hasFullDiskAccess()
     @State private var calendarAccess = Permissions.calendarAccess()
+    @State private var microphoneAccess = MicrophoneAccess.current()
     private let refreshTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -110,6 +111,47 @@ struct PermissionsSettingsView: View {
                 SettingsSectionHeader(.permissionsCalendars)
             }
 
+            Section {
+                LabeledContent {
+                    HStack(spacing: Theme.Spacing.lg) {
+                        HStack(spacing: Theme.Spacing.xs) {
+                            Image(systemName: microphoneStatus.symbol)
+                                .accessibilityHidden(true)
+                            Text(microphoneStatus.title)
+                        }
+                        .foregroundStyle(microphoneStatus.tint)
+                        Button(microphoneNeedsPrompt ? "Grant Access…" : "Open…") {
+                            if microphoneNeedsPrompt {
+                                Task { @MainActor in
+                                    _ = await AVCaptureDevice.requestAccess(for: .audio)
+                                    refresh()
+                                }
+                            } else {
+                                Permissions.openMicrophoneSettings()
+                            }
+                        }
+                        .help(
+                            microphoneNeedsPrompt
+                                ? "Asks macOS for microphone access."
+                                : "Opens Privacy & Security › Microphone.")
+                    }
+                } label: {
+                    HStack(spacing: Theme.Spacing.lg) {
+                        Image(systemName: "mic.fill")
+                            .font(.system(size: SettingsListMetrics.iconSize - Theme.Spacing.xs))
+                            .frame(width: SettingsListMetrics.iconSize)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
+                            SettingsRowTitle(.permissionsMicrophone, "Microphone")
+                            Text("Allows Voice Ask dictation.")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            } header: {
+                SettingsSectionHeader(.permissionsMicrophone)
+            }
+
         }
         .formStyle(.grouped)
         .settingsScrollTarget(.permissions)
@@ -118,6 +160,8 @@ struct PermissionsSettingsView: View {
     }
 
     private var calendarNeedsPrompt: Bool { calendarAccess == .notDetermined }
+
+    private var microphoneNeedsPrompt: Bool { microphoneAccess == .notDetermined }
 
     private var accessibilityStatus: (title: String, symbol: String, tint: Color) {
         grantStatus(accessibilityTrusted)
@@ -142,6 +186,15 @@ struct PermissionsSettingsView: View {
         }
     }
 
+    private var microphoneStatus: (title: String, symbol: String, tint: Color) {
+        switch microphoneAccess {
+        case .granted: return (String(localized: "Granted"), "checkmark.circle.fill", .green)
+        case .notDetermined:
+            return (String(localized: "Not asked yet"), "questionmark.circle.fill", .secondary)
+        case .denied: return (String(localized: "Not granted"), "exclamationmark.triangle.fill", .orange)
+        }
+    }
+
     private func refresh() {
         let trusted = Permissions.isAccessibilityTrusted()
         if trusted != accessibilityTrusted { accessibilityTrusted = trusted }
@@ -152,6 +205,8 @@ struct PermissionsSettingsView: View {
         }
         let access = Permissions.calendarAccess()
         if access != calendarAccess { calendarAccess = access }
+        let mic = MicrophoneAccess.current()
+        if mic != microphoneAccess { microphoneAccess = mic }
     }
 }
 

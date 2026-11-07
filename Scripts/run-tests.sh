@@ -180,6 +180,7 @@ run apple-shortcut-test    Tinycast/Features/AppleShortcuts/Model/*.swift
 run voice-command-test     Tinycast/Features/Launcher/Model/SearchRelevance.swift \
                            Tinycast/Features/Launcher/Model/ScriptRomanization.swift \
                            Tinycast/Features/VoiceAsk/SpeechVoiceCommandParser.swift
+run voice-input-test       Tinycast/Features/VoiceAsk/SpeechVoiceMicrophone.swift
 run calc-test              Tinycast/Features/Calculator/Model/*.swift
 run index calc-performance Tinycast/Features/Calculator/Model/*.swift
 run calendar-test          Tinycast/Features/Calendar/Model/*.swift \

@@ -223,6 +223,12 @@ enum SpeechVoiceCommandParser {
     static func parse(_ speech: String, targets: [Target] = []) -> Resolution {
         var original = speech.trimmingCharacters(in: .whitespacesAndNewlines)
         var phrase = normalize(original)
+        // A hesitation before the verb ("эм открой", "ну поставь") is ASR noise, not intent.
+        while let first = phrase.split(separator: " ").first.map(String.init),
+              leadingNoise.contains(first) {
+            original = tail(of: original, skipping: 1)
+            phrase = normalize(original)
+        }
         for wake in ["тини каст", "тайни каст", "tinycast", "тини-каст"] {
             let normalizedWake = normalize(wake)
             if phrase.hasPrefix(normalizedWake + " ") {
@@ -234,10 +240,13 @@ enum SpeechVoiceCommandParser {
                 break
             }
         }
-        if phrase.hasSuffix(" пожалуйста") {
-            original = original.replacingOccurrences(
-                of: #"\s+пожалуйста[.!?\s]*$"#, with: "", options: [.regularExpression, .caseInsensitive])
-            phrase = normalize(original)
+        // Trailing politeness ("пожалуйста", "спасибо") is ASR noise, not part of any command.
+        for noise in ["пожалуйста"] + trailingNoise {
+            if phrase.hasSuffix(" " + noise) {
+                original = original.replacingOccurrences(
+                    of: "\\s+\(noise)[.!?\\s]*$", with: "", options: [.regularExpression, .caseInsensitive])
+                phrase = normalize(original)
+            }
         }
         guard !phrase.isEmpty else { return .notCommand }
 
@@ -258,12 +267,12 @@ enum SpeechVoiceCommandParser {
         }
         for prefix in ["найди файл", "найти файл", "найди файлы", "поиск файлов"] {
             if let rest = suffix(after: prefix, in: phrase), !rest.isEmpty {
-                return .action(.builtIn("files", query: tail(of: original, skipping: prefix.split(separator: " ").count)))
+                return .action(.builtIn("files", query: searchText(after: prefix, in: original)))
             }
         }
         for prefix in ["найди заметку", "найди заметки", "поиск заметок"] {
             if let rest = suffix(after: prefix, in: phrase), !rest.isEmpty {
-                return .action(.builtIn("searchNotes", query: tail(of: original, skipping: prefix.split(separator: " ").count)))
+                return .action(.builtIn("searchNotes", query: searchText(after: prefix, in: original)))
             }
         }
 
@@ -360,13 +369,82 @@ enum SpeechVoiceCommandParser {
         return result <= limit ? result : nil
     }
 
-    /// Lower-case, punctuation/extra spaces and Russian ё are insignificant for commands.
+    /// Lower-case, punctuation/extra spaces, Russian ё and spelled-out numbers are
+    /// insignificant for commands: everything folds to a canonical word/digit form.
     static func normalize(_ input: String) -> String {
         let lower = input.lowercased().replacingOccurrences(of: "ё", with: "е")
         let scalars = lower.unicodeScalars.map {
             CharacterSet.alphanumerics.contains($0) ? Character($0) : " "
         }
-        return String(scalars).split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        let spaced = String(scalars).split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        return numeralsToDigits(spaced)
+    }
+
+    /// Russian ASR spells numbers out; commands and app names carry digits ("Громкость 25",
+    /// "1Password"). Digits are canonical, so words fold back into digits before matching.
+    static func numeralsToDigits(_ input: String) -> String {
+        var words = input.split(separator: " ").map(String.init)
+        var index = 0
+        while index < words.count {
+            // A number word may be glued to the next word by ASR ("двадцатьпять") — split it.
+            let token = words[index]
+            if !numberWords.contains(token), let split = numberWordPrefix(of: token) {
+                words.replaceSubrange(index...index, with: [split.remainder, split.numberWord].filter { !$0.isEmpty })
+                continue
+            }
+            if numberWordValues[token] != nil {
+                // A greedy run of number words folds into one total ("двадцать пять" → 25).
+                var total = 0
+                var consumed = 0
+                while index + consumed < words.count {
+                    let word = words[index + consumed]
+                    if let value = numberWordValues[word] {
+                        total += value
+                        consumed += 1
+                    } else {
+                        break
+                    }
+                }
+                words.replaceSubrange(index..<(index + consumed), with: [String(total)])
+            }
+            index += 1
+        }
+        return words.joined(separator: " ")
+    }
+
+    private static let numberWordValues: [String: Int] = [
+        "ноль": 0, "один": 1, "одна": 1, "два": 2, "две": 2, "три": 3, "четыре": 4,
+        "пять": 5, "шесть": 6, "семь": 7, "восемь": 8, "девять": 9,
+        "десять": 10, "одиннадцать": 11, "двенадцать": 12, "тринадцать": 13,
+        "четырнадцать": 14, "пятнадцать": 15, "шестнадцать": 16, "семнадцать": 17,
+        "восемнадцать": 18, "девятнадцать": 19, "двадцать": 20, "тридцать": 30,
+        "сорок": 40, "пятьдесят": 50, "шестьдесят": 60, "семьдесят": 70,
+        "восемьдесят": 80, "девяносто": 90, "сто": 100,
+    ]
+
+    /// The leading number-word fragment of a glued token, if any ("двадцатьпять" → "двадцать").
+    /// A short leftover would be a false positive ("стол" = "сто" + "л"), so it must be a word.
+    private static func numberWordPrefix(of token: String) -> (numberWord: String, remainder: String)? {
+        let longest = numberWords.filter { token.hasPrefix($0) }.max { $0.count < $1.count }
+        guard let longest, longest.count < token.count else { return nil }
+        let remainder = String(token.dropFirst(longest.count))
+        guard remainder.count >= 3 || remainder.isEmpty else { return nil }
+        return (longest, remainder)
+    }
+
+    private static var numberWords: [String] { Array(numberWordValues.keys) }
+
+    /// Hesitations that precede a dictated verb; the command itself is what was meant.
+    private static let leadingNoise = ["эм", "э", "ну", "мм", "а"]
+
+    /// Trailing ASR politeness/filler noise beyond "пожалуйста" must not reach name resolution.
+    private static let trailingNoise = ["спасибо", "благодарю"]
+
+    /// A dictated search keeps its inner punctuation ("docker-compose.yml"), but ASR adds
+    /// sentence-ending marks a typed query would never carry.
+    private static func searchText(after prefix: String, in original: String) -> String {
+        tail(of: original, skipping: prefix.split(separator: " ").count)
+            .trimmingCharacters(in: CharacterSet(charactersIn: ".!?…,;: "))
     }
 
     private static func suffix(after prefix: String, in phrase: String) -> String? {

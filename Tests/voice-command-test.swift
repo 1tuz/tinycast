@@ -5,6 +5,7 @@ struct VoiceCommandTest {
     static func main() {
         typealias P = SpeechVoiceCommandParser
         let apps: [P.Target] = [
+            .init(kind: .application, id: "onepassword", name: "1Password"),
             .init(kind: .application, id: "telegram", name: "Telegram", aliases: ["Телеграм", "Телега"]),
             .init(kind: .application, id: "telegram-beta", name: "Telegram Beta"),
             .init(kind: .application, id: "obsidium", name: "Obsidium", aliases: ["Обсидиум"]),
@@ -53,7 +54,18 @@ struct VoiceCommandTest {
         expect("Найди заметку Kubernetes", .action(.builtIn("searchNotes", query: "Kubernetes")))
         expect("Покажи историю буфера", .action(.builtIn("clipboard")))
         expect("Присоединись к следующей встрече", .action(.builtIn("meeting")))
-        expect("Покажи голосовые команды", .action(.builtIn("voiceCatalog")))
+        // ASR punctuation, politeness and spelled-out numbers must not push commands to the AI.
+        expect("Открой телеграм.", .action(.target(.application, "telegram")))
+        expect("Открой телеграм!", .action(.target(.application, "telegram")))
+        expect("открой телеграм", .action(.target(.application, "telegram")))
+        expect("Эм открой телеграм", .action(.target(.application, "telegram")))
+        expect("Открой телеграм спасибо", .action(.target(.application, "telegram")))
+        expect("Открой один пассворд", .action(.target(.application, "onepassword")))
+        expect("Громкость двадцать пять", .action(.volume(25)))
+        expect("Ну поставь громкость тридцать", .action(.volume(30)))
+        expect("Установи громкость ноль", .action(.volume(0)))
+        expect("Найди файл докер compose.", .action(.builtIn("files", query: "докер compose")))
+        expect("Найди заметку Kubernetes!", .action(.builtIn("searchNotes", query: "Kubernetes")))
         expect("Как открыть Telegram в macOS?", .notCommand)
         expect("Объясни как изменить громкость", .notCommand)
         expect("Выключи компьютер", .notCommand)
