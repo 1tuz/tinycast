@@ -395,7 +395,7 @@ struct RootPaletteView: View {
     /// Split from `body` for the same reason `keyHandlers` is: one chain cannot carry them all.
     @ViewBuilder
     private func stateObservers(_ content: some View) -> some View {
-        emojiObservers(content)
+        emojiObservers(lifecycleObservers(content))
             // Every show bumps focusToken so the search field refocuses.
             .onChange(of: vm.focusToken) {
                 resetCompactSelection()
@@ -469,13 +469,10 @@ struct RootPaletteView: View {
                 }
             }
             // `prepare` may change nothing else, so this still lands the list as freshly opened.
-            lifecycleObservers(
-                content
-                    .onChange(of: vm.resetToken) {
-                        if menuOpen { closeMenus() }
-                        land()
-                    }
-            )
+            .onChange(of: vm.resetToken) {
+                if menuOpen { closeMenus() }
+                land()
+            }
     }
 
     /// The screen lifecycle tail, split so `stateObservers` stays within type-checker reach.

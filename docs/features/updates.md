@@ -14,10 +14,8 @@ no appcast: the release feed the website already reads is the feed the app reads
 - **The archive is a zip, never the DMG.** A zip expands with `ditto`; a DMG would have to be mounted,
   which means a volume, a Spotlight handle and a detach that can fail. A release published without a
   zip is not installable and is not offered.
-- **The zip is chosen by architecture.** A stable release carries a thin arm64 zip and a
-  `-Universal-` one. Intel takes the universal zip and is offered *nothing* if it is missing, since a
-  thin build would install and then refuse to launch; Apple silicon prefers the thin zip and falls
-  back to universal.
+- **The zip is arm64-only.** The release carries one thin arm64 zip; a Mac without that slice is
+  offered nothing rather than installing a build that would refuse to launch.
 - **Nobody ever runs `xattr`.** An archive Tinycast fetched itself is not quarantined — macOS sets
   that flag for sandboxed downloaders and for apps that opt in with `LSFileQuarantineEnabled`, and
   Tinycast is neither. `Quarantine` checks anyway through `getxattr`/`removexattr` rather than the
@@ -145,10 +143,7 @@ setting, clipboard entry, note or snippet is affected by an update, by `brew upg
 ## Releasing into it
 
 `.github/workflows/release.yml` publishes two assets from one build: the DMG people download by hand
-and the cask installs, and `Tinycast-<version>.zip` for the updater. A stable run adds a
-`Tinycast-Universal-<version>` pair from its `universal` job, uploaded second so the thin zip stays
-first in the asset list — builds predating architecture-aware selection take whichever comes first.
-The zip is made with
+and the cask installs, and `Tinycast-<version>.zip` for the updater. The zip is made with
 
 ```sh
 ditto -c -k --keepParent --sequesterRsrc "$APP" "dist/$ZIP_FILE"

@@ -411,20 +411,14 @@ diff --git a/Tinycast/Palette/RootPaletteView.swift b/Tinycast/Palette/RootPalet
 diff --git a/Tinycast/Palette/RootPaletteView.swift b/Tinycast/Palette/RootPaletteView.swift
 --- a/Tinycast/Palette/RootPaletteView.swift
 +++ b/Tinycast/Palette/RootPaletteView.swift
-@@ -470,6 +470,9 @@
-             // `prepare` may change nothing else, so this still lands the list as freshly opened.
--            .onChange(of: vm.resetToken) {
--                if menuOpen { closeMenus() }
--                land()
--            }
-+            lifecycleObservers(
-+                content
-+                    .onChange(of: vm.resetToken) {
-+                        if menuOpen { closeMenus() }
-+                        land()
-+                    }
-+            )
-             // ⌘. arrives as a token rather than a key press. See `PaletteState.pinChordToken`.
+@@ -394,5 +394,5 @@
+     /// Split from `body` for the same reason `keyHandlers` is: one chain cannot carry them all.
+     @ViewBuilder
+     private func stateObservers(_ content: some View) -> some View {
+-        emojiObservers(content)
++        emojiObservers(lifecycleObservers(content))
+             // Every show bumps focusToken so the search field refocuses.
+
 diff --git a/Tinycast/Palette/RootPaletteView.swift b/Tinycast/Palette/RootPaletteView.swift
 --- a/Tinycast/Palette/RootPaletteView.swift
 +++ b/Tinycast/Palette/RootPaletteView.swift

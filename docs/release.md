@@ -28,11 +28,6 @@ zip is produced with `ditto -c -k --keepParent --sequesterRsrc` — the only zip
 signature verifiable, which matters because the updater refuses any bundle whose signature does not
 prove it is ours.
 
-A stable release publishes two more from the `universal` job, `Tinycast-Universal-<version>.dmg` and
-`.zip`, built from the same commit at the same version and bundle id but with both slices. They are
-uploaded *after* the thin pair, which keeps the thin zip first in the asset list so builds predating
-architecture-aware selection keep choosing it.
-
 Three things a release must keep true, or the updater skips it:
 
 - **It carries a `.zip` asset this Mac can run.** A DMG-only release is not installable and is not
@@ -68,18 +63,10 @@ stops the run until it is deleted ([migrations.md](migrations.md)). The check re
 so the checkout fetches every commit without blobs.
 
 It builds on a `macos-26` runner with Xcode 26 and publishes a GitHub Release
-tagged `v<full-version>` with a versioned DMG and zip asset.
+tagged `v<full-version>` with a versioned DMG and zip asset. The build pins `ARCHS=arm64` and
+asserts the slices on the shipping binaries — the app and `ClipboardTextHelper`.
 
-The run then fans out to a second job, `universal`, which rebuilds the same commit with
-`ARCHS="arm64 x86_64"` and attaches `Tinycast-Universal-<version>.dmg` / `.zip` to the release the
-first job created, then bumps `tinycast-universal`. macOS 26 is the last release that boots on Intel,
-and those Macs need both slices. Both jobs pin `ARCHS` explicitly and assert the slices on *every*
-shipping binary — the app and `ClipboardTextHelper`: trusting `ARCHS_STANDARD` is what
-shipped a thin arm64 build to Intel users once already, and it also keeps the Apple silicon download
-from silently gaining a slice it never needs. A thin helper inside a universal app is the quiet form
-of the same bug: the app boots on Intel and only clipboard OCR stops working.
-
-Channel builds override `TINYCAST_BUNDLE_IDENTIFIER`, not the target-wide `PRODUCT_BUNDLE_IDENTIFIER`.
+Builds override `TINYCAST_BUNDLE_IDENTIFIER`, not the target-wide `PRODUCT_BUNDLE_IDENTIFIER`.
 
 ### Release notes
 
