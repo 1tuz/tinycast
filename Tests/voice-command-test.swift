@@ -57,6 +57,7 @@ struct VoiceCommandTest {
         // ASR punctuation, politeness and spelled-out numbers must not push commands to the AI.
         expect("Открой телеграм.", .action(.target(.application, "telegram")))
         expect("Открой телеграм!", .action(.target(.application, "telegram")))
+        expect("Открыть телеграмм", .action(.target(.application, "telegram")))
         expect("открой телеграм", .action(.target(.application, "telegram")))
         expect("Эм открой телеграм", .action(.target(.application, "telegram")))
         expect("Открой телеграм спасибо", .action(.target(.application, "telegram")))

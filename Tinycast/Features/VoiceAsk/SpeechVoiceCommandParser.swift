@@ -369,15 +369,28 @@ enum SpeechVoiceCommandParser {
         return result <= limit ? result : nil
     }
 
-    /// Lower-case, punctuation/extra spaces, Russian ё and spelled-out numbers are
-    /// insignificant for commands: everything folds to a canonical word/digit form.
+    /// Lower-case, punctuation/extra spaces, Russian ё, spelled-out numbers and infinitive
+    /// verbs are insignificant: the command grammar speaks in imperatives, ASR doesn't.
     static func normalize(_ input: String) -> String {
         let lower = input.lowercased().replacingOccurrences(of: "ё", with: "е")
         let scalars = lower.unicodeScalars.map {
             CharacterSet.alphanumerics.contains($0) ? Character($0) : " "
         }
         let spaced = String(scalars).split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
-        return numeralsToDigits(spaced)
+        return verbToImperative(numeralsToDigits(spaced))
+    }
+
+    /// One infinitive word maps to one imperative word, so spoken prefix lengths stay intact.
+    private static let verbImperatives = [
+        "открыть": "открой", "запустить": "запусти", "выполнить": "выполни",
+        "найти": "найди", "показать": "покажи", "применить": "примени",
+        "установить": "установи", "поставить": "поставь", "сделать": "сделай",
+        "переключиться": "переключись", "переключить": "переключись",
+    ]
+
+    private static func verbToImperative(_ input: String) -> String {
+        input.split(separator: " ").map { verbImperatives[String($0)] ?? String($0) }
+            .joined(separator: " ")
     }
 
     /// Russian ASR spells numbers out; commands and app names carry digits ("Громкость 25",
