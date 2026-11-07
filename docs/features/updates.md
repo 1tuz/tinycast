@@ -123,7 +123,15 @@ One route, whatever the install came from:
    ours — by the pinned Developer ID requirement, or by the running app's own leaf certificate.
 5. `FileManager.replaceItemAt`. The staging folder is on the same volume as `/Applications`, which is
    what lets this be atomic. A non-writable `/Applications` is reported, not worked around; there is
-   no privileged helper.
+   no privileged helper. One case has a fallback, though: a bundle another account installed (brew
+   as a different user, a moved copy) makes `replaceItemAt` fail even though `/Applications` itself
+   is admin-writable — the old bundle's interior is read-only for this account. The installer then
+   renames the old bundle aside in the same parent directory and moves the staged one into place,
+   both parent-directory operations an admin account may perform. The old copy is kept as
+   `Tinycast.app.pre-update` (a previous leftover is trashed first) so a broken new bundle can
+   still be rolled back by hand; a failed swap restores the old copy to its name before the
+   failure surfaces. Everything else about the failure — including a `/Applications` the account
+   genuinely cannot write — is still reported, never escalated.
 6. Offer Relaunch, which spawns a detached waiter that reopens the app once this process exits —
    `open` on a bundle id that is still running would only re-activate the instance on its way out.
 

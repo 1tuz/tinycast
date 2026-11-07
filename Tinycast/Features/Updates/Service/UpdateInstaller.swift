@@ -59,10 +59,31 @@ struct UpdateInstaller: Sendable {
             _ = try FileManager.default.replaceItemAt(
                 bundleURL, withItemAt: staged, options: .usingNewMetadataOnly)
         } catch {
-            throw UpdateFailure.replaceFailed(error.localizedDescription)
+            // A foreign-uid install blocks the metadata rewrite replaceItemAt does inside
+            // the old bundle; parent-directory renames still work on an admin-writable /Applications.
+            try replaceByRenamingAside(staged: staged)
         }
         try? FileManager.default.removeItem(at: archive)
         try? FileManager.default.removeItem(at: expanded)
+    }
+
+    /// Trash, not delete: the old copy is the only rollback if the new one is broken.
+    private func replaceByRenamingAside(staged: URL) throws {
+        let aside = bundleURL.deletingLastPathComponent()
+            .appendingPathComponent(bundleURL.lastPathComponent + ".pre-update")
+        let fm = FileManager.default
+        try? fm.trashItem(at: aside, resultingItemURL: nil)
+        do {
+            try fm.moveItem(at: bundleURL, to: aside)
+            try fm.moveItem(at: staged, to: bundleURL)
+        } catch {
+            // Put the old copy back before surfacing the failure; a half-swapped
+            // /Applications entry is worse than no update.
+            if !fm.fileExists(atPath: bundleURL.path) {
+                try? fm.moveItem(at: aside, to: bundleURL)
+            }
+            throw UpdateFailure.replaceFailed(error.localizedDescription)
+        }
     }
 
     private func expand(_ archive: URL, into directory: URL) async throws -> URL {
