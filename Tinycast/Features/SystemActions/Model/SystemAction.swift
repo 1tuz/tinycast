@@ -32,6 +32,8 @@ struct SystemAction: Identifiable, Hashable, Sendable {
         case hideOtherApps = "hide-all-apps-except-frontmost"
         case unhideAllApps = "unhide-all-hidden-apps"
         case quitAllApps = "quit-all-apps"
+        case quitFrontApp = "quit-front-app"
+        case setBrightness = "set-brightness"
         case dismissNotifications = "dismiss-notifications"
         case toggleBluetooth = "toggle-bluetooth"
     }
@@ -108,6 +110,8 @@ enum SystemActionCatalog {
         case .hideOtherApps: return "Hide All Apps Except Frontmost"
         case .unhideAllApps: return "Unhide All Hidden Apps"
         case .quitAllApps: return "Quit All Applications"
+        case .quitFrontApp: return "Quit Front App"
+        case .setBrightness: return "Set Brightness"
         case .dismissNotifications: return "Dismiss Notifications"
         case .toggleBluetooth: return "Toggle Bluetooth"
         }
@@ -141,6 +145,8 @@ enum SystemActionCatalog {
         case .hideOtherApps: return "eye.slash.circle"
         case .unhideAllApps: return "eye.circle"
         case .quitAllApps: return "xmark.circle"
+        case .quitFrontApp: return "xmark.app"
+        case .setBrightness: return "sun.max"
         case .dismissNotifications: return "bell.slash"
         // Not an SF Symbol: the logo is a trademark, so this is a bundled asset.
         case .toggleBluetooth: return "bluetooth"

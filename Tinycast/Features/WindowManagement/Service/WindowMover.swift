@@ -61,6 +61,31 @@ final class WindowMover {
             }
         }
 
+
+        /// Our own windows minimize through AppKit; a remote window through AX.
+        func minimizeSelf() -> Bool {
+            switch self {
+            case .external(_, let window):
+                return AXWindowAccess.minimize(window)
+            case .own(let window):
+                window.miniaturize(nil)
+                return true
+            }
+        }
+
+        func closeSelf() -> Bool {
+            switch self {
+            case .external(_, let window):
+                // No direct close action exists: press the window's own close button.
+                guard let button = AXWindowAccess.element(
+                    window, kAXCloseButtonAttribute as String)
+                else { return false }
+                return AXUIElementPerformAction(button, kAXPressAction as CFString) == .success
+            case .own(let window):
+                window.performClose(nil)
+                return true
+            }
+        }
         /// Nothing to suppress on our own windows: it is a remote app's Accessibility setting.
         func suppressEnhancedUserInterface() -> () -> Void {
             guard case .external(let application, _) = self else { return {} }
@@ -164,6 +189,16 @@ final class WindowMover {
             let focused = focusedWindow(of: target)
         else { return false }
 
+        if catalogued.kind == .axAction {
+            switch command {
+            case .minimize:
+                return focused.surface.minimizeSelf()
+            case .closeWindow:
+                return focused.surface.closeSelf()
+            default:
+                return false
+            }
+        }
         if catalogued.kind == .fullscreen {
             guard toggleFullScreen(focused.surface) else { return false }
             // The size chain is moot, but the pre-Tinycast frame is still the Restore target.

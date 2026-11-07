@@ -148,6 +148,18 @@ enum SystemActionRunner {
                 return SystemActionFeedback(String(localized: "Nothing Was Hidden"), isNoOp: true)
             }
             return SystemActionFeedback(String(localized: "All Apps Unhidden"))
+        case .quitFrontApp:
+            // Prefer the app the palette handed back; voice arrives with the palette hidden.
+            let target = previousApp ?? NSWorkspace.shared.frontmostApplication
+            guard let target, target.bundleIdentifier != Bundle.main.bundleIdentifier else {
+                return SystemActionFeedback(
+                    String(localized: "No Application to Quit"), isNoOp: true)
+            }
+            let name = target.localizedName ?? target.bundleIdentifier ?? ""
+            target.terminate()
+            return SystemActionFeedback(String(localized: "Quitting \(name)"))
+        case .setBrightness:
+            break  // The voice parser picks the value and calls setBrightness directly.
         case .quitAllApps:
             for app in AppLauncher.quitAllTargets() { app.terminate() }
         case .dismissNotifications:

@@ -37,6 +37,8 @@ struct WindowCommand: Identifiable, Hashable, Sendable {
         case toggleFullscreen = "toggle-fullscreen"
         case previousSpace = "previous-space"
         case nextSpace = "next-space"
+        case minimize
+        case closeWindow = "close-window"
     }
 
     /// What the mover has to do, so its dispatch stays exhaustive over the catalog.
@@ -48,6 +50,8 @@ struct WindowCommand: Identifiable, Hashable, Sendable {
         case fullscreen
         /// No window at all — a synthetic Dock gesture that moves between Spaces.
         case space
+        /// No geometry either — a direct AX action on the focused window.
+        case axAction
     }
 
     /// The launcher section a command belongs to, and the order the Settings panel lists them in.
@@ -155,6 +159,8 @@ enum WindowCommandCatalog {
         case .toggleFullscreen: return "Toggle Fullscreen"
         case .previousSpace: return "Switch to Previous Space"
         case .nextSpace: return "Switch to Next Space"
+        case .minimize: return "Minimize Window"
+        case .closeWindow: return "Close Window"
         }
     }
 
@@ -193,6 +199,8 @@ enum WindowCommandCatalog {
         case .toggleFullscreen: return "arrow.up.left.and.arrow.down.right.square"
         case .previousSpace: return "chevron.backward.2"
         case .nextSpace: return "chevron.forward.2"
+        case .minimize: return "minus.rectangle"
+        case .closeWindow: return "xmark.rectangle"
         }
     }
 
@@ -201,6 +209,7 @@ enum WindowCommandCatalog {
         case .restore: return .restore
         case .toggleFullscreen: return .fullscreen
         case .previousSpace, .nextSpace: return .space
+        case .minimize, .closeWindow: return .axAction
         default: return .geometry
         }
     }
@@ -219,6 +228,8 @@ enum WindowCommandCatalog {
             .centerHalf, .centerTwoThirds, .makeLarger, .makeSmaller, .restore:
             return .sizing
         case .moveLeft, .moveRight, .moveUp, .moveDown, .nextDisplay, .previousDisplay:
+            return .moving
+        case .minimize, .closeWindow:
             return .moving
         case .toggleFullscreen:
             return .fullscreen

@@ -57,15 +57,42 @@ enum SpeechVoiceCommandRouter {
 
     private static func familiarNames(for name: String) -> [String] {
         switch Parser.normalize(name) {
-        case "telegram": ["телеграм"]
+        case "telegram": ["телеграм", "телега"]
         case "safari": ["сафари"]
         case "google chrome": ["хром", "гугл хром"]
         case "finder": ["файндер"]
         case "terminal": ["терминал"]
+        case "iterm": ["итерм", "айтерм"]
         case "obsidian": ["обсидиан"]
         case "obsidium": ["обсидиум"]
-        case "cursor": ["курсор"]
+        case "cursor": ["курсор", "корсер"]
+        case "firefox": ["файрфокс", "фаерфокс"]
         case "jira": ["джира"]
+        case "docker": ["докер"]
+        case "orbstack": ["орбстак"]
+        case "zed": ["зед", "зэд"]
+        case "zap": ["зап"]
+        case "zen": ["зен"]
+        case "chatgpt": ["чат гпт", "чатджипити"]
+        case "iina": ["иина", "ина"]
+        case "transmission": ["трансмиссия"]
+        case "localsend": ["локал сенд", "локалсенд"]
+        case "maccy": ["макси"]
+        case "stats": ["статс", "статистика"]
+        case "tether": ["тезер"]
+        case "handy": ["хэнди"]
+        case "happ": ["хапп"]
+        case "thaw": ["соу", "thaw"]
+        case "pinokio": ["пинокио"]
+        case "upscayl": ["апскейл"]
+        case "sniffnet": ["снифнет"]
+        case "spotube": ["спотюб"]
+        case "kepresso": ["кепрессо"]
+        case "vibe": ["вайб"]
+        case "trueconf": ["труконф", "труконференс"]
+        case "dopbase": ["допбейс"]
+        case "freelens": ["фрилэнс", "фриленз"]
+        case "neohatop": ["неохтоп"]
         default: []
         }
     }
@@ -81,6 +108,13 @@ enum SpeechVoiceCommandRouter {
         case .system(let id):
             guard let command = SystemAction.ID(rawValue: id) else { return }
             core.systemActionCoordinator.runSystemAction(id: command)
+        case .brightness(let percent):
+            do {
+                try SystemActionRunner.setBrightness(percent: percent)
+                core.showMessage("Яркость: \(percent)%")
+            } catch {
+                core.showMessage(error.localizedDescription, tone: .danger)
+            }
         case .volume(let percent):
             do {
                 try SystemActionRunner.setVolume(Float32(percent) / 100)
@@ -94,6 +128,7 @@ enum SpeechVoiceCommandRouter {
             case "notes": core.launcherCoordinator.runCommand(.showNotes)
             case "schedule": core.launcherCoordinator.runCommand(.mySchedule)
             case "meeting": core.launcherCoordinator.runCommand(.joinNextMeeting)
+            case "search": core.paletteCoordinator.showPalette(mode: .launcher, seeding: query)
             case "windows": core.launcherCoordinator.runCommand(.switchWindows)
             case "files": core.fileSearchCoordinator.show(query: query ?? "")
             case "searchNotes": core.notesCoordinator.searchNotes(query: query)

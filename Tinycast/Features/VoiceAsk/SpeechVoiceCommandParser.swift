@@ -16,6 +16,7 @@ enum SpeechVoiceCommandParser {
     enum Intent: Equatable, Sendable {
         case window(String)
         case system(String)
+        case brightness(Int)
         case volume(Int)
         case builtIn(String, query: String? = nil)
         case target(Target.Kind, String)
@@ -89,6 +90,15 @@ enum SpeechVoiceCommandParser {
         .init(section: "Окна", title: "Предыдущий рабочий стол", phrases: [
             "предыдущий рабочий стол", "переключись на предыдущий рабочий стол"
         ], intent: .window("previous-space"), feature: "windows"),
+        .init(section: "Окна", title: "Свернуть окно", phrases: [
+            "сверни окно", "минимизируй окно", "убери окно"
+        ], intent: .window("minimize"), feature: "windows"),
+        .init(section: "Окна", title: "Закрыть окно", phrases: [
+            "закрой окно", "закрой это окно"
+        ], intent: .window("close-window"), feature: "windows"),
+        .init(section: "Система", title: "Закрыть приложение", phrases: [
+            "закрой приложение", "закрой активное приложение", "выключи приложение"
+        ], intent: .system("quit-front-app")),
         .init(section: "Система", title: "Заблокировать экран", phrases: [
             "заблокируй экран", "заблокируй мак"
         ], intent: .system("lock-screen")),
@@ -265,6 +275,17 @@ enum SpeechVoiceCommandParser {
                 return .unknown("Громкость должна быть числом от 0 до 100")
             }
         }
+        for prefix in ["яркость", "установи яркость", "поставь яркость", "сделай яркость"] {
+            if let value = suffix(after: prefix, in: phrase), !value.isEmpty {
+                let words = value.split(separator: " ").map(String.init)
+                if let first = words.first, let percent = Int(first), (0...100).contains(percent),
+                   (words.count == 1 || (words.count == 2 &&
+                     ["процент", "процента", "процентов"].contains(words[1]))) {
+                    return .action(.brightness(percent))
+                }
+                return .unknown("Яркость должна быть числом от 0 до 100")
+            }
+        }
         for prefix in ["найди файл", "найти файл", "найди файлы", "поиск файлов"] {
             if let rest = suffix(after: prefix, in: phrase), !rest.isEmpty {
                 return .action(.builtIn("files", query: searchText(after: prefix, in: original)))
@@ -273,6 +294,12 @@ enum SpeechVoiceCommandParser {
         for prefix in ["найди заметку", "найди заметки", "поиск заметок"] {
             if let rest = suffix(after: prefix, in: phrase), !rest.isEmpty {
                 return .action(.builtIn("searchNotes", query: searchText(after: prefix, in: original)))
+            }
+        }
+        // A generic fuzzy lookup: whatever the palette itself would find for this query.
+        for prefix in ["найди", "поиск", "поищи"] {
+            if let rest = suffix(after: prefix, in: phrase), !rest.isEmpty {
+                return .action(.builtIn("search", query: searchText(after: prefix, in: original)))
             }
         }
 
@@ -386,6 +413,8 @@ enum SpeechVoiceCommandParser {
         "найти": "найди", "показать": "покажи", "применить": "примени",
         "установить": "установи", "поставить": "поставь", "сделать": "сделай",
         "переключиться": "переключись", "переключить": "переключись",
+        "свернуть": "сверни", "закрыть": "закрой", "выключить": "выключи",
+        "минимизировать": "минимизируй", "поискать": "поищи",
     ]
 
     private static func verbToImperative(_ input: String) -> String {
