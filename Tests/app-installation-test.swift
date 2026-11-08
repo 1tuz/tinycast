@@ -550,11 +550,17 @@ enum CommandCatalog {
     static func command(for entry: AppEntry) -> CommandID? { nil }
 }
 enum HotKeyAction: Hashable, Sendable {
-    case togglePalette, command(CommandID)
+    case togglePalette, voiceAsk, command(CommandID)
     case app(bundleID: String), settingsPane(bundleID: String), quickAction(id: UUID)
     case customCommand(id: UUID), systemAction(id: SystemAction.ID), windowCommand(id: WindowCommand.ID)
-    case customWindowSize(id: UUID), windowLayout(id: UUID), windowRoom(id: UUID), quicklink(id: UUID)
+    case customWindowSize(id: UUID), windowLayout(id: UUID), workflow(id: UUID), windowRoom(id: UUID), quicklink(id: UUID)
     case appleShortcut(id: UUID), snippet(id: UUID), extensionCommand(entryID: String)
+}
+struct WindowLayoutEntry: Sendable {
+    var bundleID = ""
+}
+enum WindowInventory {
+    static func focusedDocumentURL(for app: NSRunningApplication) -> URL? { nil }
 }
 struct OtherEntry<Tag: Sendable>: Sendable {
     var id = UUID()
@@ -564,6 +570,7 @@ struct OtherEntry<Tag: Sendable>: Sendable {
     var isEnabled = true
     var showsInRootSearch = true
     var link = ""
+    var entries: [WindowLayoutEntry] = []
     static var sfSymbol: String { "" }
     static func id(fromEntryID id: String) -> UUID? { nil }
     static func precedes(_ lhs: Self, _ rhs: Self) -> Bool { lhs.name < rhs.name }
