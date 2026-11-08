@@ -285,15 +285,18 @@ struct AIVoiceTriggerRow: View {
     @Environment(InstalledAIManager.self) private var installedAI
 
     @Binding var trigger: AIVoiceTrigger
-    let remove: () -> Void
+    let persist: () -> Void
 
     var body: some View {
         AIModelSelectionRows(
             selection: trigger.model,
-            select: { trigger.model = $0 },
+            inheritedTitle: String(localized: "Follow the chat's model"),
+            select: {
+                trigger.model = $0
+                persist()
+            },
             modelLabel: { textField },
             effortLabel: { Text("Reasoning effort") })
-            .swipeActions { Button(role: .destructive, action: remove) { Label("Delete", systemImage: "trash") } }
     }
 
     /// The trigger word sits in the model row's label slot, so one row carries both.
@@ -301,5 +304,6 @@ struct AIVoiceTriggerRow: View {
         TextField("Trigger word", text: $trigger.trigger)
             .textFieldStyle(.roundedBorder)
             .frame(maxWidth: 200)
+            .onSubmit(persist)
     }
 }
