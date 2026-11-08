@@ -3,7 +3,7 @@ import Foundation
 struct UpdateInstaller: Sendable {
     enum Phase: Sendable, Equatable {
         case downloading(received: Int64, expected: Int64)
-        case extracting
+        case mounting
         case verifying
         case replacing
 
@@ -11,7 +11,7 @@ struct UpdateInstaller: Sendable {
             switch self {
             case .downloading(let received, let expected):
                 return String(localized: "Downloading… \(Self.size(received)) of \(Self.size(expected))")
-            case .extracting: return String(localized: "Expanding…")
+            case .mounting: return String(localized: "Mounting the update…")
             case .verifying: return String(localized: "Verifying…")
             case .replacing: return String(localized: "Replacing Tinycast…")
             }
@@ -38,18 +38,18 @@ struct UpdateInstaller: Sendable {
     ) async throws {
         try? FileManager.default.createDirectory(
             at: stagingDirectory, withIntermediateDirectories: true)
-        let archive = stagingDirectory.appendingPathComponent("\(release.tag).zip")
+        let image = stagingDirectory.appendingPathComponent("\(release.tag).dmg")
         let expanded = stagingDirectory.appendingPathComponent("expanded", isDirectory: true)
         try? FileManager.default.removeItem(at: expanded)
 
         onProgress(.downloading(received: 0, expected: release.assetSize))
-        for try await event in UpdateDownloader.download(release, to: archive) {
+        for try await event in UpdateDownloader.download(release, to: image) {
             guard case .progress(let received, let expected) = event else { continue }
             onProgress(.downloading(received: received, expected: expected))
         }
 
-        onProgress(.extracting)
-        let staged = try await expand(archive, into: expanded)
+        onProgress(.mounting)
+        let staged = try await DiskImage.stage(image, into: expanded)
 
         onProgress(.verifying)
         try verify(staged, is: release)
@@ -63,7 +63,6 @@ struct UpdateInstaller: Sendable {
             // the old bundle; parent-directory renames still work on an admin-writable /Applications.
             try replaceByRenamingAside(staged: staged)
         }
-        try? FileManager.default.removeItem(at: archive)
         try? FileManager.default.removeItem(at: expanded)
     }
 
@@ -84,21 +83,6 @@ struct UpdateInstaller: Sendable {
             }
             throw UpdateFailure.replaceFailed(error.localizedDescription)
         }
-    }
-
-    private func expand(_ archive: URL, into directory: URL) async throws -> URL {
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        // `ditto` ships with macOS, keeps the bundle's seal intact, and Foundation has no unzip.
-        let result = try await ToolRunner.run(
-            URL(fileURLWithPath: "/usr/bin/ditto"), ["-x", "-k", archive.path, directory.path])
-        guard result.succeeded else { throw UpdateFailure.extractFailed(result.tail) }
-        let contents = try? FileManager.default.contentsOfDirectory(
-            at: directory, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
-        // Named for its channel — "Tinycast Beta.app", not "Tinycast.app".
-        guard let app = contents?.first(where: { $0.pathExtension == "app" }) else {
-            throw UpdateFailure.noAppInArchive
-        }
-        return app
     }
 
     private func verify(_ staged: URL, is release: AvailableRelease) throws {

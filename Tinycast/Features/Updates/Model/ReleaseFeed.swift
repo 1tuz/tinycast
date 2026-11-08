@@ -14,10 +14,7 @@ enum ReleaseFeed {
     /// Where releases come from, and what every `@handle` and `#304` in their notes points at.
     static let repository = "1tuz/tinycast"
 
-    /// The only artifact with an x86_64 slice, so the only one an Intel Mac can install.
-    private static let universalMarker = "-Universal-"
-
-    /// The newest release this channel accepts, ignoring drafts and anything without a usable zip.
+    /// The newest release this channel accepts, ignoring drafts and anything without a usable DMG.
     static func newest(
         from data: Data, channel: ReleaseChannel, architecture: ReleaseArchitecture
     ) -> AvailableRelease? {
@@ -55,16 +52,13 @@ enum ReleaseFeed {
             publishedAt: entry.publishedAt.flatMap { try? Date($0, strategy: .iso8601) })
     }
 
-    /// Never the DMG: the updater expands an archive rather than mounting a volume.
+    /// The DMG, always: it is the one artifact the cask, a hand download and the updater all read.
+    /// One DMG ships per release and its build is arm64-only, so Intel is offered nothing.
     private static func asset(
         from assets: [Entry.Asset], for architecture: ReleaseArchitecture
     ) -> Entry.Asset? {
-        let zips = assets.filter { $0.name.hasSuffix(".zip") }
-        let universal = zips.first { $0.name.contains(universalMarker) }
-        switch architecture {
-        case .intel: return universal
-        case .appleSilicon: return zips.first { !$0.name.contains(universalMarker) } ?? universal
-        }
+        guard case .appleSilicon = architecture else { return nil }
+        return assets.first { $0.name.hasSuffix(".dmg") }
     }
 
     private struct Entry: Decodable {

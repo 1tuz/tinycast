@@ -22,7 +22,7 @@ struct UpdatesTests {
         roundTripsVersionsThroughJSON()
         derivesChannels()
         picksNewestForChannel()
-        picksTheZipThisMacCanRun()
+        picksTheDmgThisMacCanRun()
         rejectsUnusableFeeds()
         offersOnlyWhatIsWorthInstalling()
         pinsTheDeveloperIDRequirement()
@@ -127,7 +127,7 @@ struct UpdatesTests {
     }
 
     static func entry(
-        tag: String, prerelease: Bool, draft: Bool = false, assets: [String] = ["Tinycast-x.zip"],
+        tag: String, prerelease: Bool, draft: Bool = false, assets: [String] = ["Tinycast-x.dmg"],
         body: String = "Notes."
     ) -> String {
         let list = assets.map {
@@ -156,8 +156,8 @@ struct UpdatesTests {
         expect(stable?.notes == "Notes.", "and carries the release notes")
         expect(stable?.assetSize == 1024, "and the asset size, for the progress readout")
         expect(
-            stable?.assetURL.absoluteString.hasSuffix(".zip") == true,
-            "and selects the zip asset")
+            stable?.assetURL.absoluteString.hasSuffix(".dmg") == true,
+            "and selects the DMG asset")
         expect(stable?.publishedAt != nil, "and parses the ISO-8601 timestamp")
 
         expect(
@@ -194,9 +194,9 @@ struct UpdatesTests {
             "a release with no assets is skipped")
         expect(
             ReleaseFeed.newest(
-                from: feed(entry(tag: "v0.3.0", prerelease: false, assets: ["Tinycast-x.dmg"])),
+                from: feed(entry(tag: "v0.3.0", prerelease: false, assets: ["Tinycast-x.zip"])),
                 channel: .stable, architecture: .appleSilicon) == nil,
-            "a DMG-only release is not installable, so it is not offered")
+            "a zip-only release is not installable, so it is not offered")
         expect(
             ReleaseFeed.newest(
                 from: feed(entry(tag: "nightly", prerelease: false)), channel: .stable,
@@ -216,32 +216,17 @@ struct UpdatesTests {
             "one bad entry does not discard the whole feed")
     }
 
-    /// Stable carries a thin arm64 zip and a universal one; each Mac gets what it runs.
-    static func picksTheZipThisMacCanRun() {
-        let both = feed(
-            entry(
-                tag: "v0.3.0", prerelease: false,
-                assets: ["Tinycast-0.3.0.zip", "Tinycast-Universal-0.3.0.zip"]))
+    /// Releases ship as a single arm64 DMG; Intel is offered nothing it could run.
+    static func picksTheDmgThisMacCanRun() {
+        let dmgOnly = feed(entry(tag: "v0.3.0", prerelease: false, assets: ["Tinycast-0.3.0.dmg"]))
         expect(
-            ReleaseFeed.newest(from: both, channel: .stable, architecture: .intel)?
-                .assetURL.absoluteString.contains("-Universal-") == true,
-            "Intel takes the universal zip, the only one with an x86_64 slice")
-        expect(
-            ReleaseFeed.newest(from: both, channel: .stable, architecture: .appleSilicon)?
-                .assetURL.absoluteString.contains("-Universal-") == false,
-            "Apple silicon prefers the thin zip, and never pays for the Intel slice")
+            ReleaseFeed.newest(from: dmgOnly, channel: .stable, architecture: .appleSilicon)?
+                .assetURL.absoluteString.hasSuffix(".dmg") == true,
+            "Apple silicon takes the DMG")
 
-        let thinOnly = feed(entry(tag: "v0.3.0", prerelease: false, assets: ["Tinycast-0.3.0.zip"]))
         expect(
-            ReleaseFeed.newest(from: thinOnly, channel: .stable, architecture: .intel) == nil,
-            "Intel is offered nothing rather than an arm64 build it cannot launch")
-
-        let universalOnly = feed(
-            entry(tag: "v0.3.0", prerelease: false, assets: ["Tinycast-Universal-0.3.0.zip"]))
-        expect(
-            ReleaseFeed.newest(from: universalOnly, channel: .stable, architecture: .appleSilicon)?
-                .version == AppVersion("0.3.0"),
-            "Apple silicon falls back to the universal zip when it is the only one published")
+            ReleaseFeed.newest(from: dmgOnly, channel: .stable, architecture: .intel) == nil,
+            "Intel is offered nothing rather than an arm64 DMG it cannot launch")
     }
 
     static func offersOnlyWhatIsWorthInstalling() {

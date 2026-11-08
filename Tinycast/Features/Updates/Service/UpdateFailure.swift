@@ -2,8 +2,9 @@ import Foundation
 
 enum UpdateFailure: LocalizedError, Equatable {
     case downloadFailed(String)
-    case extractFailed(String)
-    case noAppInArchive
+    case mountFailed(String)
+    case noAppInImage
+    case copyFailed(String)
     case quarantined
     case bundleMismatch
     case identityMismatch
@@ -14,10 +15,12 @@ enum UpdateFailure: LocalizedError, Equatable {
         switch self {
         case .downloadFailed(let detail):
             return String(localized: "The download did not finish. \(detail)")
-        case .extractFailed(let detail):
-            return String(localized: "The downloaded archive could not be expanded. \(detail)")
-        case .noAppInArchive:
-            return String(localized: "The downloaded archive does not contain Tinycast.")
+        case .mountFailed(let detail):
+            return String(localized: "The downloaded disk image could not be mounted. \(detail)")
+        case .noAppInImage:
+            return String(localized: "The downloaded disk image does not contain Tinycast.")
+        case .copyFailed(let detail):
+            return String(localized: "The downloaded app could not be copied out of the disk image. \(detail)")
         case .quarantined:
             return String(
                 localized: "macOS quarantined the downloaded app and Tinycast could not clear the flag.")
