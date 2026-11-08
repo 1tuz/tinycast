@@ -1,6 +1,7 @@
 import AppKit
 import CoreAudio
 import Darwin
+import notify
 
 struct SystemActionFeedback: Sendable {
     let title: String
@@ -172,6 +173,12 @@ enum SystemActionRunner {
             let on = try await toggleBluetooth()
             return SystemActionFeedback(
                 on ? String(localized: "Bluetooth On") : String(localized: "Bluetooth Off"))
+        case .screenshot:
+            return try await takeScreenshot()
+        case .focusMode:
+            return try await toggleFocusMode()
+        case .screenRecording:
+            return try await startScreenRecording()
         }
         return nil
     }
@@ -470,6 +477,148 @@ enum SystemActionRunner {
             throw SystemActionFailure(String(localized: "macOS did not save the requested setting."))
         }
         return requested
+    }
+
+    /// A whole-screen capture without the shutter sound; the TCC prompt is the system's own.
+    private static func takeScreenshot() async throws -> SystemActionFeedback {
+        let stamp = ISO8601DateFormatter().string(from: Date())
+            .replacingOccurrences(of: ":", with: "-")
+        let file = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Desktop/Screenshot \(stamp).png")
+        let output = try await process(
+            "/usr/sbin/screencapture", arguments: ["-x", "-C", file.path])
+        guard output.status == 0 else {
+            throw processFailure(output, executable: "screencapture")
+        }
+        return SystemActionFeedback(String(localized: "Screenshot Saved to Desktop"))
+    }
+
+    /// There is no public API for Focus, so the assertion store and the broadcasts
+    /// macOS itself uses after a Control Center toggle are reproduced here.
+    private static func toggleFocusMode() async throws -> SystemActionFeedback {
+        let on = try await Task.detached(priority: .userInitiated) {
+            try applyFocusAssertion()
+        }.value
+        await announceFocusChange(enabled: on)
+        return SystemActionFeedback(
+            on ? String(localized: "Focus On") : String(localized: "Focus Off"))
+    }
+
+    /// `Assertions.json` is the assertion store `donotdisturbd` reads; a missing file
+    /// simply means nothing is asserted yet. Unknown keys travel through untouched.
+    private nonisolated static func applyFocusAssertion() throws -> Bool {
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/DoNotDisturb/DB/Assertions.json")
+        guard let source = try? Data(contentsOf: url) else { return writeFocusAssertion(nil, to: url) }
+        guard let root = try? JSONSerialization.jsonObject(with: source) as? [String: Any],
+            var data = root["data"] as? [[String: Any]]
+        else {
+            throw SystemActionFailure(
+                String(localized: "macOS reported an unexpected Focus state."))
+        }
+        if data.isEmpty { data.append([:]) }
+        let records = (data[0]["storeAssertionRecords"] as? [[String: Any]]) ?? []
+        let enabled = records.contains { record in
+            (record["assertionDetails"] as? [String: Any])?
+                .contains { $0.key == "assertionDetailsModeIdentifier" } == true
+        }
+        if enabled {
+            data[0]["storeAssertionRecords"] = []
+        } else {
+            data[0]["storeAssertionRecords"] = [focusAssertionRecord()]
+        }
+        var updated = root
+        updated["data"] = data
+        return writeFocusAssertion(updated, to: url)
+    }
+
+    /// The fresh record mirrors what Control Center itself asserts for Do Not Disturb.
+    private nonisolated static func focusAssertionRecord() -> [String: Any] {
+        let now = CFAbsoluteTimeGetCurrent()
+        let uuid = UUID().uuidString
+        return [
+            "assertionUUID": uuid,
+            "assertionStartDateTimestamp": now,
+            "assertionDetails": [
+                "assertionDetailsIdentifier": "com.apple.focus.activity-manager",
+                "assertionDetailsActivityUUID": uuid,
+                "assertionDetailsModeIdentifier": "com.apple.donotdisturb.mode.default",
+                "assertionDetailsRuntimeAssertionUUID": "",
+                "assertionDetailsVersion": 1
+            ] as [String: Any],
+            "assertionSource": [
+                "assertionSourceAppIdentifier": "",
+                "assertionSourceAssertionContent": "",
+                "assertionSourceBundleIdentifier": "com.apple.focus.activity-manager",
+                "assertionSourceIdentifier": "com.apple.focus.activity-manager",
+                "assertionSourceType": "user-action"
+            ] as [String: Any]
+        ]
+    }
+
+    /// Writes the whole store back, preserving every key it did not interpret, and
+    /// returns the state the file now records.
+    private nonisolated static func writeFocusAssertion(_ root: [String: Any]?, to url: URL) -> Bool {
+        var payload: [String: Any]
+        if let root {
+            var mutable = root
+            var header = (mutable["header"] as? [String: Any]) ?? [:]
+            header["timestamp"] = CFAbsoluteTimeGetCurrent()
+            mutable["header"] = header
+            payload = mutable
+        } else {
+            payload = [
+                "data": [[
+                    "storeAssertionRecords": [focusAssertionRecord()],
+                    "storeInvalidationRecords": [],
+                    "storeInvalidationRequestRecords": []
+                ]],
+                "header": ["timestamp": CFAbsoluteTimeGetCurrent(), "version": 8]
+            ]
+        }
+        guard let data = try? JSONSerialization.data(
+            withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
+        else { return false }
+        try? data.write(to: url, options: .atomic)
+        let records = (payload["data"] as? [[String: Any]])?.first?["storeAssertionRecords"]
+            as? [[String: Any]] ?? []
+        return !records.isEmpty
+    }
+
+    /// `donotdisturbd` listens for these same signals after its own toggles.
+    private static func announceFocusChange(enabled: Bool) async {
+        let center = CFNotificationCenterGetDistributedCenter()
+        let name = enabled ? "_NSDoNotDisturbEnabledNotification" : "_NSDoNotDisturbDisabledNotification"
+        CFNotificationCenterPostNotification(center, CFNotificationName(name as CFString), nil, nil, true)
+        notify_post("com.apple.notificationcenter.dnd.state.changed")
+        notify_post("com.apple.focus.assertion.state.changed")
+        notify_post("com.apple.focus.status.changed")
+        let uid = getuid()
+        _ = try? await process(
+            "/bin/launchctl",
+            arguments: ["kickstart", "-k", "gui/\(uid)/com.apple.donotdisturbd"])
+        _ = try? await process(
+            "/bin/launchctl",
+            arguments: ["kickstart", "-k", "gui/\(uid)/com.apple.ControlCenter"])
+    }
+
+    /// The Screenshot app owns recording: screen picking, the system permission
+    /// prompt, stop control and file saving are all better than any managed process.
+    private static func startScreenRecording() async throws -> SystemActionFeedback {
+        let url = URL(fileURLWithPath: "/System/Applications/Utilities/Screenshot.app")
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw SystemActionFailure(
+                String(localized: "The macOS screen recording app could not be found."))
+        }
+        NSWorkspace.shared.openApplication(
+            at: url, configuration: NSWorkspace.OpenConfiguration()
+        ) { _, error in
+            guard let error else { return }
+            Task { @MainActor in
+                onAsyncFailure?(.screenRecording, SystemActionFailure(error.localizedDescription))
+            }
+        }
+        return SystemActionFeedback(String(localized: "Screen Recording Ready"))
     }
 
     private static func booleanDefault(_ value: String) -> Bool? {

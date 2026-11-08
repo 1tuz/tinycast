@@ -92,6 +92,11 @@ struct VoiceCommandTest {
         expect("Скопируй ссылку на встречу", .action(.builtIn("copyMeetingLink")))
         expect("Поиск по меню", .action(.builtIn("menuSearch")))
         expect("Вставь следующий элемент буфера", .action(.builtIn("pasteNext")))
+        expect("Сделай скриншот", .action(.system("screenshot")))
+        expect("Включи фокус", .action(.system("focus-mode")))
+        expect("Режим фокусировки", .action(.system("focus-mode")))
+        expect("Начни запись экрана", .action(.system("screen-recording")))
+        expect("Переведи буфер", .action(.builtIn("translateClipboard")))
         // Conservative ASR typo correction: verb or one fixed-phrase token, not arbitrary prose.
         expect("Отрой Telegram", .action(.target(.application, "telegram")))
         expect("Поствь окно справа", .action(.window("right-half")))

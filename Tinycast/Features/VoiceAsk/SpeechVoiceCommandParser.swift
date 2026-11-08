@@ -59,7 +59,7 @@ enum SpeechVoiceCommandParser {
     }
 
     // The same declarations drive both parsing and the in-app voice command catalog.
-    private static let fixedPatterns: [Pattern] = [
+    private static let builtinPatterns: [Pattern] = [
         .init(section: "Окна", title: "На правую половину", phrases: [
             "окно справа", "поставь окно справа", "размести окно справа",
             "окно на правую половину", "помести окно на правую половину",
@@ -159,11 +159,8 @@ enum SpeechVoiceCommandParser {
         .init(section: "Справка", title: "Каталог голосовых команд", phrases: [
             "покажи голосовые команды", "открой голосовые команды",
             "какие голосовые команды доступны"
-        ], intent: .builtIn("voiceCatalog"))
-    ] + additionalPatterns
+        ], intent: .builtIn("voiceCatalog")),
 
-    /// These actions already exist in Tinycast; voice recognition only exposes their allowlisted IDs.
-    private static let additionalPatterns: [Pattern] = [
         .init(section: "Окна", title: "Верхняя половина", phrases: [
             "окно наверх", "окно на верхнюю половину", "помести окно наверх"
         ], intent: .window("top-half"), feature: "windows"),
@@ -250,8 +247,29 @@ enum SpeechVoiceCommandParser {
         ], intent: .builtIn("createEvent")),
         .init(section: "Справка", title: "Настройки Tinycast", phrases: [
             "открой настройки тайникаст", "покажи настройки tinycast"
-        ], intent: .builtIn("settings"))
+        ], intent: .builtIn("settings")),
+        .init(section: "Система", title: "Сделать скриншот", phrases: [
+            "сделай скриншот"
+        ], intent: .system("screenshot")),
+        .init(section: "Система", title: "Режим фокусировки", phrases: [
+            "включи фокус", "режим фокусировки"
+        ], intent: .system("focus-mode")),
+        .init(section: "Система", title: "Запись экрана", phrases: [
+            "начни запись экрана"
+        ], intent: .system("screen-recording")),
+        .init(section: "Поиск и данные", title: "Перевести буфер", phrases: [
+            "переведи буфер"
+        ], intent: .builtIn("translateClipboard"))
     ]
+
+    /// O(1) exact phrase lookup built once from `builtinPatterns`.
+    private static let phraseIndex: [String: Intent] = {
+        var dict: [String: Intent] = [:]
+        for pattern in builtinPatterns {
+            for phrase in pattern.phrases where dict[phrase] == nil { dict[phrase] = pattern.intent }
+        }
+        return dict
+    }()
 
     // More specific prefixes must win before the generic open/run verbs.
     private static let namedRules: [NamedRule] = [
@@ -318,7 +336,7 @@ enum SpeechVoiceCommandParser {
     }
 
     static var builtinCatalog: [CatalogItem] {
-        fixedPatterns.map {
+        builtinPatterns.map {
             .init(section: $0.section, title: $0.title, phrases: $0.phrases, feature: $0.feature)
         } + [
             .init(section: "Система", title: "Установить громкость", phrases: [
@@ -374,8 +392,8 @@ enum SpeechVoiceCommandParser {
             }
         }
 
-        if let fixed = fixedPatterns.first(where: { $0.phrases.contains(phrase) }) {
-            return .action(fixed.intent)
+        if let intent = phraseIndex[phrase] {
+            return .action(intent)
         }
 
         for prefix in ["громкость", "установи громкость", "поставь громкость", "сделай громкость"] {
@@ -466,7 +484,7 @@ enum SpeechVoiceCommandParser {
         let words = phrase.split(separator: " ")
         guard words.count >= 2 else { return nil }
         var actions: [Intent] = []
-        for pattern in fixedPatterns {
+        for pattern in builtinPatterns {
             for example in pattern.phrases {
                 let expected = example.split(separator: " ")
                 guard words.count == expected.count else { continue }

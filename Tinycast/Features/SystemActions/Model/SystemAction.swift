@@ -36,6 +36,9 @@ struct SystemAction: Identifiable, Hashable, Sendable {
         case setBrightness = "set-brightness"
         case dismissNotifications = "dismiss-notifications"
         case toggleBluetooth = "toggle-bluetooth"
+        case screenshot
+        case focusMode = "focus-mode"
+        case screenRecording = "screen-recording"
     }
 
     /// Whether it confirms first, and the copy; every such action is destructive.
@@ -114,6 +117,9 @@ enum SystemActionCatalog {
         case .setBrightness: return "Set Brightness"
         case .dismissNotifications: return "Dismiss Notifications"
         case .toggleBluetooth: return "Toggle Bluetooth"
+        case .screenshot: return "Take Screenshot"
+        case .focusMode: return "Toggle Focus"
+        case .screenRecording: return "Record Screen"
         }
     }
 
@@ -150,6 +156,9 @@ enum SystemActionCatalog {
         case .dismissNotifications: return "bell.slash"
         // Not an SF Symbol: the logo is a trademark, so this is a bundled asset.
         case .toggleBluetooth: return "bluetooth"
+        case .screenshot: return "camera.viewfinder"
+        case .focusMode: return "person.and.background.dotted"
+        case .screenRecording: return "record.circle"
         }
     }
 
