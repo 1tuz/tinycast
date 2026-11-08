@@ -136,8 +136,8 @@ struct UpdateCheckTests {
         Data(
             """
             [{"tag_name":"v\(version)","prerelease":false,"draft":false,"assets":[
-                {"name":"Tinycast-Universal-\(version).zip","size":100,
-                 "browser_download_url":"https://example.com/update.zip"}
+                {"name":"Tinycast-\(version).dmg","size":100,
+                 "browser_download_url":"https://example.com/update.dmg"}
             ]}]
             """.utf8)
     }

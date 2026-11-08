@@ -221,6 +221,9 @@ final class AppCore {
         chats: aiChats, settings: settings, palette: palette,
         paletteCoordinator: paletteCoordinator, core: self)
     @ObservationIgnored private(set) lazy var speechVoice = SpeechRuntimeVoiceAsk(core: self)
+    /// Its own window and lifecycle; the catalog and disambiguation UI share one surface.
+    @ObservationIgnored private(set) lazy var voiceCommandCatalogWindow =
+        SpeechVoiceCommandCatalogWindow(core: self)
 
     @ObservationIgnored private lazy var windowController = PaletteWindowController(core: self)
     @ObservationIgnored private lazy var messageHUD = MessageHUDController(settings: settings)
@@ -267,7 +270,6 @@ final class AppCore {
         Signposts.interval("AppCore.start") {
             // Shorten AppKit's ~2–3s tooltip delay; registration domain, so a user default wins.
             UserDefaults.standard.register(defaults: ["NSInitialToolTipDelay": 250])
-            CompactFavoritesMigration.run(settingsFileEnabled: settings.settingsFileEnabled)
             NSApp.setActivationPolicy(.accessory)
             applyAppearance()
             applyMotion()

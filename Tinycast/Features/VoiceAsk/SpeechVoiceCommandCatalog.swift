@@ -5,14 +5,18 @@ import SwiftUI
 /// It also displays disambiguation choices when speech matches multiple targets.
 @MainActor
 final class SpeechVoiceCommandCatalogWindow {
-    static let shared = SpeechVoiceCommandCatalogWindow()
+    private let core: AppCore
     private var window: NSWindow?
 
-    func show(core: AppCore) {
+    init(core: AppCore) {
+        self.core = core
+    }
+
+    func show() {
         present(SpeechVoiceCommandCatalogView(core: core), title: "Голосовые команды")
     }
 
-    func showChoices(_ choices: [SpeechVoiceCommandParser.Target], core: AppCore) {
+    func showChoices(_ choices: [SpeechVoiceCommandParser.Target]) {
         present(SpeechVoiceCommandChoicesView(core: core, choices: choices),
                 title: "Уточните голосовую команду")
     }
@@ -223,7 +227,7 @@ private struct SpeechVoiceCommandChoicesView: View {
                 LazyVStack(alignment: .leading, spacing: 8) {
                     ForEach(Array(choices.enumerated()), id: \.offset) { _, choice in
                         Button {
-                            SpeechVoiceCommandCatalogWindow.shared.close()
+                            core.voiceCommandCatalogWindow.close()
                             SpeechVoiceCommandRouter.execute(.target(choice.kind, choice.id), core: core)
                         } label: {
                             HStack {
@@ -244,7 +248,7 @@ private struct SpeechVoiceCommandChoicesView: View {
             }
             HStack {
                 Spacer()
-                Button("Отмена") { SpeechVoiceCommandCatalogWindow.shared.close() }
+                Button("Отмена") { core.voiceCommandCatalogWindow.close() }
                     .keyboardShortcut(.cancelAction)
             }
         }

@@ -15,7 +15,7 @@ enum SpeechVoiceCommandRouter {
             return true
         case .ambiguous(let targets):
             // Never guess if two applications or actions have similarly plausible names.
-            SpeechVoiceCommandCatalogWindow.shared.showChoices(targets, core: core)
+            core.voiceCommandCatalogWindow.showChoices(targets)
             return true
         case .action(.aiPrompt(let trigger, let prompt)):
             // The trigger entry decides the model; a missing entry falls back to the default.
@@ -148,7 +148,14 @@ enum SpeechVoiceCommandRouter {
             case "windows": core.launcherCoordinator.runCommand(.switchWindows)
             case "files": core.fileSearchCoordinator.show(query: query ?? "")
             case "searchNotes": core.notesCoordinator.searchNotes(query: query)
-            case "voiceCatalog": SpeechVoiceCommandCatalogWindow.shared.show(core: core)
+            case "voiceCatalog": core.voiceCommandCatalogWindow.show()
+            case "translateClipboard":
+                let text = NSPasteboard.general.string(forType: .string) ?? ""
+                guard !text.isEmpty else {
+                    core.showMessage("Буфер обмена пуст", tone: .neutral)
+                    return
+                }
+                core.quickAICoordinator.sendVoicePrompt("Переведи текст:\n\n" + text)
             default: break
             }
         case .aiPrompt:

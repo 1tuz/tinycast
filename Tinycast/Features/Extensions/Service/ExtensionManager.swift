@@ -969,17 +969,14 @@ final class ExtensionManager: ExtensionRuntimeDelegate, ExtensionHostContext {
             NSWorkspace.shared.open(target)
             return
         }
-        let panel = NSAlert()
-        panel.messageText = String(localized: "Open With")
-        panel.informativeText = target.lastPathComponent
-        for candidate in candidates.prefix(4) {
-            panel.addButton(withTitle: candidate.deletingPathExtension().lastPathComponent)
+        let options = candidates.prefix(4).map { candidate in
+            DialogAction(title: candidate.deletingPathExtension().lastPathComponent)
         }
-        panel.addButton(withTitle: String(localized: "Cancel"))
-        let response = panel.runModal().rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
-        guard response >= 0, response < min(candidates.count, 4) else { return }
+        let response = await coordinator?.chooseApplication(
+            for: target, options: options) ?? options.count
+        guard 0..<options.count ~= response else { return }
         NSWorkspace.shared.open(
-            [target], withApplicationAt: candidates[Int(response)],
+            [target], withApplicationAt: candidates[response],
             configuration: NSWorkspace.OpenConfiguration(), completionHandler: nil)
     }
 

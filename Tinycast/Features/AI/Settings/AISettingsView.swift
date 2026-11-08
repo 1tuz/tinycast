@@ -77,7 +77,7 @@ struct AISettingsView: View {
             }
             Toggle("Run Tinycast voice commands", isOn: $speechCommandsEnabled)
             Button("Показать все голосовые команды") {
-                SpeechVoiceCommandCatalogWindow.shared.show(core: core)
+                core.voiceCommandCatalogWindow.show()
             }
             Toggle("Send transcript automatically to Quick AI", isOn: $speechAutoSend)
             LabeledContent("Global shortcut") { ShortcutRecorder(action: .voiceAsk) }

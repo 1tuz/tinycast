@@ -306,4 +306,15 @@ final class ExtensionCoordinator {
             confirmRole: alert.isDestructive ? .destructive : .standard,
             dismissTitle: alert.dismissTitle)
     }
+
+    /// Which app should open a file: `options` are the candidates, and the answer is their index.
+    func chooseApplication(for target: URL, options: [DialogAction]) async -> Int {
+        NSApp.activate(ignoringOtherApps: true)
+        return await core.choose(
+            title: String(localized: "Open With"),
+            message: target.lastPathComponent,
+            symbol: "questionmark.circle",
+            options: options + [DialogAction(title: String(localized: "Cancel"), role: .cancel)],
+            defaultIndex: 0)
+    }
 }
