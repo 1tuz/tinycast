@@ -50,6 +50,8 @@ enum LauncherOrder {
         var title: String
         /// Queries this entry wins until the user opens a rival more.
         var boostedTerms: Set<String> = []
+        /// Additional launcher aliases share the same priority as the primary nickname.
+        var additionalAliases: [SearchText] = []
     }
 
     static func ranked<Item>(
@@ -138,11 +140,13 @@ enum LauncherOrder {
         init?(profile: SearchProfile, signals: Signals, query: Query, sensitivity: SearchSensitivity) {
             let latinLength = query.latin.units.count
             let typedLength = query.typed.units.count
-            alias = signals.alias.map { Self.aliasHit($0, query.typed) } ?? .none
+            let allAliases = [signals.alias].compactMap { $0 } + signals.additionalAliases
+            let aliasHits = allAliases.map { Self.aliasHit($0, query.typed) }
+            alias = aliasHits.contains(.exact) ? .exact : (aliasHits.contains(.prefix) ? .prefix : .none)
             isBoosted = signals.boostedTerms.contains(query.term)
             let titleMatch = LauncherMatch.match(query.latin, in: profile.title)
             var alternateTitles = profile.alternateTitles
-            if alias == .none, let text = signals.alias { alternateTitles.append(text) }
+            if alias == .none { alternateTitles += allAliases }
             let alternates = alternateTitles.map { LauncherMatch.match(query.typed, in: $0) }
             let subtitleMatch = profile.subtitle.flatMap { LauncherMatch.match(query.latin, in: $0) }
 
@@ -262,7 +266,9 @@ enum LauncherOrder {
 
     /// What decides two entries the query cannot tell apart.
     private static func tiebreak(_ a: Candidate, _ b: Candidate) -> Int {
-        let aliased = descending(a.signals.alias != nil, b.signals.alias != nil)
+        let aHasAlias = a.signals.alias != nil || !a.signals.additionalAliases.isEmpty
+        let bHasAlias = b.signals.alias != nil || !b.signals.additionalAliases.isEmpty
+        let aliased = descending(aHasAlias, bHasAlias)
         return first(frecency(a, b), aliased, descending(a.signals.priority, b.signals.priority))
             ?? collate(a, b)
     }

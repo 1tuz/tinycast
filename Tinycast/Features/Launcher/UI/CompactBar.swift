@@ -55,7 +55,7 @@ struct CompactBar: View {
                 capsule.fill(.clear)
                     .frame(width: geometry.capsuleWidth(revealed: revealed))
                     .frame(maxHeight: .infinity)
-                    .glassEffect(.regular, in: capsule)
+                    .glassEffect(.clear, in: capsule)
                     .animation(
                         reduceMotion ? nil : BarMotion.capsule.delay(BarMotion.revealDelay),
                         value: revealed)
@@ -91,7 +91,7 @@ struct CompactBar: View {
         .accessibilityAddTraits(selection == command ? [.isSelected] : [])
         .accessibilityHidden(!revealed)
         .glassEffect(
-            .regular.tint(selection == command ? Theme.Colors.compactShortcutSelectionTint : nil)
+            .clear.tint(selection == command ? Theme.Colors.compactShortcutSelectionTint : nil)
                 .interactive(), in: .circle
         )
         .scaleEffect(revealed ? 1 : BarMotion.parkedScale)

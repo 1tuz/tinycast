@@ -149,6 +149,97 @@ enum SpeechVoiceCommandParser {
             "покажи голосовые команды", "открой голосовые команды",
             "какие голосовые команды доступны"
         ], intent: .builtIn("voiceCatalog"))
+    ] + additionalPatterns
+
+    /// These actions already exist in Tinycast; voice recognition only exposes their allowlisted IDs.
+    private static let additionalPatterns: [Pattern] = [
+        .init(section: "Окна", title: "Верхняя половина", phrases: [
+            "окно наверх", "окно на верхнюю половину", "помести окно наверх"
+        ], intent: .window("top-half"), feature: "windows"),
+        .init(section: "Окна", title: "Нижняя половина", phrases: [
+            "окно вниз", "окно на нижнюю половину", "помести окно вниз"
+        ], intent: .window("bottom-half"), feature: "windows"),
+        .init(section: "Окна", title: "Верхняя левая четверть", phrases: [
+            "окно в верхний левый угол", "окно в верхнюю левую четверть"
+        ], intent: .window("top-left-quarter"), feature: "windows"),
+        .init(section: "Окна", title: "Верхняя правая четверть", phrases: [
+            "окно в верхний правый угол", "окно в верхнюю правую четверть"
+        ], intent: .window("top-right-quarter"), feature: "windows"),
+        .init(section: "Окна", title: "Нижняя левая четверть", phrases: [
+            "окно в нижний левый угол", "окно в нижнюю левую четверть"
+        ], intent: .window("bottom-left-quarter"), feature: "windows"),
+        .init(section: "Окна", title: "Нижняя правая четверть", phrases: [
+            "окно в нижний правый угол", "окно в нижнюю правую четверть"
+        ], intent: .window("bottom-right-quarter"), feature: "windows"),
+        .init(section: "Окна", title: "Левая треть", phrases: [
+            "окно на левую треть", "левая треть экрана"
+        ], intent: .window("first-third"), feature: "windows"),
+        .init(section: "Окна", title: "Средняя треть", phrases: [
+            "окно на среднюю треть", "средняя треть экрана"
+        ], intent: .window("center-third"), feature: "windows"),
+        .init(section: "Окна", title: "Правая треть", phrases: [
+            "окно на правую треть", "правая треть экрана"
+        ], intent: .window("last-third"), feature: "windows"),
+        .init(section: "Окна", title: "Увеличить окно", phrases: [
+            "сделай окно больше", "увеличь размер окна"
+        ], intent: .window("make-larger"), feature: "windows"),
+        .init(section: "Окна", title: "Уменьшить окно", phrases: [
+            "сделай окно меньше", "уменьши размер окна"
+        ], intent: .window("make-smaller"), feature: "windows"),
+        .init(section: "Окна", title: "Полноэкранный режим", phrases: [
+            "переключи полноэкранный режим", "полноэкранный режим окна"
+        ], intent: .window("toggle-fullscreen"), feature: "windows"),
+        .init(section: "Окна", title: "Сдвинуть вверх", phrases: [
+            "сдвинь окно вверх", "перемести окно вверх"
+        ], intent: .window("move-up"), feature: "windows"),
+        .init(section: "Окна", title: "Сдвинуть вниз", phrases: [
+            "сдвинь окно вниз", "перемести окно вниз"
+        ], intent: .window("move-down"), feature: "windows"),
+        .init(section: "Система", title: "Показать рабочий стол", phrases: [
+            "покажи рабочий стол", "скрой все окна"
+        ], intent: .system("show-desktop")),
+        .init(section: "Система", title: "Переключить оформление", phrases: [
+            "переключи темную тему", "переключи светлую тему", "переключи оформление"
+        ], intent: .system("toggle-system-appearance")),
+        .init(section: "Система", title: "Stage Manager", phrases: [
+            "переключи стейдж менеджер", "переключи stage manager"
+        ], intent: .system("toggle-stage-manager")),
+        .init(section: "Система", title: "Скрытые файлы", phrases: [
+            "переключи скрытые файлы", "покажи или скрой скрытые файлы"
+        ], intent: .system("toggle-hidden-files")),
+        .init(section: "Система", title: "Открыть корзину", phrases: [
+            "открой корзину", "покажи корзину"
+        ], intent: .system("open-trash")),
+        .init(section: "Система", title: "Скрыть остальные приложения", phrases: [
+            "скрой остальные приложения"
+        ], intent: .system("hide-all-apps-except-frontmost")),
+        .init(section: "Система", title: "Показать скрытые приложения", phrases: [
+            "покажи скрытые приложения"
+        ], intent: .system("unhide-all-hidden-apps")),
+        .init(section: "Поиск и данные", title: "Следующий элемент буфера", phrases: [
+            "вставь следующий элемент буфера", "вставь следующий из буфера"
+        ], intent: .builtIn("pasteNext")),
+        .init(section: "Поиск и данные", title: "Поиск сниппетов", phrases: [
+            "покажи сниппеты", "найди сниппет"
+        ], intent: .builtIn("snippets")),
+        .init(section: "Поиск и данные", title: "Поиск ссылок", phrases: [
+            "покажи быстрые ссылки"
+        ], intent: .builtIn("quicklinks"), feature: "quicklinks"),
+        .init(section: "Поиск и данные", title: "Поиск по меню", phrases: [
+            "поиск по меню", "покажи команды меню"
+        ], intent: .builtIn("menuSearch")),
+        .init(section: "Заметки", title: "Создать заметку", phrases: [
+            "создай заметку", "новая заметка"
+        ], intent: .builtIn("createNote"), feature: "notes"),
+        .init(section: "Календарь", title: "Скопировать ссылку на встречу", phrases: [
+            "скопируй ссылку на встречу", "копируй ссылку на следующую встречу"
+        ], intent: .builtIn("copyMeetingLink")),
+        .init(section: "Календарь", title: "Создать событие", phrases: [
+            "создай событие", "новое событие в календаре"
+        ], intent: .builtIn("createEvent")),
+        .init(section: "Справка", title: "Настройки Tinycast", phrases: [
+            "открой настройки тайникаст", "покажи настройки tinycast"
+        ], intent: .builtIn("settings"))
     ]
 
     // More specific prefixes must win before the generic open/run verbs.
@@ -309,7 +400,66 @@ enum SpeechVoiceCommandParser {
             let rawName = tail(of: original, skipping: rule.prefix.split(separator: " ").count)
             return resolveName(rawName, kinds: rule.kinds, targets: targets)
         }
+
+        // Only explicit, unambiguous commands receive typo correction. Free dictation
+        // and ordinary questions must never accidentally become executable actions.
+        if let corrected = fuzzyFixedPattern(phrase) { return corrected }
+
+        // The action verb may contain one ASR error; qualifiers must remain exact.
+        for (prefix, action) in [
+            ("найди файл", "files"), ("найди файлы", "files"),
+            ("найди заметку", "searchNotes"), ("найди заметки", "searchNotes")
+        ] {
+            guard fuzzyPrefix(prefix, in: phrase) else { continue }
+            let query = searchText(after: prefix, in: original)
+            guard !query.isEmpty else { return .unknown("Назови объект поиска") }
+            return .action(.builtIn(action, query: query))
+        }
+        for rule in namedRules {
+            guard fuzzyPrefix(rule.prefix, in: phrase) else { continue }
+            let name = tail(of: original, skipping: rule.prefix.split(separator: " ").count)
+            guard !name.isEmpty else { return .unknown("Назови объект команды") }
+            return resolveName(name, kinds: rule.kinds, targets: targets)
+        }
         return .notCommand
+    }
+
+    /// No edit distance on the target here: that is handled separately by resolveName.
+    /// This prevents a fuzzy action word from silently changing a qualifier such as "ссылку".
+    private static func fuzzyPrefix(_ prefix: String, in phrase: String) -> Bool {
+        let command = prefix.split(separator: " ")
+        let words = phrase.split(separator: " ")
+        guard words.count > command.count,
+              let expected = command.first, let spoken = words.first,
+              expected.count >= 5, spoken.count >= 4,
+              distance(String(spoken), String(expected), limit: 1) == 1
+        else { return false }
+        return Array(words.dropFirst().prefix(command.count - 1)) == Array(command.dropFirst())
+    }
+
+    /// Correct one typo in a multiword built-in phrase, not arbitrary speech.
+    /// Different plausible actions deliberately return unknown rather than executing one.
+    private static func fuzzyFixedPattern(_ phrase: String) -> Resolution? {
+        let words = phrase.split(separator: " ")
+        guard words.count >= 2 else { return nil }
+        var actions: [Intent] = []
+        for pattern in fixedPatterns {
+            for example in pattern.phrases {
+                let expected = example.split(separator: " ")
+                guard words.count == expected.count else { continue }
+                var errors = 0
+                for (spoken, reference) in zip(words, expected) where spoken != reference {
+                    guard spoken.count >= 4, reference.count >= 5,
+                          distance(String(spoken), String(reference), limit: 1) == 1
+                    else { errors = 2; break }
+                    errors += 1
+                    if errors > 1 { break }
+                }
+                if errors == 1, !actions.contains(pattern.intent) { actions.append(pattern.intent) }
+            }
+        }
+        if actions.count > 1 { return .unknown("Неоднозначная голосовая команда") }
+        return actions.first.map { .action($0) }
     }
 
     /// An exact alias always wins. Otherwise choose only a clearly closest candidate.

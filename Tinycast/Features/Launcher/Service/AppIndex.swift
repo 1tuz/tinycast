@@ -866,6 +866,9 @@ final class AppIndex {
             alias: aliases.alias(for: entry.preferenceKey).map { SearchText($0, transliterated: false) },
             usage: usage.usage(for: entry.preferenceKey),
             priority: entry.kind.descriptor.rankPriority, title: entry.name,
-            boostedTerms: CommandCatalog.command(for: entry)?.boostedTerms ?? [])
+            boostedTerms: CommandCatalog.command(for: entry)?.boostedTerms ?? [],
+            additionalAliases: aliases.allAliases(for: entry.preferenceKey).dropFirst().map {
+                SearchText($0, transliterated: false)
+            })
     }
 }

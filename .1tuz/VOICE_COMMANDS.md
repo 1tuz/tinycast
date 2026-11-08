@@ -26,6 +26,18 @@ Example commands:
 - `Выполни команду Очистка кэша` => custom command (requires confirmation)
 - `Открой ссылку Документация` => Quicklink (requires confirmation)
 
+## Voice command improvements (0020)
+
+- The voice parser accepts one ASR character error in a multiword built-in phrase
+  or in the first word of an explicit action prefix. Qualifiers and objects retain
+  strict matching plus bounded Damerau-Levenshtein on the object name.
+- Voice aliases accept up to 8 names separated by semicolons in the command catalog;
+  they share the existing launcher alias store and its settings-backup data.
+- More already implemented system/window commands and launcher actions are exposed
+  without adding a transcription engine or changes to Handy.
+- An uncertain spoken command does not run an action. The unpushed local
+  "посмотри" trigger is deliberately not modified by this patch.
+
 ## Matching and safety
 
 The grammar first matches an explicit **action verb** (`открой`, `запусти`, etc.).

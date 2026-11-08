@@ -14,6 +14,7 @@ Everything that makes this fork differ from [abue-ammar/tinycast](https://github
 | `patches/0017-roadmap-features.patch` | Carries local roadmap features and removes upstream Dictation/microphone capture |
 | `patches/0018-speech-runtime-voice.patch` | Restores Voice Ask with local Speech Runtime transcriptions, Hyper PTT and Quick AI delivery |
 | `patches/0019-voice-commands.patch` | Voice control, typo-tolerant matching, and searchable command catalog |
+| `patches/0020-voice-improvements.patch` | Multiple aliases, conservative ASR typo correction and extra native voice actions |
 | `apply.sh` | Applies patches, removes website source and publishing workflows, rewrites release links, regenerates the XcodeGen project |
 | `gate.sh` | Requires the local Voice Ask implementation, rejects obsolete Codex realtime audio and runs a Release build and focused harnesses |
 | `UPSTREAM` | Upstream commit SHA used for the last rebuild |

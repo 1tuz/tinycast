@@ -53,7 +53,7 @@ private struct SpeechVoiceCommandCatalogView: View {
 
     private let sections = [
         "Справка", "Приложения", "Окна", "Раскладки окон", "Комнаты окон", "Система",
-        "Поиск и данные", "Календарь", "Apple Shortcuts", "Сценарии",
+        "Поиск и данные", "Заметки", "Календарь", "Apple Shortcuts", "Сценарии",
         "Пользовательские команды", "Quicklinks"
     ]
 
@@ -151,16 +151,17 @@ private struct SpeechVoiceCommandCatalogView: View {
         .frame(minWidth: 560, minHeight: 410)
         .sheet(item: $aliasEdit) { edit in
             VStack(alignment: .leading, spacing: 14) {
-                Text("Голосовой псевдоним: \(edit.name)")
+                Text("Псевдонимы: \(edit.name)")
                     .font(.headline)
-                TextField("Например: телега", text: $aliasDraft)
-                Text("Используется и обычным поиском Tinycast. Пустое значение удаляет псевдоним.")
+                TextField("Например: телега; тг; телеграмм", text: $aliasDraft)
+                Text("Разделяйте точкой с запятой (до 8 названий). Все работают и в поиске Tinycast. Пустое поле удаляет псевдонимы.")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
                     Spacer()
                     Button("Отмена") { aliasEdit = nil }
                     Button("Сохранить") {
-                        core.aliases.setAlias(aliasDraft, for: edit.preferenceKey)
+                        core.aliases.setAliases(
+                            aliasDraft.components(separatedBy: ";"), for: edit.preferenceKey)
                         aliasEdit = nil
                     }
                     .keyboardShortcut(.defaultAction)
@@ -174,7 +175,7 @@ private struct SpeechVoiceCommandCatalogView: View {
     private func editAlias(_ item: SpeechVoiceCommandParser.CatalogItem) {
         guard let id = item.targetID,
               let entry = core.appIndex.apps.first(where: { $0.id == id }) else { return }
-        aliasDraft = core.aliases.alias(for: entry.preferenceKey) ?? ""
+        aliasDraft = core.aliases.allAliases(for: entry.preferenceKey).joined(separator: "; ")
         aliasEdit = SpeechVoiceAliasEdit(id: entry.id, name: entry.name, preferenceKey: entry.preferenceKey)
     }
 

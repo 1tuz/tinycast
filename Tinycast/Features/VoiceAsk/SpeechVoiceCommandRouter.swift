@@ -40,10 +40,7 @@ enum SpeechVoiceCommandRouter {
             // Two package installations may legitimately share a display name.
             // Keep unique entries and ask the user rather than picking either one.
             guard seen.insert(kind.rawValue + ":" + entry.id).inserted else { continue }
-            var aliases = entry.alternateTitles
-            if let userAlias = core.aliases.alias(for: entry.preferenceKey) {
-                aliases.append(userAlias)
-            }
+            var aliases = entry.alternateTitles + core.aliases.allAliases(for: entry.preferenceKey)
             if kind == .application { aliases += familiarNames(for: entry.name) }
             targets.append(.init(kind: kind, id: entry.id, name: entry.name, aliases: aliases))
         }
@@ -66,6 +63,8 @@ enum SpeechVoiceCommandRouter {
         case "obsidian": ["обсидиан"]
         case "obsidium": ["обсидиум"]
         case "cursor": ["курсор", "корсер"]
+        case "claude": ["клод", "клауд"]
+        case "codex": ["кодекс", "кодэкс"]
         case "firefox": ["файрфокс", "фаерфокс"]
         case "jira": ["джира"]
         case "docker": ["докер"]
@@ -125,9 +124,17 @@ enum SpeechVoiceCommandRouter {
         case .builtIn(let id, let query):
             switch id {
             case "clipboard": core.launcherCoordinator.runCommand(.clipboardHistory)
+            case "pasteNext": core.launcherCoordinator.runCommand(.pasteSequentially)
             case "notes": core.launcherCoordinator.runCommand(.showNotes)
+            case "createNote": core.launcherCoordinator.runCommand(.createNote)
+            case "snippets": core.launcherCoordinator.runCommand(.searchSnippets)
+            case "quicklinks": core.launcherCoordinator.runCommand(.searchQuicklinks)
+            case "menuSearch": core.launcherCoordinator.runCommand(.searchMenuItems)
             case "schedule": core.launcherCoordinator.runCommand(.mySchedule)
             case "meeting": core.launcherCoordinator.runCommand(.joinNextMeeting)
+            case "copyMeetingLink": core.launcherCoordinator.runCommand(.copyMeetingLink)
+            case "createEvent": core.launcherCoordinator.runCommand(.createEvent)
+            case "settings": core.launcherCoordinator.runCommand(.settings)
             case "search": core.paletteCoordinator.showPalette(mode: .launcher, seeding: query)
             case "windows": core.launcherCoordinator.runCommand(.switchWindows)
             case "files": core.fileSearchCoordinator.show(query: query ?? "")

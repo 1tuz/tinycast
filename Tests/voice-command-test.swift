@@ -79,6 +79,27 @@ struct VoiceCommandTest {
         expect("Установи громкость ноль", .action(.volume(0)))
         expect("Найди файл докер compose.", .action(.builtIn("files", query: "докер compose")))
         expect("Найди заметку Kubernetes!", .action(.builtIn("searchNotes", query: "Kubernetes")))
+        // New direct mappings reuse already shipped Tinycast actions (no AI model).
+        expect("Покажи рабочий стол", .action(.system("show-desktop")))
+        expect("Окно в верхний правый угол", .action(.window("top-right-quarter")))
+        expect("Окно на среднюю треть", .action(.window("center-third")))
+        expect("Перемести окно вниз", .action(.window("move-down")))
+        expect("Создай заметку", .action(.builtIn("createNote")))
+        expect("Скопируй ссылку на встречу", .action(.builtIn("copyMeetingLink")))
+        expect("Поиск по меню", .action(.builtIn("menuSearch")))
+        expect("Вставь следующий элемент буфера", .action(.builtIn("pasteNext")))
+        // Conservative ASR typo correction: verb or one fixed-phrase token, not arbitrary prose.
+        expect("Отрой Telegram", .action(.target(.application, "telegram")))
+        expect("Поствь окно справа", .action(.window("right-half")))
+        expect("Покажи историю будера", .action(.builtIn("clipboard")))
+        expect("Наиди файл docker-compose.yml", .action(.builtIn("files", query: "docker-compose.yml")))
+        let customAliases = [P.Target(kind: .application, id: "myapp", name: "Claude",
+                                       aliases: ["Клод", "Клауд"])]
+        guard P.parse("Открой Клод", targets: customAliases)
+                == .action(.target(.application, "myapp")) else {
+            fatalError("User-defined spoken aliases must match cross-script application names")
+        }
+        tested += 1
         expect("Как открыть Telegram в macOS?", .notCommand)
         expect("Объясни как изменить громкость", .notCommand)
         expect("Выключи компьютер", .notCommand)

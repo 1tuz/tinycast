@@ -1,0 +1,466 @@
+diff --git a/Tinycast/Features/VoiceAsk/SpeechVoiceCommandParser.swift b/Tinycast/Features/VoiceAsk/SpeechVoiceCommandParser.swift
+--- a/Tinycast/Features/VoiceAsk/SpeechVoiceCommandParser.swift
++++ b/Tinycast/Features/VoiceAsk/SpeechVoiceCommandParser.swift
+@@ -151,6 +151,97 @@
+             "покажи голосовые команды", "открой голосовые команды",
+             "какие голосовые команды доступны"
+         ], intent: .builtIn("voiceCatalog"))
++    ] + additionalPatterns
++
++    /// These actions already exist in Tinycast; voice recognition only exposes their allowlisted IDs.
++    private static let additionalPatterns: [Pattern] = [
++        .init(section: "Окна", title: "Верхняя половина", phrases: [
++            "окно наверх", "окно на верхнюю половину", "помести окно наверх"
++        ], intent: .window("top-half"), feature: "windows"),
++        .init(section: "Окна", title: "Нижняя половина", phrases: [
++            "окно вниз", "окно на нижнюю половину", "помести окно вниз"
++        ], intent: .window("bottom-half"), feature: "windows"),
++        .init(section: "Окна", title: "Верхняя левая четверть", phrases: [
++            "окно в верхний левый угол", "окно в верхнюю левую четверть"
++        ], intent: .window("top-left-quarter"), feature: "windows"),
++        .init(section: "Окна", title: "Верхняя правая четверть", phrases: [
++            "окно в верхний правый угол", "окно в верхнюю правую четверть"
++        ], intent: .window("top-right-quarter"), feature: "windows"),
++        .init(section: "Окна", title: "Нижняя левая четверть", phrases: [
++            "окно в нижний левый угол", "окно в нижнюю левую четверть"
++        ], intent: .window("bottom-left-quarter"), feature: "windows"),
++        .init(section: "Окна", title: "Нижняя правая четверть", phrases: [
++            "окно в нижний правый угол", "окно в нижнюю правую четверть"
++        ], intent: .window("bottom-right-quarter"), feature: "windows"),
++        .init(section: "Окна", title: "Левая треть", phrases: [
++            "окно на левую треть", "левая треть экрана"
++        ], intent: .window("first-third"), feature: "windows"),
++        .init(section: "Окна", title: "Средняя треть", phrases: [
++            "окно на среднюю треть", "средняя треть экрана"
++        ], intent: .window("center-third"), feature: "windows"),
++        .init(section: "Окна", title: "Правая треть", phrases: [
++            "окно на правую треть", "правая треть экрана"
++        ], intent: .window("last-third"), feature: "windows"),
++        .init(section: "Окна", title: "Увеличить окно", phrases: [
++            "сделай окно больше", "увеличь размер окна"
++        ], intent: .window("make-larger"), feature: "windows"),
++        .init(section: "Окна", title: "Уменьшить окно", phrases: [
++            "сделай окно меньше", "уменьши размер окна"
++        ], intent: .window("make-smaller"), feature: "windows"),
++        .init(section: "Окна", title: "Полноэкранный режим", phrases: [
++            "переключи полноэкранный режим", "полноэкранный режим окна"
++        ], intent: .window("toggle-fullscreen"), feature: "windows"),
++        .init(section: "Окна", title: "Сдвинуть вверх", phrases: [
++            "сдвинь окно вверх", "перемести окно вверх"
++        ], intent: .window("move-up"), feature: "windows"),
++        .init(section: "Окна", title: "Сдвинуть вниз", phrases: [
++            "сдвинь окно вниз", "перемести окно вниз"
++        ], intent: .window("move-down"), feature: "windows"),
++        .init(section: "Система", title: "Показать рабочий стол", phrases: [
++            "покажи рабочий стол", "скрой все окна"
++        ], intent: .system("show-desktop")),
++        .init(section: "Система", title: "Переключить оформление", phrases: [
++            "переключи темную тему", "переключи светлую тему", "переключи оформление"
++        ], intent: .system("toggle-system-appearance")),
++        .init(section: "Система", title: "Stage Manager", phrases: [
++            "переключи стейдж менеджер", "переключи stage manager"
++        ], intent: .system("toggle-stage-manager")),
++        .init(section: "Система", title: "Скрытые файлы", phrases: [
++            "переключи скрытые файлы", "покажи или скрой скрытые файлы"
++        ], intent: .system("toggle-hidden-files")),
++        .init(section: "Система", title: "Открыть корзину", phrases: [
++            "открой корзину", "покажи корзину"
++        ], intent: .system("open-trash")),
++        .init(section: "Система", title: "Скрыть остальные приложения", phrases: [
++            "скрой остальные приложения"
++        ], intent: .system("hide-all-apps-except-frontmost")),
++        .init(section: "Система", title: "Показать скрытые приложения", phrases: [
++            "покажи скрытые приложения"
++        ], intent: .system("unhide-all-hidden-apps")),
++        .init(section: "Поиск и данные", title: "Следующий элемент буфера", phrases: [
++            "вставь следующий элемент буфера", "вставь следующий из буфера"
++        ], intent: .builtIn("pasteNext")),
++        .init(section: "Поиск и данные", title: "Поиск сниппетов", phrases: [
++            "покажи сниппеты", "найди сниппет"
++        ], intent: .builtIn("snippets")),
++        .init(section: "Поиск и данные", title: "Поиск ссылок", phrases: [
++            "покажи быстрые ссылки"
++        ], intent: .builtIn("quicklinks"), feature: "quicklinks"),
++        .init(section: "Поиск и данные", title: "Поиск по меню", phrases: [
++            "поиск по меню", "покажи команды меню"
++        ], intent: .builtIn("menuSearch")),
++        .init(section: "Заметки", title: "Создать заметку", phrases: [
++            "создай заметку", "новая заметка"
++        ], intent: .builtIn("createNote"), feature: "notes"),
++        .init(section: "Календарь", title: "Скопировать ссылку на встречу", phrases: [
++            "скопируй ссылку на встречу", "копируй ссылку на следующую встречу"
++        ], intent: .builtIn("copyMeetingLink")),
++        .init(section: "Календарь", title: "Создать событие", phrases: [
++            "создай событие", "новое событие в календаре"
++        ], intent: .builtIn("createEvent")),
++        .init(section: "Справка", title: "Настройки Tinycast", phrases: [
++            "открой настройки тайникаст", "покажи настройки tinycast"
++        ], intent: .builtIn("settings"))
+     ]
+ 
+     // More specific prefixes must win before the generic open/run verbs.
+@@ -305,7 +396,66 @@
+             let rawName = tail(of: original, skipping: rule.prefix.split(separator: " ").count)
+             return resolveName(rawName, kinds: rule.kinds, targets: targets)
+         }
++
++        // Only explicit, unambiguous commands receive typo correction. Free dictation
++        // and ordinary questions must never accidentally become executable actions.
++        if let corrected = fuzzyFixedPattern(phrase) { return corrected }
++
++        // The action verb may contain one ASR error; qualifiers must remain exact.
++        for (prefix, action) in [
++            ("найди файл", "files"), ("найди файлы", "files"),
++            ("найди заметку", "searchNotes"), ("найди заметки", "searchNotes")
++        ] {
++            guard fuzzyPrefix(prefix, in: phrase) else { continue }
++            let query = searchText(after: prefix, in: original)
++            guard !query.isEmpty else { return .unknown("Назови объект поиска") }
++            return .action(.builtIn(action, query: query))
++        }
++        for rule in namedRules {
++            guard fuzzyPrefix(rule.prefix, in: phrase) else { continue }
++            let name = tail(of: original, skipping: rule.prefix.split(separator: " ").count)
++            guard !name.isEmpty else { return .unknown("Назови объект команды") }
++            return resolveName(name, kinds: rule.kinds, targets: targets)
++        }
+         return .notCommand
+     }
+ 
++    /// No edit distance on the target here: that is handled separately by resolveName.
++    /// This prevents a fuzzy action word from silently changing a qualifier such as "ссылку".
++    private static func fuzzyPrefix(_ prefix: String, in phrase: String) -> Bool {
++        let command = prefix.split(separator: " ")
++        let words = phrase.split(separator: " ")
++        guard words.count > command.count,
++              let expected = command.first, let spoken = words.first,
++              expected.count >= 5, spoken.count >= 4,
++              distance(String(spoken), String(expected), limit: 1) == 1
++        else { return false }
++        return Array(words.dropFirst().prefix(command.count - 1)) == Array(command.dropFirst())
++    }
++
++    /// Correct one typo in a multiword built-in phrase, not arbitrary speech.
++    /// Different plausible actions deliberately return unknown rather than executing one.
++    private static func fuzzyFixedPattern(_ phrase: String) -> Resolution? {
++        let words = phrase.split(separator: " ")
++        guard words.count >= 2 else { return nil }
++        var actions: [Intent] = []
++        for pattern in fixedPatterns {
++            for example in pattern.phrases {
++                let expected = example.split(separator: " ")
++                guard words.count == expected.count else { continue }
++                var errors = 0
++                for (spoken, reference) in zip(words, expected) where spoken != reference {
++                    guard spoken.count >= 4, reference.count >= 5,
++                          distance(String(spoken), String(reference), limit: 1) == 1
++                    else { errors = 2; break }
++                    errors += 1
++                    if errors > 1 { break }
++                }
++                if errors == 1, !actions.contains(pattern.intent) { actions.append(pattern.intent) }
++            }
++        }
++        if actions.count > 1 { return .unknown("Неоднозначная голосовая команда") }
++        return actions.first.map { .action($0) }
++    }
++
+     /// An exact alias always wins. Otherwise choose only a clearly closest candidate.
+diff --git a/Tinycast/Features/VoiceAsk/SpeechVoiceCommandRouter.swift b/Tinycast/Features/VoiceAsk/SpeechVoiceCommandRouter.swift
+--- a/Tinycast/Features/VoiceAsk/SpeechVoiceCommandRouter.swift
++++ b/Tinycast/Features/VoiceAsk/SpeechVoiceCommandRouter.swift
+@@ -39,6 +39,3 @@
+-            var aliases = entry.alternateTitles
+-            if let userAlias = core.aliases.alias(for: entry.preferenceKey) {
+-                aliases.append(userAlias)
+-            }
++            var aliases = entry.alternateTitles + core.aliases.allAliases(for: entry.preferenceKey)
+             if kind == .application { aliases += familiarNames(for: entry.name) }
+             targets.append(.init(kind: kind, id: entry.id, name: entry.name, aliases: aliases))
+@@ -63,3 +60,5 @@
+         case "cursor": ["курсор", "корсер"]
++        case "claude": ["клод", "клауд"]
++        case "codex": ["кодекс", "кодэкс"]
+         case "firefox": ["файрфокс", "фаерфокс"]
+         case "jira": ["джира"]
+@@ -127,7 +126,15 @@
+             case "clipboard": core.launcherCoordinator.runCommand(.clipboardHistory)
++            case "pasteNext": core.launcherCoordinator.runCommand(.pasteSequentially)
+             case "notes": core.launcherCoordinator.runCommand(.showNotes)
++            case "createNote": core.launcherCoordinator.runCommand(.createNote)
++            case "snippets": core.launcherCoordinator.runCommand(.searchSnippets)
++            case "quicklinks": core.launcherCoordinator.runCommand(.searchQuicklinks)
++            case "menuSearch": core.launcherCoordinator.runCommand(.searchMenuItems)
+             case "schedule": core.launcherCoordinator.runCommand(.mySchedule)
+             case "meeting": core.launcherCoordinator.runCommand(.joinNextMeeting)
++            case "copyMeetingLink": core.launcherCoordinator.runCommand(.copyMeetingLink)
++            case "createEvent": core.launcherCoordinator.runCommand(.createEvent)
++            case "settings": core.launcherCoordinator.runCommand(.settings)
+             case "search": core.paletteCoordinator.showPalette(mode: .launcher, seeding: query)
+             case "windows": core.launcherCoordinator.runCommand(.switchWindows)
+             case "files": core.fileSearchCoordinator.show(query: query ?? "")
+diff --git a/Tinycast/Features/Launcher/Service/AliasStore.swift b/Tinycast/Features/Launcher/Service/AliasStore.swift
+--- a/Tinycast/Features/Launcher/Service/AliasStore.swift
++++ b/Tinycast/Features/Launcher/Service/AliasStore.swift
+@@ -19,12 +19,39 @@
+-    func alias(for entryKey: String) -> String? { aliases[entryKey] }
++    /// Backwards compatible: the first alias remains the primary launcher nickname.
++    func alias(for entryKey: String) -> String? { allAliases(for: entryKey).first }
+ 
+-    /// Stored as typed — trimming here would eat the space mid-word — but blank still means none.
++    /// Extra aliases share the existing backup key and are also searchable in the launcher.
++    /// A newline is the on-disk separator; existing single-alias values still load unchanged.
++    func allAliases(for entryKey: String) -> [String] {
++        guard let value = aliases[entryKey] else { return [] }
++        return Self.clean(value.components(separatedBy: "\n"))
++    }
++
+     func setAlias(_ alias: String, for entryKey: String) {
+-        let value = alias.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : alias
++        setAliases([alias], for: entryKey)
++    }
++
++    func setAliases(_ values: [String], for entryKey: String) {
++        let cleaned = Self.clean(values)
++        let value = cleaned.isEmpty ? nil : cleaned.joined(separator: "\n")
+         guard aliases[entryKey] != value else { return }
+         aliases[entryKey] = value
+         revision &+= 1
+         defaults.set(aliases, forKey: defaultsKey)
+     }
+ 
++    /// Limit ASR candidates and reject accidental duplicate aliases without changing words.
++    private static func clean(_ values: [String]) -> [String] {
++        var seen = Set<String>()
++        var result: [String] = []
++        for value in values {
++            let item = value.trimmingCharacters(in: .whitespacesAndNewlines)
++            guard !item.isEmpty, item.count <= 64, !item.contains("\n") else { continue }
++            let key = item.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
++            guard seen.insert(key).inserted else { continue }
++            result.append(item)
++            if result.count == 8 { break }
++        }
++        return result
++    }
++
+     func removeKeys(_ keys: Set<String>) {
+@@ -38,6 +65,9 @@
+     func replace(_ new: [String: String]) {
+-        // An import obeys the same rule as typing: blank means none, or it lands unclearable.
+-        aliases = new.filter { !$0.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
++        // Old backups contain one alias per key; newer ones encode multiple with newlines.
++        aliases = new.compactMapValues { value in
++            let items = Self.clean(value.components(separatedBy: "\n"))
++            return items.isEmpty ? nil : items.joined(separator: "\n")
++        }
+         revision &+= 1
+         defaults.set(aliases, forKey: defaultsKey)
+     }
+diff --git a/Tinycast/Features/Launcher/Model/LauncherOrder.swift b/Tinycast/Features/Launcher/Model/LauncherOrder.swift
+--- a/Tinycast/Features/Launcher/Model/LauncherOrder.swift
++++ b/Tinycast/Features/Launcher/Model/LauncherOrder.swift
+@@ -48,4 +48,6 @@
+         var title: String
+         /// Queries this entry wins until the user opens a rival more.
+         var boostedTerms: Set<String> = []
++        /// Additional launcher aliases share the same priority as the primary nickname.
++        var additionalAliases: [SearchText] = []
+     }
+@@ -142,8 +144,10 @@
+             let latinLength = query.latin.units.count
+             let typedLength = query.typed.units.count
+-            alias = signals.alias.map { Self.aliasHit($0, query.typed) } ?? .none
++            let allAliases = [signals.alias].compactMap { $0 } + signals.additionalAliases
++            let aliasHits = allAliases.map { Self.aliasHit($0, query.typed) }
++            alias = aliasHits.contains(.exact) ? .exact : (aliasHits.contains(.prefix) ? .prefix : .none)
+             isBoosted = signals.boostedTerms.contains(query.term)
+             let titleMatch = LauncherMatch.match(query.latin, in: profile.title)
+             var alternateTitles = profile.alternateTitles
+-            if alias == .none, let text = signals.alias { alternateTitles.append(text) }
++            if alias == .none { alternateTitles += allAliases }
+             let alternates = alternateTitles.map { LauncherMatch.match(query.typed, in: $0) }
+@@ -267,2 +271,4 @@
+-        let aliased = descending(a.signals.alias != nil, b.signals.alias != nil)
++        let aHasAlias = a.signals.alias != nil || !a.signals.additionalAliases.isEmpty
++        let bHasAlias = b.signals.alias != nil || !b.signals.additionalAliases.isEmpty
++        let aliased = descending(aHasAlias, bHasAlias)
+         return first(frecency(a, b), aliased, descending(a.signals.priority, b.signals.priority))
+diff --git a/Tinycast/Features/Launcher/Service/AppIndex.swift b/Tinycast/Features/Launcher/Service/AppIndex.swift
+--- a/Tinycast/Features/Launcher/Service/AppIndex.swift
++++ b/Tinycast/Features/Launcher/Service/AppIndex.swift
+@@ -864,6 +864,9 @@
+             alias: aliases.alias(for: entry.preferenceKey).map { SearchText($0, transliterated: false) },
+             usage: usage.usage(for: entry.preferenceKey),
+             priority: entry.kind.descriptor.rankPriority, title: entry.name,
+-            boostedTerms: CommandCatalog.command(for: entry)?.boostedTerms ?? [])
++            boostedTerms: CommandCatalog.command(for: entry)?.boostedTerms ?? [],
++            additionalAliases: aliases.allAliases(for: entry.preferenceKey).dropFirst().map {
++                SearchText($0, transliterated: false)
++            })
+     }
+ }
+diff --git a/Tinycast/Features/VoiceAsk/SpeechVoiceCommandCatalog.swift b/Tinycast/Features/VoiceAsk/SpeechVoiceCommandCatalog.swift
+--- a/Tinycast/Features/VoiceAsk/SpeechVoiceCommandCatalog.swift
++++ b/Tinycast/Features/VoiceAsk/SpeechVoiceCommandCatalog.swift
+@@ -51,5 +51,5 @@
+     private let sections = [
+         "Справка", "Приложения", "Окна", "Раскладки окон", "Комнаты окон", "Система",
+-        "Поиск и данные", "Календарь", "Apple Shortcuts", "Сценарии",
++        "Поиск и данные", "Заметки", "Календарь", "Apple Shortcuts", "Сценарии",
+         "Пользовательские команды", "Quicklinks"
+     ]
+@@ -158,12 +158,13 @@
+-                Text("Голосовой псевдоним: \(edit.name)")
++                Text("Псевдонимы: \(edit.name)")
+                     .font(.headline)
+-                TextField("Например: телега", text: $aliasDraft)
+-                Text("Используется и обычным поиском Tinycast. Пустое значение удаляет псевдоним.")
++                TextField("Например: телега; тг; телеграмм", text: $aliasDraft)
++                Text("Разделяйте точкой с запятой (до 8 названий). Все работают и в поиске Tinycast. Пустое поле удаляет псевдонимы.")
+                     .font(.caption).foregroundStyle(.secondary)
+                 HStack {
+                     Spacer()
+                     Button("Отмена") { aliasEdit = nil }
+                     Button("Сохранить") {
+-                        core.aliases.setAlias(aliasDraft, for: edit.preferenceKey)
++                        core.aliases.setAliases(
++                            aliasDraft.components(separatedBy: ";"), for: edit.preferenceKey)
+                         aliasEdit = nil
+                     }
+@@ -174,2 +175,2 @@
+-        aliasDraft = core.aliases.alias(for: entry.preferenceKey) ?? ""
++        aliasDraft = core.aliases.allAliases(for: entry.preferenceKey).joined(separator: "; ")
+         aliasEdit = SpeechVoiceAliasEdit(id: entry.id, name: entry.name, preferenceKey: entry.preferenceKey)
+diff --git a/Tests/voice-command-test.swift b/Tests/voice-command-test.swift
+--- a/Tests/voice-command-test.swift
++++ b/Tests/voice-command-test.swift
+@@ -82,2 +82,23 @@
+         expect("Найди заметку Kubernetes!", .action(.builtIn("searchNotes", query: "Kubernetes")))
++        // New direct mappings reuse already shipped Tinycast actions (no AI model).
++        expect("Покажи рабочий стол", .action(.system("show-desktop")))
++        expect("Окно в верхний правый угол", .action(.window("top-right-quarter")))
++        expect("Окно на среднюю треть", .action(.window("center-third")))
++        expect("Перемести окно вниз", .action(.window("move-down")))
++        expect("Создай заметку", .action(.builtIn("createNote")))
++        expect("Скопируй ссылку на встречу", .action(.builtIn("copyMeetingLink")))
++        expect("Поиск по меню", .action(.builtIn("menuSearch")))
++        expect("Вставь следующий элемент буфера", .action(.builtIn("pasteNext")))
++        // Conservative ASR typo correction: verb or one fixed-phrase token, not arbitrary prose.
++        expect("Отрой Telegram", .action(.target(.application, "telegram")))
++        expect("Поствь окно справа", .action(.window("right-half")))
++        expect("Покажи историю будера", .action(.builtIn("clipboard")))
++        expect("Наиди файл docker-compose.yml", .action(.builtIn("files", query: "docker-compose.yml")))
++        let customAliases = [P.Target(kind: .application, id: "myapp", name: "Claude",
++                                       aliases: ["Клод", "Клауд"])]
++        guard P.parse("Открой Клод", targets: customAliases)
++                == .action(.target(.application, "myapp")) else {
++            fatalError("User-defined spoken aliases must match cross-script application names")
++        }
++        tested += 1
+         expect("Как открыть Telegram в macOS?", .notCommand)
+diff --git a/Scripts/run-tests.sh b/Scripts/run-tests.sh
+--- a/Scripts/run-tests.sh
++++ b/Scripts/run-tests.sh
+@@ -149,4 +149,5 @@
+ run voice-command-test     Tinycast/Features/Launcher/Model/SearchRelevance.swift \
+                            Tinycast/Features/Launcher/Model/ScriptRomanization.swift \
+                            Tinycast/Features/VoiceAsk/SpeechVoiceCommandParser.swift
++run voice-alias-test       Tinycast/Features/Launcher/Service/AliasStore.swift
+ run voice-input-test       Tinycast/Features/VoiceAsk/SpeechVoiceMicrophone.swift
+diff --git a/Tests/voice-alias-test.swift b/Tests/voice-alias-test.swift
+new file mode 100644
+--- /dev/null
++++ b/Tests/voice-alias-test.swift
+@@ -0,0 +1,28 @@
++import Foundation
++
++@main
++struct VoiceAliasTest {
++    @MainActor
++    static func main() {
++        let suite = "tinycast-voice-alias-test-" + UUID().uuidString
++        guard let defaults = UserDefaults(suiteName: suite) else { fatalError("no test defaults") }
++        defer { defaults.removePersistentDomain(forName: suite) }
++        defaults.set(["app": "old name"], forKey: "launcherAliases")
++        let store = AliasStore(defaults: defaults)
++        precondition(store.alias(for: "app") == "old name", "Legacy alias migration")
++        precondition(store.allAliases(for: "app") == ["old name"])
++        store.setAliases(["Клод", " клод ", "Клауд", "Claude", ""], for: "app")
++        precondition(store.allAliases(for: "app") == ["Клод", "Клауд", "Claude"])
++        precondition(store.alias(for: "app") == "Клод", "Primary launcher alias")
++        precondition(AliasStore(defaults: defaults).allAliases(for: "app")
++                     == ["Клод", "Клауд", "Claude"], "Persisted aliases")
++        store.setAlias("one", for: "app")
++        precondition(store.allAliases(for: "app") == ["one"], "Legacy setter")
++        store.replace(["app": "first\nsecond", "blank": "   "])
++        precondition(store.allAliases(for: "app") == ["first", "second"], "Backup restore")
++        precondition(store.allAliases(for: "blank").isEmpty)
++        store.removeKeys(["app"])
++        precondition(store.alias(for: "app") == nil, "Delete all aliases")
++        print("Voice alias store: all assertions passed")
++    }
++}
+diff --git a/Tinycast/DesignSystem/GlassEffectView.swift b/Tinycast/DesignSystem/GlassEffectView.swift
+--- a/Tinycast/DesignSystem/GlassEffectView.swift
++++ b/Tinycast/DesignSystem/GlassEffectView.swift
+@@ -1,9 +1,21 @@
+ import SwiftUI
+ 
+ struct GlassEffectView: NSViewRepresentable {
++    var style: NSGlassEffectView.Style = .regular
++    var cornerRadius: CGFloat = 0
++
+     func makeNSView(context: Context) -> NSGlassEffectView {
+-        NSGlassEffectView()
++        let view = NSGlassEffectView()
++        view.style = style
++        view.cornerRadius = cornerRadius
++        // Keep the material untinted: dark tints can become opaque on newer macOS.
++        view.tintColor = nil
++        return view
+     }
+ 
+-    func updateNSView(_ nsView: NSGlassEffectView, context: Context) {}
++    func updateNSView(_ nsView: NSGlassEffectView, context: Context) {
++        nsView.style = style
++        nsView.cornerRadius = cornerRadius
++        nsView.tintColor = nil
++    }
+ }
+diff --git a/Tinycast/Features/Launcher/UI/CompactBar.swift b/Tinycast/Features/Launcher/UI/CompactBar.swift
+--- a/Tinycast/Features/Launcher/UI/CompactBar.swift
++++ b/Tinycast/Features/Launcher/UI/CompactBar.swift
+@@ -61,7 +61,7 @@
+                 capsule.fill(.clear)
+                     .frame(width: geometry.capsuleWidth(revealed: revealed))
+                     .frame(maxHeight: .infinity)
+-                    .glassEffect(.regular, in: capsule)
++                    .glassEffect(.clear, in: capsule)
+                     .animation(
+                         reduceMotion ? nil : BarMotion.capsule.delay(BarMotion.revealDelay),
+                         value: revealed)
+@@ -95,7 +95,7 @@
+         .accessibilityAddTraits(selection == command ? [.isSelected] : [])
+         .accessibilityHidden(!revealed)
+         .glassEffect(
+-            .regular.tint(selection == command ? Theme.Colors.compactShortcutSelectionTint : nil)
++            .clear.tint(selection == command ? Theme.Colors.compactShortcutSelectionTint : nil)
+                 .interactive(), in: .circle
+         )
+         .scaleEffect(revealed ? 1 : BarMotion.parkedScale)
+diff --git a/Tinycast/Palette/RootPaletteView.swift b/Tinycast/Palette/RootPaletteView.swift
+--- a/Tinycast/Palette/RootPaletteView.swift
++++ b/Tinycast/Palette/RootPaletteView.swift
+@@ -343,7 +343,10 @@
+                 // The window's frame is the size source, so the glass and clip stay matched.
+                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                 // Hidden rather than unmounted, so expanding never shows a frame without glass.
+-                .background(GlassEffectView().opacity(isCollapsed ? 0 : 1))
++                .background(
++                    GlassEffectView(style: .clear, cornerRadius: metrics.radius.panel)
++                        .opacity(isCollapsed ? 0 : 1)
++                )
+                 .overlay {
+                     Theme.Colors.dialogDimming
+                         .opacity(core.isDimmingPaletteForDialog && !isCollapsed ? 1 : 0)
