@@ -5,6 +5,7 @@ struct AISettingsView: View {
     @AppStorage("speechVoice.model") private var speechModel = "parakeet-ultra"
     @AppStorage("speechVoice.autoSend") private var speechAutoSend = false
     @AppStorage("speechVoice.commandsEnabled") private var speechCommandsEnabled = true
+    @State private var aiTriggers: [AIVoiceTrigger] = AIVoiceTriggerStore.triggers()
     @Environment(AppCore.self) private var core
     @Environment(AISettingsStore.self) private var settings
     @Environment(AppSettings.self) private var appSettings
@@ -39,7 +40,7 @@ struct AISettingsView: View {
                 defaultModelSection
                 chatSection
                 speechVoiceSection
-                conversationsSection
+                aiTriggerSection
                 systemPromptSection
                 MCPSettingsSection()
             }
@@ -62,6 +63,8 @@ struct AISettingsView: View {
         .onChange(of: subscription.models) { syncSelection() }
         .onChange(of: subscription.phase) { syncSelection() }
         .onChange(of: installedAI.statuses) { syncSelection() }
+        // A model picked in a trigger row bypasses the ForEach's mutation hooks.
+        .onChange(of: aiTriggers.map(\.model)) { persistTriggers() }
     }
 
     private var speechVoiceSection: some View {
@@ -90,6 +93,43 @@ struct AISettingsView: View {
             Text("Speech Runtime handles recognition locally. Recognized commands run through Tinycast; other speech goes to Quick AI. Hold an unused Hyper key for push-to-talk.")
         }
         .onAppear { core.speechVoice.checkAvailability() }
+    }
+
+    private var aiTriggerSection: some View {
+        Section {
+            ForEach($aiTriggers) { $trigger in
+                AIVoiceTriggerRow(
+                    trigger: $trigger,
+                    remove: {
+                        aiTriggers.removeAll { $0.id == trigger.id }
+                        persistTriggers()
+                    })
+            }
+            .onMove { from, to in
+                aiTriggers.move(fromOffsets: from, toOffset: to)
+                persistTriggers()
+            }
+            .onDelete { offsets in
+                aiTriggers.remove(atOffsets: offsets)
+                persistTriggers()
+            }
+            Button("Add trigger word…") {
+                aiTriggers.append(AIVoiceTrigger(trigger: ""))
+            }
+        } header: {
+            Text("Voice Ask · AI triggers")
+        } footer: {
+            Text("Saying a trigger word sends the rest of the phrase straight to Quick AI. Leave the model unset to use the chat's current model.")
+        }
+    }
+
+    /// The parser reads a static snapshot, so every edit publishes the new list at once.
+    private func persistTriggers() {
+        aiTriggers = aiTriggers.filter {
+            !$0.trigger.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        AIVoiceTriggerStore.save(aiTriggers)
+        SpeechVoiceCommandParser.aiTriggers = AIVoiceTriggerStore.normalizedTriggers()
     }
 
     private var defaultModelSection: some View {
@@ -235,5 +275,31 @@ struct AISettingsView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+}
+
+/// One editable trigger: the spoken word and the model it is pinned to.
+struct AIVoiceTriggerRow: View {
+    @Environment(AISettingsStore.self) private var settings
+    @Environment(ChatGPTSubscriptionManager.self) private var subscription
+    @Environment(InstalledAIManager.self) private var installedAI
+
+    @Binding var trigger: AIVoiceTrigger
+    let remove: () -> Void
+
+    var body: some View {
+        AIModelSelectionRows(
+            selection: trigger.model,
+            select: { trigger.model = $0 },
+            modelLabel: { textField },
+            effortLabel: { Text("Reasoning effort") })
+            .swipeActions { Button(role: .destructive, action: remove) { Label("Delete", systemImage: "trash") } }
+    }
+
+    /// The trigger word sits in the model row's label slot, so one row carries both.
+    private var textField: some View {
+        TextField("Trigger word", text: $trigger.trigger)
+            .textFieldStyle(.roundedBorder)
+            .frame(maxWidth: 200)
     }
 }

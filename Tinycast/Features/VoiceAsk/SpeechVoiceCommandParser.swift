@@ -20,6 +20,12 @@ enum SpeechVoiceCommandParser {
         case volume(Int)
         case builtIn(String, query: String? = nil)
         case target(Target.Kind, String)
+        /// Quits the application resolved by name ("закрой телеграм").
+        case quitApp(String)
+        /// Quits the application the previous command resolved to ("закрой его").
+        case quitLastApp
+        /// Sends the rest of the phrase to Quick AI ("посмотри как дела").
+        case aiPrompt(trigger: String, prompt: String)
     }
 
     enum Resolution: Equatable, Sendable {
@@ -48,6 +54,8 @@ enum SpeechVoiceCommandParser {
     private struct NamedRule: Sendable {
         let prefix: String
         let kinds: Set<Target.Kind>
+        /// A close rule quits the resolved application instead of launching it.
+        var closes: Bool = false
     }
 
     // The same declarations drive both parsing and the in-app voice command catalog.
@@ -99,6 +107,9 @@ enum SpeechVoiceCommandParser {
         .init(section: "Система", title: "Закрыть приложение", phrases: [
             "закрой приложение", "закрой активное приложение", "выключи приложение"
         ], intent: .system("quit-front-app")),
+        .init(section: "Система", title: "Закрыть его", phrases: [
+            "закрой его"
+        ], intent: .quitLastApp),
         .init(section: "Система", title: "Заблокировать экран", phrases: [
             "заблокируй экран", "заблокируй мак"
         ], intent: .system("lock-screen")),
@@ -259,7 +270,8 @@ enum SpeechVoiceCommandParser {
         .init(prefix: "открой комнату", kinds: [.room]),
         .init(prefix: "открой приложение", kinds: [.application]),
         .init(prefix: "запусти приложение", kinds: [.application]),
-        .init(prefix: "переключись на", kinds: [.application]),
+        .init(prefix: "закрой приложение", kinds: [.application], closes: true),
+        .init(prefix: "закрой", kinds: [.application], closes: true),
         .init(prefix: "открой", kinds: [.application]),
         .init(prefix: "запусти", kinds: [.application, .shortcut, .workflow])
     ]
@@ -351,6 +363,17 @@ enum SpeechVoiceCommandParser {
         }
         guard !phrase.isEmpty else { return .notCommand }
 
+        // An AI trigger word ("посмотри …") owns the whole rest of the phrase, so it runs
+        // before any command grammar could reinterpret the question as an action.
+        for trigger in aiTriggers {
+            if let rest = suffix(after: trigger, in: phrase), !rest.isEmpty {
+                let count = trigger.split(separator: " ").count
+                let prompt = tail(of: original, skipping: count)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: ".!?…,;: "))
+                return .action(.aiPrompt(trigger: trigger, prompt: prompt))
+            }
+        }
+
         if let fixed = fixedPatterns.first(where: { $0.phrases.contains(phrase) }) {
             return .action(fixed.intent)
         }
@@ -398,7 +421,7 @@ enum SpeechVoiceCommandParser {
             guard let rest = suffix(after: rule.prefix, in: phrase) else { continue }
             guard !rest.isEmpty else { return .unknown("Назови объект команды") }
             let rawName = tail(of: original, skipping: rule.prefix.split(separator: " ").count)
-            return resolveName(rawName, kinds: rule.kinds, targets: targets)
+            return resolveName(rawName, kinds: rule.kinds, targets: targets, quits: rule.closes)
         }
 
         // Only explicit, unambiguous commands receive typo correction. Free dictation
@@ -419,7 +442,7 @@ enum SpeechVoiceCommandParser {
             guard fuzzyPrefix(rule.prefix, in: phrase) else { continue }
             let name = tail(of: original, skipping: rule.prefix.split(separator: " ").count)
             guard !name.isEmpty else { return .unknown("Назови объект команды") }
-            return resolveName(name, kinds: rule.kinds, targets: targets)
+            return resolveName(name, kinds: rule.kinds, targets: targets, quits: rule.closes)
         }
         return .notCommand
     }
@@ -466,6 +489,13 @@ enum SpeechVoiceCommandParser {
     /// The bounded optimal-string-alignment distance counts insertions, deletions,
     /// substitutions and adjacent swaps, without allowing short-name guesses.
     static func resolveName(_ raw: String, kinds: Set<Target.Kind>, targets: [Target]) -> Resolution {
+        resolveName(raw, kinds: kinds, targets: targets, quits: false)
+    }
+
+    /// `quits` marks a close verb: the winner quits instead of launching.
+    static func resolveName(
+        _ raw: String, kinds: Set<Target.Kind>, targets: [Target], quits: Bool
+    ) -> Resolution {
         let original = normalize(raw)
         let key = romanizedKey(raw)
         guard !key.isEmpty else { return .unknown("Назови объект команды") }
@@ -496,6 +526,7 @@ enum SpeechVoiceCommandParser {
         // A fuzzy winner only runs when the next closest name is distinctly worse.
         let nearby = candidates.filter { $0.distance <= winner.distance + (winner.distance == 0 ? 0 : 1) }
         if nearby.count != 1 { return .ambiguous(nearby.map(\.target)) }
+        if quits { return .action(.quitApp(winner.target.id)) }
         return .action(.target(winner.target.kind, winner.target.id))
     }
 
@@ -623,6 +654,11 @@ enum SpeechVoiceCommandParser {
         guard remainder.count >= 3 || remainder.isEmpty else { return nil }
         return (longest, remainder)
     }
+
+    /// Configurable AI trigger words; the first match sends the rest of the phrase to Quick AI.
+    /// Reassigned when Settings edits the stored list. Plain data whose only writer is the
+    /// MainActor settings view, so unsynchronized reads during parsing are safe in practice.
+    nonisolated(unsafe) static var aiTriggers: [String] = AIVoiceTriggerStore.normalizedTriggers()
 
     private static var numberWords: [String] { Array(numberWordValues.keys) }
 

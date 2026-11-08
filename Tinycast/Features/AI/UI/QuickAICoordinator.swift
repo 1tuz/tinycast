@@ -66,6 +66,18 @@ final class QuickAICoordinator {
         send(text)
     }
 
+    /// An AI voice trigger hands both the question and the route that trigger is pinned to.
+    /// `chat.setModel` alone: the global default must not follow a per-trigger override.
+    func sendVoicePrompt(_ input: String, model: AIModelSelection?) {
+        guard settings.aiEnabled else { return }
+        let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        applyOpenPolicy()
+        paletteCoordinator.showPalette(mode: .ai)
+        if let model { chat.setModel(model) }
+        send(text)
+    }
+
     /// Off leaves the screen too, so the palette never shows a feature that is gone.
     func leave() {
         if palette.mode == .ai || palette.mode == .aiHistory { palette.prepare(mode: .launcher) }

@@ -17,8 +17,18 @@ enum SpeechVoiceCommandRouter {
             // Never guess if two applications or actions have similarly plausible names.
             SpeechVoiceCommandCatalogWindow.shared.showChoices(targets, core: core)
             return true
+        case .action(.aiPrompt(let trigger, let prompt)):
+            // The trigger entry decides the model; a missing entry falls back to the default.
+            let entry = AIVoiceTriggerStore.triggers().first {
+                SpeechVoiceCommandParser.normalize($0.trigger) == trigger
+            }
+            if let entry { SpeechVoiceCommandHistory.lastAITrigger = entry.trigger }
+            core.quickAICoordinator.sendVoicePrompt(prompt, model: entry?.model)
+            return true
         case .action(let intent):
+            let targetID = SpeechVoiceCommandHistory.targetID(for: intent)
             execute(intent, core: core)
+            if let targetID { SpeechVoiceCommandHistory.lastVoiceTargetID = targetID }
             return true
         }
     }
@@ -142,6 +152,31 @@ enum SpeechVoiceCommandRouter {
             case "voiceCatalog": SpeechVoiceCommandCatalogWindow.shared.show(core: core)
             default: break
             }
+        case .aiPrompt:
+            break // Handled in route(); execute() never sees it.
+        case .quitApp(let id):
+            guard let entry = core.appIndex.apps.first(where: { $0.id == id }),
+                  let bundleID = entry.bundleID, entry.kind == .application else {
+                core.showMessage("Не удалось закрыть приложение", tone: .neutral)
+                return
+            }
+            if AppLauncher.quit(bundleID: bundleID, url: entry.url) {
+                core.showMessage("Закрываю \(entry.name)", tone: .success)
+            } else {
+                core.showMessage("\(entry.name) не запущено", tone: .neutral)
+            }
+        case .quitLastApp:
+            guard let id = SpeechVoiceCommandHistory.lastVoiceTargetID,
+                  let entry = core.appIndex.apps.first(where: { $0.id == id }),
+                  let bundleID = entry.bundleID, entry.kind == .application else {
+                core.showMessage("Нет приложения, которое вы открывали", tone: .neutral)
+                return
+            }
+            if AppLauncher.quit(bundleID: bundleID, url: entry.url) {
+                core.showMessage("Закрываю \(entry.name)", tone: .success)
+            } else {
+                core.showMessage("\(entry.name) не запущено", tone: .neutral)
+            }
         case .target(let kind, let id):
             if kind == .workflow {
                 guard let workflowID = UUID(uuidString: id), core.workflowCoordinator.allows(workflowID)
@@ -164,6 +199,28 @@ enum SpeechVoiceCommandRouter {
             } else {
                 core.launcherCoordinator.launch(entry)
             }
+        }
+    }
+}
+
+/// The target of the last executed voice command, for anaphora ("закрой его").
+/// Only named application commands qualify; system and window verbs have no referent.
+@MainActor
+enum SpeechVoiceCommandHistory {
+    static var lastVoiceTargetID: String?
+
+    /// The spoken word of the last AI trigger; informational for anaphora in later commands.
+    static var lastAITrigger: String?
+
+    /// The application an intent refers to, nil when it names no application.
+    static func targetID(for intent: SpeechVoiceCommandParser.Intent) -> String? {
+        switch intent {
+        case .target(let kind, let id):
+            return kind == .application ? id : nil
+        case .quitApp(let id):
+            return id
+        default:
+            return nil
         }
     }
 }
