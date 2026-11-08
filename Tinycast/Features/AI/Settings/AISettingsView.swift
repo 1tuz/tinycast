@@ -100,21 +100,22 @@ struct AISettingsView: View {
             ForEach($aiTriggers) { $trigger in
                 AIVoiceTriggerRow(
                     trigger: $trigger,
-                    remove: {
-                        aiTriggers.removeAll { $0.id == trigger.id }
-                        persistTriggers()
-                    })
-            }
-            .onMove { from, to in
-                aiTriggers.move(fromOffsets: from, toOffset: to)
-                persistTriggers()
-            }
-            .onDelete { offsets in
-                aiTriggers.remove(atOffsets: offsets)
-                persistTriggers()
+                    persist: { persistTriggers() })
+                    .overlay(alignment: .trailing) {
+                        Button(role: .destructive) {
+                            aiTriggers.removeAll { $0.id == trigger.id }
+                            persistTriggers()
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                                .foregroundStyle(.tertiary)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.trailing, 4)
+                    }
             }
             Button("Add trigger word…") {
                 aiTriggers.append(AIVoiceTrigger(trigger: ""))
+                persistTriggers()
             }
         } header: {
             Text("Voice Ask · AI triggers")
@@ -124,10 +125,8 @@ struct AISettingsView: View {
     }
 
     /// The parser reads a static snapshot, so every edit publishes the new list at once.
+    /// Blank words are dropped by the store; they would never match.
     private func persistTriggers() {
-        aiTriggers = aiTriggers.filter {
-            !$0.trigger.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }
         AIVoiceTriggerStore.save(aiTriggers)
         SpeechVoiceCommandParser.aiTriggers = AIVoiceTriggerStore.normalizedTriggers()
     }
@@ -280,10 +279,6 @@ struct AISettingsView: View {
 
 /// One editable trigger: the spoken word and the model it is pinned to.
 struct AIVoiceTriggerRow: View {
-    @Environment(AISettingsStore.self) private var settings
-    @Environment(ChatGPTSubscriptionManager.self) private var subscription
-    @Environment(InstalledAIManager.self) private var installedAI
-
     @Binding var trigger: AIVoiceTrigger
     let persist: () -> Void
 

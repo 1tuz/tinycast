@@ -22,7 +22,6 @@ enum SpeechVoiceCommandRouter {
             let entry = AIVoiceTriggerStore.triggers().first {
                 SpeechVoiceCommandParser.normalize($0.trigger) == trigger
             }
-            if let entry { SpeechVoiceCommandHistory.lastAITrigger = entry.trigger }
             core.quickAICoordinator.sendVoicePrompt(prompt, model: entry?.model)
             return true
         case .action(let intent):
@@ -208,9 +207,6 @@ enum SpeechVoiceCommandRouter {
 @MainActor
 enum SpeechVoiceCommandHistory {
     static var lastVoiceTargetID: String?
-
-    /// The spoken word of the last AI trigger; informational for anaphora in later commands.
-    static var lastAITrigger: String?
 
     /// The application an intent refers to, nil when it names no application.
     static func targetID(for intent: SpeechVoiceCommandParser.Intent) -> String? {
