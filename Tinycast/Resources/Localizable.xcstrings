@@ -35120,54 +35120,54 @@
         }
       }
     },
-    "Close Tinycast's window first." : {
+    "Close VoiceCast's window first." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Schließe zuerst das Fenster von Tinycast."
+            "value" : "Schließe zuerst das Fenster von VoiceCast."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cierra primero la ventana de Tinycast."
+            "value" : "Cierra primero la ventana de VoiceCast."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fermez d’abord la fenêtre de Tinycast."
+            "value" : "Fermez d’abord la fenêtre de VoiceCast."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "先にTinycastのウインドウを閉じてください。"
+            "value" : "先にVoiceCastのウインドウを閉じてください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "먼저 Tinycast 윈도우를 닫으십시오."
+            "value" : "먼저 VoiceCast 윈도우를 닫으십시오."
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Feche primeiro a janela do Tinycast."
+            "value" : "Feche primeiro a janela do VoiceCast."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Сначала закройте окно Tinycast."
+            "value" : "Сначала закройте окно VoiceCast."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请先关闭 Tinycast 的窗口。"
+            "value" : "请先关闭 VoiceCast 的窗口。"
           }
         }
       }
@@ -82939,58 +82939,6 @@
         }
       }
     },
-    "Nothing was installed." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Es wurde nichts installiert."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No se instaló nada."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rien n’a été installé."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "何もインストールされませんでした。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "설치된 항목이 없습니다."
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nada foi instalado."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ничего не было установлено."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "未安装任何内容。"
-          }
-        }
-      }
-    },
     "Nothing was installed. Download the release from GitHub instead, so you can check it yourself." : {
       "localizations" : {
         "de" : {
@@ -95221,54 +95169,54 @@
         }
       }
     },
-    "Relaunch Tinycast?" : {
+    "Relaunch VoiceCast?" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tinycast neu starten?"
+            "value" : "VoiceCast neu starten?"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "¿Volver a abrir Tinycast?"
+            "value" : "¿Volver a abrir VoiceCast?"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Relancer Tinycast ?"
+            "value" : "Relancer VoiceCast ?"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tinycastを再起動しますか?"
+            "value" : "VoiceCastを再起動しますか?"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tinycast를 다시 실행하시겠습니까?"
+            "value" : "VoiceCast를 다시 실행하시겠습니까?"
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Reabrir o Tinycast?"
+            "value" : "Reabrir o VoiceCast?"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Перезапустить Tinycast?"
+            "value" : "Перезапустить VoiceCast?"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "要重新打开 Tinycast 吗？"
+            "value" : "要重新打开 VoiceCast 吗？"
           }
         }
       }
@@ -97325,54 +97273,54 @@
         }
       }
     },
-    "Replacing Tinycast…" : {
+    "Replacing VoiceCast…" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tinycast wird ersetzt …"
+            "value" : "VoiceCast wird ersetzt …"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Reemplazando Tinycast…"
+            "value" : "Reemplazando VoiceCast…"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Remplacement de Tinycast…"
+            "value" : "Remplacement de VoiceCast…"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tinycastを置き換え中…"
+            "value" : "VoiceCastを置き換え中…"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tinycast 교체 중…"
+            "value" : "VoiceCast 교체 중…"
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Substituindo o Tinycast…"
+            "value" : "Substituindo o VoiceCast…"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Замена Tinycast…"
+            "value" : "Замена VoiceCast…"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在替换 Tinycast…"
+            "value" : "正在替换 VoiceCast…"
           }
         }
       }
@@ -116076,54 +116024,54 @@
         }
       }
     },
-    "The downloaded app is not this build of Tinycast." : {
+    "The downloaded app is not this build of VoiceCast." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die geladene App ist nicht diese Build-Version von Tinycast."
+            "value" : "Die geladene App ist nicht diese Build-Version von VoiceCast."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La app descargada no corresponde a esta compilación de Tinycast."
+            "value" : "La app descargada no corresponde a esta compilación de VoiceCast."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "L’app téléchargée ne correspond pas à cette version de Tinycast."
+            "value" : "L’app téléchargée ne correspond pas à cette version de VoiceCast."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ダウンロードしたAppは、このビルドのTinycastではありません。"
+            "value" : "ダウンロードしたAppは、このビルドのVoiceCastではありません。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "다운로드한 앱은 이 Tinycast 빌드가 아닙니다."
+            "value" : "다운로드한 앱은 이 VoiceCast 빌드가 아닙니다."
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O app baixado não é esta compilação do Tinycast."
+            "value" : "O app baixado não é esta compilação do VoiceCast."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Загруженное приложение не соответствует этой сборке Tinycast."
+            "value" : "Загруженное приложение не соответствует этой сборке VoiceCast."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "下载的 App 不是此版本的 Tinycast。"
+            "value" : "下载的 App 不是此版本的 VoiceCast。"
           }
         }
       }
@@ -116238,54 +116186,54 @@
         }
       }
     },
-    "The downloaded archive does not contain Tinycast." : {
+    "The downloaded archive does not contain VoiceCast." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das geladene Archiv enthält Tinycast nicht."
+            "value" : "Das geladene Archiv enthält VoiceCast nicht."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "El archivo descargado no contiene Tinycast."
+            "value" : "El archivo descargado no contiene VoiceCast."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "L’archive téléchargée ne contient pas Tinycast."
+            "value" : "L’archive téléchargée ne contient pas VoiceCast."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ダウンロードしたアーカイブにTinycastが含まれていません。"
+            "value" : "ダウンロードしたアーカイブにVoiceCastが含まれていません。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "다운로드한 아카이브에 Tinycast가 없습니다."
+            "value" : "다운로드한 아카이브에 VoiceCast가 없습니다."
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O arquivo baixado não contém o Tinycast."
+            "value" : "O arquivo baixado não contém o VoiceCast."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Загруженный архив не содержит Tinycast."
+            "value" : "Загруженный архив не содержит VoiceCast."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "下载的归档中不包含 Tinycast。"
+            "value" : "下载的归档中不包含 VoiceCast。"
           }
         }
       }
@@ -117382,54 +117330,54 @@
         }
       }
     },
-    "The new language applies after Tinycast relaunches." : {
+    "The new language applies after VoiceCast relaunches." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die neue Sprache wird nach einem Neustart von Tinycast übernommen."
+            "value" : "Die neue Sprache wird nach einem Neustart von VoiceCast übernommen."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "El nuevo idioma se aplicará al reiniciar Tinycast."
+            "value" : "El nuevo idioma se aplicará al reiniciar VoiceCast."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La nouvelle langue s’appliquera après le redémarrage de Tinycast."
+            "value" : "La nouvelle langue s’appliquera après le redémarrage de VoiceCast."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新しい言語は、Tinycastを再起動すると適用されます。"
+            "value" : "新しい言語は、VoiceCastを再起動すると適用されます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "새 언어는 Tinycast를 다시 실행한 후 적용됩니다."
+            "value" : "새 언어는 VoiceCast를 다시 실행한 후 적용됩니다."
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O novo idioma será aplicado após reiniciar o Tinycast."
+            "value" : "O novo idioma será aplicado após reiniciar o VoiceCast."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Новый язык будет применен после перезапуска Tinycast."
+            "value" : "Новый язык будет применен после перезапуска VoiceCast."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新语言将在 Tinycast 重新打开后生效。"
+            "value" : "新语言将在 VoiceCast 重新打开后生效。"
           }
         }
       }
@@ -123104,54 +123052,54 @@
         }
       }
     },
-    "Tinycast could not be replaced. %@" : {
+    "VoiceCast could not be replaced. %@" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tinycast konnte nicht ersetzt werden. %@"
+            "value" : "VoiceCast konnte nicht ersetzt werden. %@"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No se pudo reemplazar Tinycast. %@"
+            "value" : "No se pudo reemplazar VoiceCast. %@"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tinycast n’a pas pu être remplacé. %@"
+            "value" : "VoiceCast n’a pas pu être remplacé. %@"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tinycastを置き換えられませんでした。%@"
+            "value" : "VoiceCastを置き換えられませんでした。%@"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tinycast를 교체할 수 없습니다. %@"
+            "value" : "VoiceCast를 교체할 수 없습니다. %@"
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Não foi possível substituir o Tinycast. %@"
+            "value" : "Não foi possível substituir o VoiceCast. %@"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Не удалось заменить Tinycast. %@"
+            "value" : "Не удалось заменить VoiceCast. %@"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法替换 Tinycast。%@"
+            "value" : "无法替换 VoiceCast。%@"
           }
         }
       }
@@ -123312,54 +123260,54 @@
         }
       }
     },
-    "Tinycast could not reach GitHub." : {
+    "VoiceCast could not reach GitHub." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tinycast konnte GitHub nicht erreichen."
+            "value" : "VoiceCast konnte GitHub nicht erreichen."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tinycast no pudo contactar con GitHub."
+            "value" : "VoiceCast no pudo contactar con GitHub."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tinycast n’a pas pu joindre GitHub."
+            "value" : "VoiceCast n’a pas pu joindre GitHub."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "TinycastはGitHubに接続できませんでした。"
+            "value" : "VoiceCastはGitHubに接続できませんでした。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tinycast가 GitHub에 연결할 수 없습니다."
+            "value" : "VoiceCast가 GitHub에 연결할 수 없습니다."
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O Tinycast não conseguiu contatar o GitHub."
+            "value" : "O VoiceCast não conseguiu contatar o GitHub."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tinycast не смог связаться с GitHub."
+            "value" : "VoiceCast не смог связаться с GitHub."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tinycast 无法连接到 GitHub。"
+            "value" : "VoiceCast 无法连接到 GitHub。"
           }
         }
       }
@@ -129498,54 +129446,54 @@
         }
       }
     },
-    "Updated to Tinycast %@" : {
+    "Updated to VoiceCast %@" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Auf Tinycast %@ aktualisiert"
+            "value" : "Auf VoiceCast %@ aktualisiert"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Actualizado a Tinycast %@"
+            "value" : "Actualizado a VoiceCast %@"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mis à jour vers Tinycast %@"
+            "value" : "Mis à jour vers VoiceCast %@"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tinycast %@ にアップデートしました"
+            "value" : "VoiceCast %@ にアップデートしました"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tinycast %@(으)로 업데이트됨"
+            "value" : "VoiceCast %@(으)로 업데이트됨"
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Atualizado para Tinycast %@"
+            "value" : "Atualizado para VoiceCast %@"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tinycast обновлён до %@"
+            "value" : "VoiceCast обновлён до %@"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已更新到 Tinycast %@"
+            "value" : "已更新到 VoiceCast %@"
           }
         }
       }
@@ -135694,59 +135642,6 @@
         }
       }
     },
-    "macOS quarantined the downloaded app and Tinycast could not clear the flag." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "macOS hat die geladene App unter Quarantäne gestellt und Tinycast konnte die Markierung nicht entfernen."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "macOS puso la app descargada en cuarentena y Tinycast no pudo quitar la marca."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "macOS a placé l’app téléchargée en quarantaine. Tinycast n’a pas pu lever cette restriction."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "macOSがダウンロードしたアプリを隔離したため、Tinycastはそのフラグを解除できませんでした。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "macOS가 다운로드한 앱을 격리했으며 Tinycast가 격리 플래그를 해제할 수 없습니다."
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "O macOS colocou o app baixado em quarentena e o Tinycast não conseguiu remover a marcação."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "macOS поместила загруженное приложение в карантин, и Tinycast не смог снять этот флаг."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "macOS 隔离了下载的 App，Tinycast 无法清除此标记。"
-          }
-        }
-      }
-    },
-
     "macOS refused to remap the keyboard." : {
       "localizations" : {
         "de" : {
