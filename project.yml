@@ -66,6 +66,7 @@ targets:
           subpath: Contents/Helpers
     settings:
       base:
+        PRODUCT_NAME: VoiceCast
         PRODUCT_BUNDLE_IDENTIFIER: "$(TINYCAST_BUNDLE_IDENTIFIER)"
         INFOPLIST_FILE: Tinycast/Info.plist
         CODE_SIGN_ENTITLEMENTS: Tinycast/Tinycast.entitlements
@@ -79,7 +80,7 @@ targets:
       configs:
         # Debug is its own channel, so a local build never corrupts the installed app's state.
         Debug:
-          PRODUCT_NAME: Tinycast Dev
+          PRODUCT_NAME: VoiceCast Dev
 
   ClipboardTextHelper:
     type: tool

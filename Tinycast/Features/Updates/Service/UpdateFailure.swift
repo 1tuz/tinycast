@@ -4,6 +4,7 @@ enum UpdateFailure: LocalizedError, Equatable {
     case downloadFailed(String)
     case mountFailed(String)
     case noAppInImage
+    case copyFailed(String)
     case bundleMismatch
     case identityMismatch
     case versionMismatch(expected: String, found: String)

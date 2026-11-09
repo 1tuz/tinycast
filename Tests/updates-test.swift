@@ -30,6 +30,7 @@ struct UpdatesTests {
         laysOutTheChangelog()
         linksMentionsAndPullRequests()
         blocksWhileBusy()
+        acceptsVoiceCastDmgAssets()
 
         print("\(passes) passed, \(failures) failed")
         if failures > 0 { exit(1) }
@@ -215,7 +216,24 @@ struct UpdatesTests {
                 == AppVersion("0.3.0"),
             "one bad entry does not discard the whole feed")
     }
+    /// A rebranded release ships only `VoiceCast-<version>.dmg`; a stable build still installs it.
+    static func acceptsVoiceCastDmgAssets() {
+        let voicecast = feed(
+            entry(tag: "v0.3.0", prerelease: false, assets: ["VoiceCast-0.3.0.dmg"]))
+        let offer = ReleaseFeed.newest(
+            from: voicecast, channel: .stable, architecture: .appleSilicon)
+        expect(offer?.version == AppVersion("0.3.0"), "a VoiceCast-only release is an update")
+        expect(
+            offer?.assetURL.absoluteString.hasSuffix(".dmg") == true,
+            "and the rebranded asset URL still ends in .dmg")
 
+        expect(
+            ReleaseFeed.newest(
+                from: feed(
+                    entry(tag: "v0.3.0", prerelease: false, assets: ["Tinycast-0.3.0.dmg"])),
+                channel: .stable, architecture: .appleSilicon)?.version == AppVersion("0.3.0"),
+            "a Tinycast-named release remains installable")
+    }
     /// Releases ship as a single arm64 DMG; Intel is offered nothing it could run.
     static func picksTheDmgThisMacCanRun() {
         let dmgOnly = feed(entry(tag: "v0.3.0", prerelease: false, assets: ["Tinycast-0.3.0.dmg"]))
@@ -284,15 +302,32 @@ struct UpdatesTests {
             BundleSignature.developerID as CFString, [], &requirement)
         expect(
             status == errSecSuccess && requirement != nil,
-            "the pinned Developer ID requirement still compiles")
+            "the pinned Developer ID requirement still compiles as a SecRequirement")
 
         // Without the anchor, any self-signed certificate claiming the same OU would satisfy it.
         expect(
             BundleSignature.developerID.hasPrefix("anchor apple generic and "),
             "the requirement is anchored to Apple's chain, not just to a team string")
+        // The bare anchor is a real requirement too: it accepts every Apple-signed code on the
+        // machine. What we pin must be strictly more than that.
+        expect(
+            BundleSignature.developerID != "anchor apple generic",
+            "the requirement is not just Apple's public anchor, which accepts any Apple-signed app")
+        expect(
+            BundleSignature.developerID.contains("certificate leaf[subject.OU] = \"J656U8XZ93\""),
+            "the requirement pins team J656U8XZ93, not a certificate a renewal or rename replaces")
+        expect(
+            BundleSignature.developerID.contains("field.1.2.840.113635.100.6.2.6"),
+            "the chain runs through the Developer ID Certification Authority intermediate")
         expect(
             BundleSignature.developerID.contains("field.1.2.840.113635.100.6.1.13"),
-            "the requirement demands a Developer ID Application certificate specifically")
+            "the leaf is a Developer ID Application certificate specifically")
+
+        // A signature alone is not the release identity: only the shipping bundle id self-updates.
+        expect(
+            ReleaseChannel(bundleID: "com.tinycast.app") == .stable
+                && ReleaseChannel(bundleID: "com.tinycast.app.dev") == .development,
+            "the release store serves the com.tinycast.app bundle only")
     }
 
     static func keepsOnlyTheChangelog() {

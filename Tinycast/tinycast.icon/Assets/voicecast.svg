@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>VoiceCast</title>
+  <rect x="42" y="42" width="940" height="940" rx="220" fill="#080808"/>
+  <!-- Progressive motion slices behind the main command/voice shape. -->
+  <path d="M235 399 Q199 431 199 512 Q199 593 235 625 Q223 599 223 512 Q223 425 235 399Z" fill="#6E6E6E"/>
+  <path d="M287 350 Q242 387 242 512 Q242 637 287 674 Q270 616 270 512 Q270 408 287 350Z" fill="#BEBEBE"/>
+  <path d="M346 314 Q290 353 290 512 Q290 671 346 710 Q322 628 322 512 Q322 396 346 314Z" fill="#FFFFFF"/>
+  <!-- Rounded play/command wedge with a voice waveform cut into its white body. -->
+  <path d="M405 293 C377 278 350 297 350 334 L350 690 C350 728 379 747 410 730 L740 551 C770 535 770 489 740 472Z" fill="#FFFFFF"/>
+  <g fill="#080808">
+    <rect x="451" y="481" width="22" height="64" rx="11"/>
+    <rect x="494" y="441" width="22" height="144" rx="11"/>
+    <rect x="537" y="399" width="22" height="226" rx="11"/>
+    <rect x="580" y="445" width="22" height="136" rx="11"/>
+    <rect x="623" y="482" width="22" height="62" rx="11"/>
+  </g>
+</svg>

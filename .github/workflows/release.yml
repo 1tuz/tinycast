@@ -1,7 +1,7 @@
 name: Release
 
 # Shown in the Actions list instead of a bare "Release" — carries the version.
-run-name: "Tinycast ${{ inputs.version }} #${{ github.run_number }}"
+run-name: "VoiceCast ${{ inputs.version }} #${{ github.run_number }}"
 
 # Manually triggered from the Actions tab with a version.
 on:
@@ -13,13 +13,30 @@ on:
         required: true
 
 permissions:
-  contents: write
+  contents: read
+
+env:
+  # Signing identity is pinned to the Apple Developer team. The certificate is reissued on
+  # renewal and on a company rename, so only the team id is asserted, never the holder name.
+  TEAM_ID: J656U8XZ93
+  BUNDLE_ID: com.tinycast.app
 
 jobs:
   build:
     runs-on: macos-26
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    outputs:
+      full_version: ${{ steps.meta.outputs.full_version }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          # check-migrations.sh compares against release tags; a shallow clone would pass everything.
+          fetch-depth: 0
+
+      - name: Check shipped migrations
+        run: ./Scripts/check-migrations.sh
 
       - name: Select Xcode 26
         run: |
@@ -32,103 +49,447 @@ jobs:
           echo "Using $XCODE_PATH"
           echo "DEVELOPER_DIR=$XCODE_PATH/Contents/Developer" >> "$GITHUB_ENV"
 
-      - name: Compute release metadata
+      - name: Validate version and compute release metadata
         id: meta
         run: |
           FULL="${{ github.event.inputs.version }}"
+          if ! [[ "$FULL" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version must be MAJOR.MINOR.PATCH, got '$FULL'"
+            exit 1
+          fi
           {
             echo "full_version=${FULL}"
-            echo "display_name=Tinycast"
-            echo "bundle_id=com.tinycast.app"
-            echo "dmg_file=Tinycast-${FULL}.dmg"
-            echo "zip_file=Tinycast-${FULL}.zip"
-            echo "prerelease=false"
+            echo "display_name=VoiceCast"
+            echo "dmg_file=VoiceCast-${FULL}.dmg"
+            echo "zip_file=VoiceCast-${FULL}.zip"
           } >> "$GITHUB_OUTPUT"
 
-      # Import the stable self-signed identity into a temp keychain so every release is signed with
-      # the SAME cert — that constant signature is what keeps users' Accessibility (TCC) grant alive
-      # across updates. Generate/rotate the secrets per docs/signing.md.
-      - name: Import signing certificate
+      # Fail before any signing/build work so a secret typo is a 30s failure, not a 2h one.
+      # Nothing here prints a value; only the names of missing secrets.
+      - name: Preflight required secrets
         env:
-          P12_BASE64: ${{ secrets.SIGNING_P12_BASE64 }}
-          P12_PASSWORD: ${{ secrets.SIGNING_P12_PASSWORD }}
+          P12_BASE64: ${{ secrets.DEVELOPER_ID_APPLICATION_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.DEVELOPER_ID_APPLICATION_P12_PASSWORD }}
+          TEAM: ${{ secrets.APPLE_TEAM_ID }}
+          API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+          API_KEY_BASE64: ${{ secrets.APPSTORE_API_PRIVATE_KEY_BASE64 }}
         run: |
+          set -euo pipefail
+          MISSING=()
+          [ -n "$P12_BASE64" ] || MISSING+=("DEVELOPER_ID_APPLICATION_P12_BASE64")
+          [ -n "$P12_PASSWORD" ] || MISSING+=("DEVELOPER_ID_APPLICATION_P12_PASSWORD")
+          [ -n "$TEAM" ] || MISSING+=("APPLE_TEAM_ID")
+          [ -n "$API_KEY_ID" ] || MISSING+=("APPSTORE_API_KEY_ID")
+          [ -n "$API_ISSUER" ] || MISSING+=("APPSTORE_ISSUER_ID")
+          [ -n "$API_KEY_BASE64" ] || MISSING+=("APPSTORE_API_PRIVATE_KEY_BASE64")
+          if [ "${#MISSING[@]}" -gt 0 ]; then
+            echo "::error::Missing required secrets: ${MISSING[*]}"
+            exit 1
+          fi
+          if [ "$TEAM" != "$TEAM_ID" ]; then
+            echo "::error::APPLE_TEAM_ID does not match the team the app is pinned to ($TEAM_ID)"
+            exit 1
+          fi
+
+      - name: Import Developer ID certificate
+        env:
+          P12_BASE64: ${{ secrets.DEVELOPER_ID_APPLICATION_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.DEVELOPER_ID_APPLICATION_P12_PASSWORD }}
+        run: |
+          set -euo pipefail
           KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
           KPW="$(openssl rand -base64 24)"
-          echo "${P12_BASE64}" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          echo "${P12_BASE64}" | base64 -D > "$RUNNER_TEMP/cert.p12"
           security create-keychain -p "$KPW" "$KEYCHAIN"
           security set-keychain-settings -lut 21600 "$KEYCHAIN"
           security unlock-keychain -p "$KPW" "$KEYCHAIN"
-          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "${P12_PASSWORD}" -A -T /usr/bin/codesign
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$P12_PASSWORD" \
+            -A -T /usr/bin/codesign
           # Let codesign use the key without an interactive prompt.
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$KPW" "$KEYCHAIN" >/dev/null
-          # Prepend to the search list so xcodebuild's codesign finds "Tinycast Self-Signed".
-          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | sed 's/"//g')
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KPW" \
+            "$KEYCHAIN" >/dev/null
+          # Prepend the ephemeral keychain so this identity wins over the runner defaults.
+          security list-keychains -d user -s "$KEYCHAIN" \
+            $(security list-keychains -d user | sed 's/"//g')
           rm -f "$RUNNER_TEMP/cert.p12"
+          # Resolve the exact Developer ID Application identity for the pinned team. A stale
+          # self-signed certificate must never be picked, and a fuzzy match could do that.
+          IDENTITIES="$(security find-identity -v -p codesigning "$KEYCHAIN" \
+            | sed -nE 's/^[[:space:]]*[0-9]+\) [0-9A-F]+ "(.*)"$/\1/p' \
+            | grep -E "^Developer ID Application: .+ \(${TEAM_ID}\)$" || true)"
+          COUNT="$(printf '%s\n' "$IDENTITIES" | grep -c . || true)"
+          if [ "$COUNT" -ne 1 ]; then
+            echo "::error::Expected exactly one 'Developer ID Application: … ($TEAM_ID)' identity, found $COUNT"
+            security find-identity -v -p codesigning "$KEYCHAIN" | sed 's/[0-9A-F]\{40\}/<hash>/'
+            exit 1
+          fi
+          echo "CODESIGN_IDENTITY=$IDENTITIES" >> "$GITHUB_ENV"
+          # Assert the imported leaf carries a team, which is what makes notarization possible.
+          security find-certificate -c "$IDENTITIES" -p "$KEYCHAIN" \
+            | openssl x509 -noout -subject -nameopt multiline | grep -q "organizationalUnitName *= *${TEAM_ID}" \
+            || { echo "::error::Imported certificate's OU is not $TEAM_ID"; exit 1; }
 
-      # Build the signed .app into an ephemeral DerivedData dir. Channel identity (name, bundle id,
-      # version) comes from build-setting overrides.
-      - name: Build app
+      - name: Write App Store Connect API key
+        env:
+          API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
+          API_KEY_BASE64: ${{ secrets.APPSTORE_API_PRIVATE_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          KEY="$RUNNER_TEMP/AuthKey_${API_KEY_ID}.p8"
+          printf '%s' "$API_KEY_BASE64" | base64 -D > "$KEY"
+          chmod 600 "$KEY"
+          # A truncated or wrongly encoded key fails here, not halfway through notarization.
+          grep -q -- '-----BEGIN PRIVATE KEY-----' "$KEY" \
+            || { echo "::error::APPSTORE_API_PRIVATE_KEY_BASE64 is not a .p8 private key"; exit 1; }
+          echo "NOTARY_KEY_PATH=$KEY" >> "$GITHUB_ENV"
+
+      # Build the signed .app into an ephemeral DerivedData dir. PRODUCT_NAME is deliberately
+      # not overridden: a global override renames the embedded helper products too.
+      - name: Build and sign app
         env:
           VERSION: ${{ steps.meta.outputs.full_version }}
-          DISPLAY_NAME: ${{ steps.meta.outputs.display_name }}
-          BUNDLE_ID: ${{ steps.meta.outputs.bundle_id }}
           BUILD_NUMBER: ${{ github.run_number }}
         run: |
-          # ARCHS pinned to what has always shipped: trusting ARCHS_STANDARD is what
-          # let a thin arm64 build reach Intel users once already (compat/README.md).
+          set -euo pipefail
+          # ARCHS pinned to what has always shipped: trusting ARCHS_STANDARD is what let a thin
+          # arm64 build reach Intel users once already. Developer ID always uses a secure
+          # timestamp, so the build machine must be able to reach Apple's timestamp server.
           xcodebuild -project Tinycast.xcodeproj -scheme Tinycast -configuration Release \
             -derivedDataPath "$RUNNER_TEMP/DerivedData" \
             ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
-            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Tinycast Self-Signed" \
-            OTHER_CODE_SIGN_FLAGS="--timestamp=none" \
-            PRODUCT_NAME="$DISPLAY_NAME" PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="$CODESIGN_IDENTITY" \
+            DEVELOPMENT_TEAM="$TEAM_ID" PROVISIONING_PROFILE_SPECIFIER="" \
+            ENABLE_HARDENED_RUNTIME=YES \
+            OTHER_CODE_SIGN_FLAGS="--options runtime --timestamp" \
+            TINYCAST_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
             MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
             build
+          APP="$RUNNER_TEMP/DerivedData/Build/Products/Release/VoiceCast.app"
+          [ -d "$APP" ] || {
+            echo "::error::expected built app at $APP (product name comes from the project)"
+            exit 1
+          }
 
-      # Apple silicon users pay for no Intel slice: assert the download stays thin. Both binaries —
-      # a bundled helper is shipped code too, and nothing else would catch a stray slice in it.
+      # Apple silicon users pay for no Intel slice: assert the download stays thin. Helpers are
+      # shipped code too, and nothing else would catch a stray slice in them.
       - name: Assert the build is arm64-only
-        env:
-          DISPLAY_NAME: ${{ steps.meta.outputs.display_name }}
         run: |
-          APP="$RUNNER_TEMP/DerivedData/Build/Products/Release/${DISPLAY_NAME}.app"
-          for BIN in "$APP/Contents/MacOS/${DISPLAY_NAME}" "$APP/Contents/Helpers/ClipboardTextHelper"; do
+          set -euo pipefail
+          APP="$RUNNER_TEMP/DerivedData/Build/Products/Release/VoiceCast.app"
+          MACHOS="$(while IFS= read -r -d '' f; do
+              if file -b "$f" | grep -q "Mach-O"; then
+                  echo "$f"
+              fi
+          done < <(find "$APP/Contents/Helpers" -type f -print0); true)"
+          BINS="$APP/Contents/MacOS/VoiceCast $MACHOS"
+          while IFS= read -r BIN; do
+            [ -n "$BIN" ] || continue
             SLICES="$(lipo -archs "$BIN")"
             if [ "$SLICES" != "arm64" ]; then
-              echo "::error::${BIN##*/}: expected arm64 alone, got '$SLICES'"
+              echo "::error::${BIN#$APP/}: expected arm64 alone, got '$SLICES'"
               exit 1
             fi
-          done
+          done <<< "$BINS"
 
-      # Notarization rejects a nested binary without the hardened runtime, and the helper is signed
-      # by a separate embed phase — so assert the flag reached it rather than trusting Xcode.
-      - name: Assert the signature is notarizable
-        env:
-          DISPLAY_NAME: ${{ steps.meta.outputs.display_name }}
-        run: ./Scripts/verify-signature.sh "$RUNNER_TEMP/DerivedData/Build/Products/Release/${DISPLAY_NAME}.app"
+      # Assert the flag reached every Mach-O rather than trusting Xcode, and that the usage
+      # strings the permission prompts need are entitled.
+      - name: Assert the signature is release-safe
+        run: ./Scripts/verify-signature.sh \
+          "$RUNNER_TEMP/DerivedData/Build/Products/Release/VoiceCast.app"
 
-      # The DMG is for manual installation; the ZIP is for the in-app updater.
-      - name: Package DMG and ZIP
+      # The updater trusts a Developer ID for team J656U8XZ93. If the certificate and that pin
+      # ever disagree, every future update is rejected at install time, so fail the release here.
+      - name: Assert the update identity matches the certificate
+        run: |
+          set -euo pipefail
+          grep -qF 'certificate leaf[subject.OU] = "J656U8XZ93"' \
+            Tinycast/Features/Updates/Service/BundleSignature.swift \
+            || { echo "::error::BundleSignature no longer pins team J656U8XZ93"; exit 1; }
+          ./Scripts/verify-release.sh app \
+            "$RUNNER_TEMP/DerivedData/Build/Products/Release/VoiceCast.app" \
+            --version "${{ steps.meta.outputs.full_version }}" --unnotarized
+
+      - name: Notarize app
         env:
-          DISPLAY_NAME: ${{ steps.meta.outputs.display_name }}
+          VERSION: ${{ steps.meta.outputs.full_version }}
+          API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/DerivedData/Build/Products/Release/VoiceCast.app"
+          SUBMIT_DIR="$RUNNER_TEMP/notarize-app"
+          mkdir -p "$SUBMIT_DIR"
+          # notarytool takes a zip for an .app; ditto is the only archiver that keeps the seal.
+          ditto -c -k --keepParent --sequesterRsrc "$APP" "$SUBMIT_DIR/VoiceCast.zip"
+          xcrun notarytool submit "$SUBMIT_DIR/VoiceCast.zip" \
+            --key "$NOTARY_KEY_PATH" --key-id "$API_KEY_ID" --issuer "$API_ISSUER" \
+            --wait --output-format json | tee "$SUBMIT_DIR/submit.json"
+          STATUS="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["status"])' \
+            "$SUBMIT_DIR/submit.json")"
+          if [ "$STATUS" != "Accepted" ]; then
+            ID="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["id"])' \
+              "$SUBMIT_DIR/submit.json")"
+            echo "::error::Apple notarization returned '$STATUS'"
+            xcrun notarytool log "$ID" --key "$NOTARY_KEY_PATH" \
+              --key-id "$API_KEY_ID" --issuer "$API_ISSUER" || true
+            exit 1
+          fi
+          xcrun stapler staple "$APP"
+          xcrun stapler validate "$APP"
+
+      # The ticket ships inside the .app; the DMG is built from the stapled copy so a user who
+      # mounts it offline still gets a notarized app.
+      - name: Package, sign and notarize DMG
+        env:
+          VERSION: ${{ steps.meta.outputs.full_version }}
           DMG_FILE: ${{ steps.meta.outputs.dmg_file }}
           ZIP_FILE: ${{ steps.meta.outputs.zip_file }}
+          API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
         run: |
-          APP="$RUNNER_TEMP/DerivedData/Build/Products/Release/${DISPLAY_NAME}.app"
+          set -euo pipefail
+          APP="$RUNNER_TEMP/DerivedData/Build/Products/Release/VoiceCast.app"
           STAGE="$(mktemp -d)"
           cp -R "$APP" "$STAGE/"
           ln -s /Applications "$STAGE/Applications"
           mkdir -p dist
-          diskutil image create from "$STAGE" --format UDZO --volumeName "$DISPLAY_NAME" "dist/${DMG_FILE}"
+          diskutil image create from "$STAGE" --format UDZO \
+            --volumeName "VoiceCast" "dist/${DMG_FILE}"
+          # Sign the disk image itself, or Gatekeeper reports it as an unsigned download.
+          codesign --force --sign "$CODESIGN_IDENTITY" --options runtime --timestamp \
+            "dist/${DMG_FILE}"
           # `ditto -c -k --keepParent --sequesterRsrc` is the only zip that leaves the code
           # signature verifiable; plain `zip` drops symlinks and breaks the seal.
           ditto -c -k --keepParent --sequesterRsrc "$APP" "dist/${ZIP_FILE}"
 
+          xcrun notarytool submit "dist/${DMG_FILE}" \
+            --key "$NOTARY_KEY_PATH" --key-id "$API_KEY_ID" --issuer "$API_ISSUER" \
+            --wait --output-format json | tee "$RUNNER_TEMP/dmg-submit.json"
+          STATUS="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["status"])' \
+            "$RUNNER_TEMP/dmg-submit.json")"
+          if [ "$STATUS" != "Accepted" ]; then
+            ID="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["id"])' \
+              "$RUNNER_TEMP/dmg-submit.json")"
+            echo "::error::Apple notarization of the DMG returned '$STATUS'"
+            xcrun notarytool log "$ID" --key "$NOTARY_KEY_PATH" \
+              --key-id "$API_KEY_ID" --issuer "$API_ISSUER" || true
+            exit 1
+          fi
+          xcrun stapler staple "dist/${DMG_FILE}"
+          xcrun stapler validate "dist/${DMG_FILE}"
+
+      # Full gate on the shipping bytes: Developer ID authority, team, hardened runtime, secure
+      # timestamp, stapled ticket, Gatekeeper acceptance, bundle id and version.
+      - name: Verify final DMG, ZIP and app
+        env:
+          DMG_FILE: ${{ steps.meta.outputs.dmg_file }}
+          ZIP_FILE: ${{ steps.meta.outputs.zip_file }}
+          VERSION: ${{ steps.meta.outputs.full_version }}
+        run: |
+          set -euo pipefail
+          ./Scripts/verify-release.sh dmg "dist/${DMG_FILE}" --version "$VERSION"
+          EXTRACT_DIR="$RUNNER_TEMP/zip-extract"
+          mkdir -p "$EXTRACT_DIR"
+          ditto -x -k --sequesterRsrc "dist/${ZIP_FILE}" "$EXTRACT_DIR"
+          ./Scripts/verify-release.sh app "$EXTRACT_DIR/VoiceCast.app" --version "$VERSION"
+
       - uses: actions/upload-artifact@v7
         with:
-          name: Tinycast-${{ steps.meta.outputs.full_version }}
-          path: dist/
+          name: VoiceCast-${{ steps.meta.outputs.full_version }}
+          path: dist
+
+      # The import keychain and the API key never outlive the job, even when signing failed.
+      - name: Remove signing material
+        if: always()
+        run: |
+          if [ -n "${NOTARY_KEY_PATH:-}" ]; then rm -f "$NOTARY_KEY_PATH"; fi
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
+
+  verify-install:
+    runs-on: macos-26
+    needs: build
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: VoiceCast-${{ needs.build.outputs.full_version }}
+          path: dist
+
+      # Clean-machine install: the DMG carries a real Safari quarantine flag, nothing clears it,
+      # Gatekeeper is left enabled, and the app must still be accepted and verify after the
+      # install copy. No secrets and no signing material in this job.
+      - name: Install from a quarantined DMG with Gatekeeper enabled
+        env:
+          VERSION: ${{ needs.build.outputs.full_version }}
+        run: |
+          set -euo pipefail
+          DMG="dist/VoiceCast-${VERSION}.dmg"
+          ZIP="dist/VoiceCast-${VERSION}.zip"
+          [ -f "$DMG" ] || { echo "::error::$DMG missing from artifact"; exit 1; }
+          [ -f "$ZIP" ] || { echo "::error::$ZIP missing from artifact"; exit 1; }
+
+          # Exactly what a browser writes: flags 0083, epoch in hex, the downloading app.
+          QUARANTINE="0083;$(printf '%x' "$(date +%s)");Safari;"
+          xattr -w com.apple.quarantine "$QUARANTINE" "$DMG"
+          xattr -p com.apple.quarantine "$DMG" >/dev/null \
+            || { echo "::error::could not stamp the DMG as quarantined"; exit 1; }
+
+          MOUNT="$RUNNER_TEMP/mount"
+          mkdir -p "$MOUNT"
+          hdiutil attach -readonly -nobrowse -quiet -mountpoint "$MOUNT" "$DMG"
+          trap 'hdiutil detach "$MOUNT" -force >/dev/null 2>&1 || true' EXIT
+
+          INSTALL="$RUNNER_TEMP/Applications"
+          mkdir -p "$INSTALL"
+          # Hand-install path: drag the mounted app out of the image, as a user would.
+          ditto "$MOUNT/VoiceCast.app" "$INSTALL/VoiceCast.app"
+          hdiutil detach "$MOUNT" -quiet
+
+          # Installer path: the documented Scripts/install.sh must accept this same quarantined
+          # DMG, verify the Developer ID chain and the ticket, and install a clean copy.
+          INSTALLED_BY_SCRIPT="$RUNNER_TEMP/Applications-by-installer"
+          mkdir -p "$INSTALLED_BY_SCRIPT"
+          VOICECAST_DMG="$DMG" VOICECAST_INSTALL_DIR="$INSTALLED_BY_SCRIPT" \
+            ./Scripts/install.sh
+          [ -d "$INSTALLED_BY_SCRIPT/VoiceCast.app" ] \
+            || { echo "::error::Scripts/install.sh did not install VoiceCast.app"; exit 1; }
+          ./Scripts/verify-release.sh app "$INSTALLED_BY_SCRIPT/VoiceCast.app" --version "$VERSION"
+
+          APP="$INSTALL/VoiceCast.app"
+          [ -d "$APP" ] || { echo "::error::installed copy is missing"; exit 1; }
+          # LaunchServices stamps the extracted app with the same quarantine record the download
+          # carried. Stamping it here makes the check deterministic instead of relying on whether
+          # ditto propagated the attribute from a read-only mount.
+          xattr -w com.apple.quarantine "$QUARANTINE" "$APP"
+          xattr -p com.apple.quarantine "$APP" >/dev/null 2>&1 \
+            || { echo "::error::installed copy has no quarantine flag; test is meaningless"; exit 1; }
+
+          # The whole point: Gatekeeper accepts the quarantined copy, untouched.
+          OUT="$(spctl --assess --type execute --verbose=4 "$APP" 2>&1)" \
+            || { echo "::error::Gatekeeper refused the installed copy:"; echo "$OUT"; exit 1; }
+          echo "$OUT"
+          grep -q "source=Notarized Developer ID" <<<"$OUT" \
+            || { echo "::error::Gatekeeper did not report a notarized Developer ID origin"; exit 1; }
+          ! grep -q "rejected" <<<"$OUT" ||
+            { echo "::error::Gatekeeper rejected the installed copy"; exit 1; }
+
+          ./Scripts/verify-release.sh app "$APP" --version "$VERSION"
+
+          EXTRACT_DIR="$RUNNER_TEMP/zip-extract"
+          mkdir -p "$EXTRACT_DIR"
+          ditto -x -k --sequesterRsrc "$ZIP" "$EXTRACT_DIR"
+          ./Scripts/verify-release.sh app "$EXTRACT_DIR/VoiceCast.app" --version "$VERSION"
+
+  verify-upgrade:
+    runs-on: macos-26
+    needs: [build, verify-install]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: VoiceCast-${{ needs.build.outputs.full_version }}
+          path: dist
+
+      # The fork shipped self-signed Tinycast copies before the switch. Install the previous
+      # published release first, then the new DMG over it through Scripts/install.sh, and prove
+      # the settings survive and the bundle id never changes.
+      - name: Upgrade a previous release in place
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ needs.build.outputs.full_version }}
+        run: |
+          set -euo pipefail
+          LEGACY_DIR="$RUNNER_TEMP/legacy"
+          mkdir -p "$LEGACY_DIR"
+          # Newest published non-prerelease release that is not the one being cut, so a re-run
+          # still exercises an upgrade instead of skipping the check.
+          TAGS="$(gh release list --repo "$REPO" --limit 50 \
+            --json tagName,isDraft,isPrerelease \
+            --jq '.[] | select(.isDraft | not) | select(.isPrerelease | not) | .tagName')"
+          PREV_TAG="$(printf '%s\n' "$TAGS" | grep -vx "v${VERSION}" | sed -n '1p' || true)"
+          if [ -z "$PREV_TAG" ]; then
+            echo "::warning::No earlier published release to upgrade from; skipping the in-place check"
+            exit 0
+          fi
+          PREV_ASSET="$(gh release view "$PREV_TAG" --repo "$REPO" --json assets \
+            --jq '[.assets[].name | select(test("\\.dmg$"))] | first // empty')"
+          [ -n "$PREV_ASSET" ] || { echo "::error::$PREV_TAG has no DMG to upgrade from"; exit 1; }
+          # The newest published release is what users actually update from. Its updater has to
+          # already know the Developer ID requirement, or the in-app path is dead for them and
+          # only Scripts/install.sh migrates that copy.
+          if git cat-file -e "${PREV_TAG}:Tinycast/Features/Updates/Service/BundleSignature.swift" 2>/dev/null; then
+            git show "${PREV_TAG}:Tinycast/Features/Updates/Service/BundleSignature.swift" \
+              | grep -qF 'certificate leaf[subject.OU] = "J656U8XZ93"' \
+              || echo "::warning::$PREV_TAG predates the Developer ID branch; its in-app updater cannot accept this release"
+          fi
+          gh release download "$PREV_TAG" --repo "$REPO" --pattern "$PREV_ASSET" --dir "$LEGACY_DIR"
+
+          MOUNT="$RUNNER_TEMP/legacy-mount"
+          mkdir -p "$MOUNT"
+          hdiutil attach -readonly -nobrowse -quiet -mountpoint "$MOUNT" \
+            "$LEGACY_DIR/$PREV_ASSET"
+          trap 'hdiutil detach "$MOUNT" -force >/dev/null 2>&1 || true' EXIT
+          PREV_APP="$(find "$MOUNT" -maxdepth 1 -name '*.app' -type d -print -quit)"
+          [ -n "$PREV_APP" ] || { echo "::error::$PREV_ASSET contains no app"; exit 1; }
+          # Keep the shipped name: a pre-switch release ships either Tinycast.app or VoiceCast.app,
+          # and the installer has to take both over.
+          ditto "$PREV_APP" "$LEGACY_DIR/$(basename "$PREV_APP")"
+          hdiutil detach "$MOUNT" -quiet
+
+          # A user's settings live in ~/.config/tinycast/settings.json (AppPaths), keyed by the
+          # stable bundle id, and the prefs domain is the same; the update must not touch either.
+          SETTINGS_DIR="$HOME/.config/tinycast"
+          mkdir -p "$SETTINGS_DIR"
+          printf '{"settingsFile":{"version":1},"hotkey":{"value":"option-space"}}\n' \
+            > "$SETTINGS_DIR/settings.json"
+          BEFORE="$(shasum -a 256 "$SETTINGS_DIR/settings.json")"
+
+          PREV_INFO="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' \
+            "$LEGACY_DIR/$(basename "$PREV_APP")/Contents/Info.plist")"
+          [ "$PREV_INFO" = "com.tinycast.app" ] \
+            || { echo "::error::$PREV_TAG has bundle id '$PREV_INFO', not com.tinycast.app"; exit 1; }
+
+          VOICECAST_INSTALL_DIR="$LEGACY_DIR" VOICECAST_DMG="dist/VoiceCast-${VERSION}.dmg" \
+            ./Scripts/install.sh
+
+          AFTER="$(shasum -a 256 "$SETTINGS_DIR/settings.json")"
+          [ "$BEFORE" = "$AFTER" ] \
+            || { echo "::error::upgrade modified the user's settings file"; exit 1; }
+          [ ! -e "$LEGACY_DIR/Tinycast.app" ] \
+            || { echo "::error::legacy Tinycast.app was left behind"; exit 1; }
+          ./Scripts/verify-release.sh app "$LEGACY_DIR/VoiceCast.app" --version "$VERSION"
+          # The updater's own acceptance test: the requirement string from BundleSignature must
+          # evaluate true against the installed bundle, not merely match a display name.
+          codesign --verify --strict \
+            -R='certificate leaf[subject.OU] = "J656U8XZ93"' \
+            "$LEGACY_DIR/VoiceCast.app" \
+            || { echo "::error::the installed app does not satisfy BundleSignature's team requirement"; exit 1; }
+          echo "✓ $PREV_TAG upgraded in place to $VERSION with settings intact"
+
+  publish:
+    runs-on: macos-26
+    needs: [build, verify-install, verify-upgrade]
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: VoiceCast-${{ needs.build.outputs.full_version }}
+          path: dist
 
       # The changelog GitHub derives from the merged PRs, with the install text below a marker the
       # update window cuts at. Nothing is committed anywhere — see docs/release.md.
@@ -136,28 +497,25 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          TAG: v${{ steps.meta.outputs.full_version }}
+          TAG: v${{ needs.build.outputs.full_version }}
           SHA: ${{ github.sha }}
-          VERSION: ${{ steps.meta.outputs.full_version }}
-          DISPLAY_NAME: ${{ steps.meta.outputs.display_name }}
-          BUNDLE_ID: ${{ steps.meta.outputs.bundle_id }}
-        run: ./Scripts/release-notes.sh "$RUNNER_TEMP/notes.md" "$RUNNER_TEMP/changelog.md"
+          VERSION: ${{ needs.build.outputs.full_version }}
+        run: |
+          ./Scripts/release-notes.sh "$RUNNER_TEMP/notes.md" "$RUNNER_TEMP/discord.md"
 
+      # Publish only after build, verify-install and verify-upgrade all passed: needs gating is
+      # the whole point of this job. --notes-file, never --generate-notes: gh prepends --notes to
+      # generated notes, which would put the install boilerplate back above the changelog.
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.full_version }}
+          DMG_FILE: VoiceCast-${{ needs.build.outputs.full_version }}.dmg
+          ZIP_FILE: VoiceCast-${{ needs.build.outputs.full_version }}.zip
         run: |
-          TAG="v${{ steps.meta.outputs.full_version }}"
-          PRERELEASE_FLAG=""
-          if [ "${{ steps.meta.outputs.prerelease }}" = "true" ]; then
-            PRERELEASE_FLAG="--prerelease"
-          fi
-          # --notes-file, never --generate-notes: gh prepends --notes to generated notes, which would
-          # put the install boilerplate back above the changelog.
+          TAG="v$VERSION"
           gh release create "$TAG" \
-            "dist/${{ steps.meta.outputs.dmg_file }}" \
-            "dist/${{ steps.meta.outputs.zip_file }}" \
-            --title "${{ steps.meta.outputs.display_name }} ${{ steps.meta.outputs.full_version }}" \
-            --notes-file "$RUNNER_TEMP/notes.md" \
-            $PRERELEASE_FLAG
-
+            "dist/$DMG_FILE" \
+            "dist/$ZIP_FILE" \
+            --title "VoiceCast $VERSION" \
+            --notes-file "$RUNNER_TEMP/notes.md"

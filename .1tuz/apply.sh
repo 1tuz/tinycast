@@ -24,6 +24,14 @@ for patch in .1tuz/patches/*.patch; do
   elif [ "$name" = "0019-voice-commands.patch" ]; then
     # Deterministic voice command routing builds on the restored Voice Ask sources.
     apply_args=(--whitespace=nowarn)
+  elif [ "$name" = "0020-fork-main-refresh.patch" ]; then
+    # Generated against the exact tree the queue produces; --3way would merge it against
+    # upstream, where most of the files the patch edits do not exist yet.
+    apply_args=(--whitespace=nowarn)
+  elif [ "$name" = "0021-voicecast-rebrand.patch" ]; then
+    # Generated against the exact tree the queue produces; --3way would merge it against
+    # upstream, where the files the patch edits do not exist yet.
+    apply_args=(--whitespace=nowarn)
   fi
   if ! git apply "${apply_args[@]}" "$patch"; then
     failed="$name"
@@ -31,6 +39,9 @@ for patch in .1tuz/patches/*.patch; do
     exit 1
   fi
 done
+
+# Keep the independent VoiceCast identity on every automatic upstream sync.
+bash .1tuz/branding/apply.sh
 
 # Optional rewrites: leftover upstream releases-page links.
 { grep -rlF --include='*.swift' 'github.com/abue-ammar/tinycast/releases' Tinycast || true; } | while read -r file; do

@@ -30,7 +30,9 @@ diff --git a/Tinycast/App/AppCore.swift b/Tinycast/App/AppCore.swift
 diff --git a/Tinycast/Features/AI/Settings/AISettingsView.swift b/Tinycast/Features/AI/Settings/AISettingsView.swift
 --- a/Tinycast/Features/AI/Settings/AISettingsView.swift
 +++ b/Tinycast/Features/AI/Settings/AISettingsView.swift
-@@ -1,2 +1,5 @@
+@@ -1,4 +1,7 @@
+ import SwiftUI
+ 
  struct AISettingsView: View {
 +    @AppStorage("speechVoice.enabled") private var speechEnabled = false
 +    @AppStorage("speechVoice.model") private var speechModel = "parakeet-ultra"
@@ -357,9 +359,12 @@ diff --git a/Tinycast/Features/HotKeys/Service/HyperKeyTap.swift b/Tinycast/Feat
 diff --git a/Tinycast/Features/Launcher/Service/VisibilityStore.swift b/Tinycast/Features/Launcher/Service/VisibilityStore.swift
 --- a/Tinycast/Features/Launcher/Service/VisibilityStore.swift
 +++ b/Tinycast/Features/Launcher/Service/VisibilityStore.swift
-@@ -80,1 +80,1 @@
+@@ -83,4 +83,4 @@
+         case .command(let id): id.owner == nil ? isKindEnabled(.command) : true
 -        case .togglePalette, .quickAction, .customCommand, .windowCommand, .customWindowSize,
 +        case .togglePalette, .voiceAsk, .quickAction, .customCommand, .windowCommand, .customWindowSize,
+             .windowLayout, .windowRoom, .quicklink, .appleShortcut, .snippet, .extensionCommand,
+             .workflow:
 diff --git a/Tinycast/Info.plist b/Tinycast/Info.plist
 --- a/Tinycast/Info.plist
 +++ b/Tinycast/Info.plist

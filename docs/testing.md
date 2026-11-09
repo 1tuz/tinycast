@@ -409,7 +409,7 @@ There is no UI test suite, so this is it. Run the core sweep for any change that
 run the scoped section for whatever feature you touched. Budget about five minutes plus three per
 section.
 
-Run against the **Debug channel** (`Tinycast Dev.app`, `com.tinycast.app.dev`). It has its own prefs,
+Run against the **Debug channel** (`VoiceCast Dev.app`, `com.tinycast.app.dev`). It has its own prefs,
 caches, TCC grants and login item, so this cannot disturb an installed copy.
 
 ### Core
@@ -550,7 +550,7 @@ caches, TCC grants and login item, so this cannot disturb an installed copy.
   input-source switching on, a short press switches sources only while Caps Lock is off
 - Right Command as Hyper with Left Command held keeps the chord; Left Shift as Hyper with Include
   Shift off sends ⌃⌥⇧⌘K when Right Shift is held with K
-- Run Tinycast Dev next to Tinycast: the second reads Blocked and names the first; quitting the
+- Run VoiceCast Dev next to VoiceCast: the second reads Blocked and names the first; quitting the
   first hands the Hyper Key over without a relaunch
 - Revoke Accessibility while Hyper is live: the key goes back to normal. Grant it again: Hyper
   returns within a couple of seconds without a relaunch

@@ -77,7 +77,7 @@ struct AboutView: View {
                 .font(.caption)
             }
 
-            Text("A tiny, native macOS launcher.")
+            Text("Your native command center for search, voice, and automation.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }
@@ -148,15 +148,16 @@ private struct AboutLink: Identifiable {
             detail: "github.com/1tuz/tinycast",
             url: URL(string: "https://github.com/1tuz/tinycast")!),
         AboutLink(
-            id: "discord", glyph: .brand("BrandDiscord"), title: "Discord",
-            detail: String(localized: "Join the Tinycast community"),
-            url: URL(string: "https://discord.gg/v2Eeb4QQy3")!),
+            id: "upstream", glyph: .brand("BrandGitHub"), title: "Original Tinycast",
+            detail: "github.com/abue-ammar/tinycast",
+            url: URL(string: "https://github.com/abue-ammar/tinycast")!),
         AboutLink(
-            id: "x", glyph: .brand("BrandX"), title: "X", detail: "@abue_ammar",
-            url: URL(string: "https://x.com/abue_ammar")!),
+            id: "speech-runtime", glyph: .symbol("waveform"), title: "Speech Runtime",
+            detail: "github.com/1tuz/Speech-Runtime",
+            url: URL(string: "https://github.com/1tuz/Speech-Runtime")!),
         AboutLink(
-            id: "email", glyph: .symbol("envelope"), title: String(localized: "Email"),
-            detail: "iabueammar@gmail.com", url: URL(string: "mailto:iabueammar@gmail.com")!)
+            id: "email", glyph: .symbol("envelope"), title: "Upstream contact",
+            detail: "Original Tinycast author: iabueammar@gmail.com", url: URL(string: "mailto:iabueammar@gmail.com")!)
     ]
 }
 

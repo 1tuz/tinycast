@@ -19,7 +19,7 @@ enum AppDisplayName {
 
 extension Bundle {
     var appDisplayName: String {
-        infoName("CFBundleDisplayName") ?? infoName("CFBundleName") ?? "Tinycast"
+        infoName("CFBundleDisplayName") ?? infoName("CFBundleName") ?? "VoiceCast"
     }
 
     /// The name a bundle declares for itself. Not what Finder shows — LaunchServices ignores a

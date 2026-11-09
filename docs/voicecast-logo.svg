@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="180" viewBox="0 0 760 180">
+  <title>VoiceCast wordmark</title>
+  <g transform="translate(0,10) scale(0.15)">
+    <rect x="0" y="0" width="1024" height="1024" rx="224" fill="#080808"/>
+    <path d="M235 399Q199 431 199 512Q199 593 235 625Q223 599 223 512Q223 425 235 399Z" fill="#777"/>
+    <path d="M287 350Q242 387 242 512Q242 637 287 674Q270 616 270 512Q270 408 287 350Z" fill="#BBB"/>
+    <path d="M346 314Q290 353 290 512Q290 671 346 710Q322 628 322 512Q322 396 346 314Z" fill="#FFF"/>
+    <path d="M405 293C377 278 350 297 350 334V690C350 728 379 747 410 730L740 551C770 535 770 489 740 472Z" fill="#FFF"/>
+    <g fill="#080808">
+      <rect x="451" y="481" width="22" height="64" rx="11"/>
+      <rect x="494" y="441" width="22" height="144" rx="11"/>
+      <rect x="537" y="399" width="22" height="226" rx="11"/>
+      <rect x="580" y="445" width="22" height="136" rx="11"/>
+      <rect x="623" y="482" width="22" height="62" rx="11"/>
+    </g>
+  </g>
+  <text x="182" y="123" font-size="92" font-family="-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif" font-weight="750" letter-spacing="-3" fill="#080808">VoiceCast</text>
+</svg>

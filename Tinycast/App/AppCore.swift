@@ -460,7 +460,7 @@ final class AppCore {
                 paletteCoordinator.showPalette(mode: .launcher)
             }
             if let version = updateChecker.takeInstalledVersion() {
-                showMessage(String(localized: "Updated to Tinycast \(version.description)"))
+                showMessage(String(localized: "Updated to VoiceCast \(version.description)"))
             }
         }
     }
@@ -766,8 +766,8 @@ final class AppCore {
         Task {
             guard
                 await confirm(
-                    title: String(localized: "Relaunch Tinycast?"),
-                    message: String(localized: "The new language applies after Tinycast relaunches."),
+                    title: String(localized: "Relaunch VoiceCast?"),
+                    message: String(localized: "The new language applies after VoiceCast relaunches."),
                     symbol: "globe", confirmTitle: String(localized: "Relaunch"), tone: .neutral,
                     confirmRole: .standard, dismissTitle: String(localized: "Later")),
                 isLanguagePending

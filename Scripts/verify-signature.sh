@@ -1,5 +1,5 @@
 #!/bin/bash
-# Assert a built app will notarize and can still prompt. Usage: verify-signature.sh <path-to-.app>
+# Assert the built app is release-safe and can still prompt. Usage: verify-signature.sh <path-to-.app>
 set -uo pipefail
 
 APP="${1:?usage: verify-signature.sh <path-to-.app>}"
@@ -27,15 +27,24 @@ ENTITLEMENTS="$(mktemp)"
 trap 'rm -f "$ENTITLEMENTS"' EXIT
 codesign -d --entitlements - --xml "$APP" > "$ENTITLEMENTS" 2>/dev/null
 
-for BIN in "$APP/Contents/MacOS/$NAME" "$APP/Contents/Helpers/ClipboardTextHelper"; do
+# The main executable and both helpers are signed separately; sweep all Mach-O
+# files under Contents so a stray unsigned framework cannot slip through.
+BINS="$(while IFS= read -r -d '' f; do
+    if file -b "$f" | grep -q "Mach-O"; then
+        echo "$f"
+    fi
+done < <(find "$APP/Contents" -type f -print0); true)"
+[ -n "$BINS" ] || fail "$NAME.app: no Mach-O binaries found under Contents"
+
+while IFS= read -r BIN; do
     INFO="$(codesign -dv --verbose=2 "$BIN" 2>&1)"
     [[ "$INFO" =~ flags=0x[0-9a-f]+\([^\)]*runtime ]] ||
-        fail "${BIN##*/}: hardened runtime not enabled"
-done
+        fail "${BIN#$APP/}: hardened runtime not enabled"
+done <<< "$BINS"
 
 codesign --verify --deep --strict "$APP" || fail "$NAME.app: the seal does not verify"
 
-# Xcode injects it for Debug only; notarization refuses any build still carrying it.
+# Xcode injects it for Debug only; it breaks the hardened-runtime contract of a release.
 /usr/libexec/PlistBuddy -c "Print :com.apple.security.get-task-allow" "$ENTITLEMENTS" &>/dev/null &&
     fail "$NAME.app: get-task-allow is present"
 
@@ -48,6 +57,6 @@ for PAIR in "${RESOURCE_ENTITLEMENTS[@]}"; do
 done
 
 if [ "$STATUS" -eq 0 ]; then
-    echo "✓ $NAME.app is notarizable and its prompts are entitled"
+    echo "✓ $NAME.app is release-safe and its prompts are entitled"
 fi
 exit "$STATUS"

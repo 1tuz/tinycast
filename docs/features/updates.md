@@ -1,35 +1,30 @@
 # Updates
 
-By default, Tinycast checks GitHub Releases once a day and offers the newest release in a native
+By default, VoiceCast checks GitHub Releases once a day and offers the newest release in a native
 window with its release notes, installs it and relaunches. There is no Sparkle and
 no appcast: the release feed the website already reads is the feed the app reads.
 
 ## Invariants
 
-- **Tinycast installs its own updates, and Homebrew stays out of the way.** Both casks declare
-  `auto_updates true`, which is Homebrew's own flag for an app that manages its own version. `brew
-  update && brew upgrade` therefore skips Tinycast entirely — it is never reported outdated, never
-  re-downloaded, and a self-updated copy is never trashed or rolled back. `brew install`, `brew
-  uninstall` and `brew list` keep working unchanged.
-- **The archive is a zip, never the DMG.** A zip expands with `ditto`; a DMG would have to be mounted,
-  which means a volume, a Spotlight handle and a detach that can fail. A release published without a
-  zip is not installable and is not offered.
-- **The zip is arm64-only.** The release carries one thin arm64 zip; a Mac without that slice is
-  offered nothing rather than installing a build that would refuse to launch.
-- **Nobody ever runs `xattr`, and nothing ever strips a quarantine flag.** An archive Tinycast
-  fetched itself never carries one — macOS sets that flag for sandboxed downloaders and for apps
-  that opt in with `LSFileQuarantineEnabled`, and Tinycast is neither — so there is no flag
-  to remove and no code to try. Releases are signed with the persistent self-signed identity
-  `Tinycast Self-Signed`; the first launch of an updated copy is the ordinary
-  right-click → Open a self-signed app already needs, and no release or update path works around
-  Gatekeeper.
+- **VoiceCast installs its own updates, and the DMG is the one artifact.** The release carries a
+  single `VoiceCast-<version>.dmg`; a hand download and the updater read that same file, so what the
+  updater installs is byte-identical to what a downloader installs. A release without a DMG is not
+  installable and is not offered.
+- **The DMG is arm64-only.** `ReleaseFeed.asset` answers nothing for an Intel Mac rather than
+  offering a build whose only slice would refuse to launch.
+- **Nobody ever runs `xattr`, and nothing ever strips a quarantine flag.** A DMG VoiceCast fetched
+  itself never carries one — macOS sets that flag for sandboxed downloaders and for apps
+  that opt in with `LSFileQuarantineEnabled`, and VoiceCast is neither — so there is no flag
+  to remove and no code to try. Releases are Developer ID-signed and notarized by Apple, so the
+  first launch of an updated copy opens straight away, and no release or update path works
+  around Gatekeeper.
 - **The signature is the only integrity guarantee.** A downloaded bundle is trusted when its seal
   validates, nested helper included, *and* it either satisfies the Developer ID requirement pinned in
-  `BundleSignature` or carries the byte-identical leaf certificate the running app does. The
-  Developer ID branch stays for a future where the app is signed that way; the leaf match is the
-  path this self-signed release and every copy installed before it has. `notarized` is deliberately
-  not in the requirement — it resolves the ticket through `syspolicyd` or the network, so an
-  offline Mac would refuse a bundle the chain already proves is ours.
+  `BundleSignature` — the team `J656U8XZ93` requirement every release satisfies — or carries the
+  byte-identical leaf certificate the running app does, which is the path a copy installed before
+  the switch takes. `notarized` is deliberately not in the requirement — it resolves the ticket
+  through `syspolicyd` or the network, so an offline Mac would refuse a bundle the chain already
+  proves is ours.
 - **Only `com.tinycast.app` updates itself, and only on non-prerelease tags.** Historical
   `-beta.N` tags from the retired channel sit in the release list and are never offered.
   `com.tinycast.app.dev` never updates at all, and does not advertise the command.
@@ -86,8 +81,9 @@ channel, not offered. Everything else parses to nil, so an off-shape tag can nev
 update. A release whose tag disagrees with its `prerelease` flag is treated as mis-published and
 skipped.
 
-The Intel build shares the stable tag, version, bundle id and signature, so it resolves to `.stable`
-like any other; `ReleaseArchitecture` picks its asset, and nothing about identity changes.
+There is no Intel build. The DMG ships an arm64 slice only, so `ReleaseArchitecture.current` on an
+Intel Mac reaches `ReleaseFeed.asset` and gets nil — an Intel copy is offered nothing rather than a
+build whose only slice would refuse to launch.
 
 ## Checking
 
@@ -115,11 +111,15 @@ Check for Updates ignores the record and always offers whatever is newer than wh
 
 One route, whatever the install came from:
 
-1. Stream the zip into `~/Library/Caches/<bundle-id>/Updates/`, with real byte progress and a Cancel
-   that actually aborts the transfer.
-2. `ditto -x -k` it into a staging folder, and take whatever `.app` lands there.
+1. Stream the DMG into `~/Library/Caches/<bundle-id>/Updates/`, with real byte progress and a
+   Cancel that actually aborts the transfer.
+2. `DiskImage.stage`: `hdiutil attach -readonly -nobrowse` at a private mount point, `ditto` the one
+   `.app` out onto the staging directory (`replaceItemAt` cannot cross volumes), then detach — forced
+   if the polite detach refuses, and never fatal once the copy exists.
 3. Verify the bundle id, the version, and that the code signature is valid and proves the bundle is
-   ours — by the pinned Developer ID requirement, or by the running app's own leaf certificate.
+   ours — by the pinned Developer ID requirement (team `J656U8XZ93`, which every release satisfies),
+   or, for a locally signed development build, by the running app's own leaf certificate. A copy
+   whose code predates the Developer ID branch has no route here; `Scripts/install.sh` migrates it.
 4. `FileManager.replaceItemAt`. The staging folder is on the same volume as `/Applications`, which is
    what lets this be atomic. A non-writable `/Applications` is reported, not worked around; there is
    no privileged helper. One case has a fallback, though: a bundle another account installed (brew
@@ -127,7 +127,7 @@ One route, whatever the install came from:
    is admin-writable — the old bundle's interior is read-only for this account. The installer then
    renames the old bundle aside in the same parent directory and moves the staged one into place,
    both parent-directory operations an admin account may perform. The old copy is kept as
-   `Tinycast.app.pre-update` (a previous leftover is trashed first) so a broken new bundle can
+   `VoiceCast.app.pre-update` (a previous leftover is trashed first) so a broken new bundle can
    still be rolled back by hand; a failed swap restores the old copy to its name before the
    failure surfaces. Everything else about the failure — including a `/Applications` the account
    genuinely cannot write — is still reported, never escalated.
@@ -135,33 +135,36 @@ One route, whatever the install came from:
    `open` on a bundle id that is still running would only re-activate the instance on its way out.
 
 A successful install records its version as `installedVersion`. The first launch running that
-version takes it and shows an "Updated to Tinycast <version>" HUD, whether it came from Relaunch or a
-later quit and reopen. A launch of any other version only clears it, so a brew or DMG install never
-reports.
+version takes it and shows an "Updated to VoiceCast <version>" HUD, whether it came from Relaunch or a
+later quit and reopen. A launch of any other version only clears it, so a hand install never reports.
 
 Nothing here touches `~/Library/Preferences`, `~/Library/Caches` or `Application Support`, so no
-setting, clipboard entry, note or snippet is affected by an update, by `brew upgrade`, or by both.
+setting, clipboard entry, note or snippet is affected by an update.
 
 Every update lands on the same bundle id, `com.tinycast.app`, that an older Tinycast copy already
 runs — the installed bundle is replaced in place, so preferences, caches, TCC grants and the login
-item keyed to that id all carry over with nothing to migrate.
+item keyed to that id all carry over with nothing to migrate. The last pre-switch release already
+carries the Developer ID branch of `BundleSignature`, so an old Tinycast updates into VoiceCast in
+place with its settings intact; the installer (`Scripts/install.sh`) also renames the old
+`Tinycast.app` folder to `VoiceCast.app`.
 
 ## Releasing into it
 
-`.github/workflows/release.yml` publishes two assets from one build: the DMG people download by hand
-and the cask installs, and `Tinycast-<version>.zip` for the updater. The zip is made with
+`.github/workflows/release.yml` publishes two assets from one build: `VoiceCast-<version>.dmg`, which
+a hand download and the updater both read, and `VoiceCast-<version>.zip` as an extra artifact for
+tooling that prefers an archive. The zip is made with
 
 ```sh
 ditto -c -k --keepParent --sequesterRsrc "$APP" "dist/$ZIP_FILE"
 ```
 
 which is the only zip that leaves the code signature verifiable — plain `zip` drops symlinks and
-breaks the seal, and the signature check above would then reject every update.
+breaks the seal.
 
 The body it publishes is composed by `Scripts/release-notes.sh`: GitHub's generated changelog first,
 then `<!-- tinycast:install -->`, then the install text. Anything a release wants the update window to
 show has to go above that marker — see [release.md](../release.md#release-notes).
 
-**The casks must declare `auto_updates true`** in `abue-ammar/homebrew-tinycast`. Without it Homebrew
-compares its Caskroom receipt against the cask version, sees a self-updated app as outdated forever,
-and re-installs over it on the next `brew upgrade`.
+**There is no Homebrew cask**, for either architecture. `Scripts/install.sh` and the DMG are the two
+install routes, so Homebrew never tracks a copy and `brew upgrade` can never re-install over an
+updater-managed app.

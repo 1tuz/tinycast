@@ -13,14 +13,88 @@ test -f Tinycast/Features/VoiceAsk/SpeechRuntimeVoiceAsk.swift || { echo "::erro
 test -f Tinycast/Features/VoiceAsk/SpeechVoiceCommandRouter.swift || { echo "::error::Voice command router missing"; exit 1; }
 test -f Tinycast/Features/VoiceAsk/SpeechVoiceCommandParser.swift || { echo "::error::Voice command parser missing"; exit 1; }
 test -f Tinycast/Features/VoiceAsk/SpeechVoiceCommandCatalog.swift || { echo "::error::Voice command catalog missing"; exit 1; }
-if rg -n -i 'CodexRealtime|thread/realtime' Tinycast/Features/VoiceAsk; then
+if grep -RniE 'CodexRealtime|thread/realtime' Tinycast/Features/VoiceAsk; then
   echo "::error::obsolete cloud audio path detected"
   exit 1
 fi
-rg -q 'static let repository = "1tuz/tinycast"' Tinycast/Features/Updates/Model/ReleaseFeed.swift \
+grep -qF 'static let repository = "1tuz/tinycast"' Tinycast/Features/Updates/Model/ReleaseFeed.swift \
   || { echo "::error::ReleaseFeed still points at upstream"; exit 1; }
-rg -q 'pump = nil' Tinycast/Features/Support/Service/SupportReminderStore.swift \
+grep -qF 'pump = nil' Tinycast/Features/Support/Service/SupportReminderStore.swift \
   || { echo "::error::Support reminder pump not disabled"; exit 1; }
+grep -qF 'VoiceCast' Tinycast/Info.plist \
+  || { echo "::error::VoiceCast display name missing"; exit 1; }
+grep -qF 'voicecast.svg' Tinycast/tinycast.icon/icon.json \
+  || { echo "::error::VoiceCast Dock icon not selected"; exit 1; }
+grep -qF 'voicecast.svg' Tinycast/Assets.xcassets/MenuBarIcon.imageset/Contents.json \
+  || { echo "::error::VoiceCast menu bar icon not selected"; exit 1; }
+# Post-sync guardrails: the public build must stay a Developer ID, notarized release. A sync
+# that brings the upstream self-signed pipeline back has to fail here, not in front of a user.
+RELEASE=.github/workflows/release.yml
+for token in 'DEVELOPER_ID_APPLICATION_P12_BASE64' 'DEVELOPER_ID_APPLICATION_P12_PASSWORD' \
+  'APPLE_TEAM_ID' 'APPSTORE_API_KEY_ID' 'APPSTORE_ISSUER_ID' 'APPSTORE_API_PRIVATE_KEY_BASE64'; do
+  grep -qF -- "$token" "$RELEASE" \
+    || { echo "::error::release workflow lost required secret $token"; exit 1; }
+done
+for token in 'notarytool submit' 'stapler staple' 'stapler validate' 'spctl --assess' \
+  'ENABLE_HARDENED_RUNTIME=YES' '--timestamp' 'J656U8XZ93'; do
+  grep -qF -- "$token" "$RELEASE" \
+    || { echo "::error::release workflow lost '$token'"; exit 1; }
+done
+! grep -qF 'Tinycast Self-Signed' "$RELEASE" \
+  || { echo "::error::the self-signed identity must never sign a public release"; exit 1; }
+grep -qF 'Tinycast Self-Signed' project.yml \
+  || { echo "::error::local development lost its self-signed identity"; exit 1; }
+grep -qF 'certificate leaf[subject.OU] = "J656U8XZ93"' \
+  Tinycast/Features/Updates/Service/BundleSignature.swift \
+  || { echo "::error::BundleSignature no longer pins the release team"; exit 1; }
+grep -qF 'Developer ID Application' Scripts/install.sh \
+  || { echo "::error::installer no longer checks the Developer ID authority"; exit 1; }
+grep -qF 'spctl --assess' Scripts/install.sh \
+  || { echo "::error::installer no longer asks Gatekeeper about the download"; exit 1; }
+grep -qF 'stapler validate' Scripts/install.sh \
+  || { echo "::error::installer no longer checks the notarization ticket"; exit 1; }
+# A quarantine bypass must never return to the release path. The single allowed use is the
+# guarded fallback in install.sh, which runs only for a build that is not Developer ID-signed;
+# a Developer ID build that fails notarization or Gatekeeper still aborts there.
+! grep -REq 'xattr +-d|xattr +-dr|xattr +-c' "$RELEASE" Scripts/release-notes.sh \
+  Scripts/build-dmg.sh .1tuz/branding/release-notes.sh .1tuz/branding/build-dmg.sh \
+  || { echo "::error::quarantine-removal bypass reappeared in the release path"; exit 1; }
+grep -qF 'quarantine is cleared for the installed copy' Scripts/install.sh \
+  || { echo "::error::installer lost the guarded non-notarized quarantine fallback"; exit 1; }
+grep -qF 'Gatekeeper rejected the app' Scripts/install.sh \
+  || { echo "::error::installer no longer enforces Gatekeeper on Developer ID builds"; exit 1; }
+grep -qF 'The app is not notarized' Scripts/install.sh \
+  || { echo "::error::installer no longer requires a stapled notarization ticket"; exit 1; }
+grep -qF 'Developer ID Application' Scripts/verify-release.sh \
+  || { echo "::error::release verifier lost the Developer ID authority anchor"; exit 1; }
+grep -qF 'Notarized Developer ID' .github/workflows/release.yml \
+  || { echo "::error::release workflow no longer asserts Gatekeeper's notarized origin"; exit 1; }
+! grep -qE 'Open Anyway|right-click .*Open' Scripts/install.sh Scripts/release-notes.sh INSTALL.md README.md \
+  || { echo "::error::install path still instructs a Gatekeeper bypass"; exit 1; }
+# The overlay is what the daily sync copies, so it may never drift from the canonical file.
+for pair in \
+  "README.md:README.md" "INSTALL.md:INSTALL.md" \
+  "docs/voicecast-distribution.md:distribution.md" \
+  "Scripts/install.sh:install.sh" "Scripts/build-dmg.sh:build-dmg.sh" \
+  "Scripts/release-notes.sh:release-notes.sh" \
+  "Tinycast/tinycast.icon/icon.json:icon.json" \
+  "Tinycast/tinycast.icon/Assets/voicecast.svg:icon.svg" \
+  "Tinycast/Assets.xcassets/MenuBarIcon.imageset/Contents.json:menuicon.json" \
+  "Tinycast/Assets.xcassets/MenuBarIcon.imageset/voicecast.svg:menubar.svg" \
+  "docs/voicecast-logo.svg:logo.svg"; do
+  canonical="${pair%%:*}"
+  overlay=".1tuz/branding/${pair#*:}"
+  cmp -s "$canonical" "$overlay" \
+    || { echo "::error::$overlay drifted from $canonical; copy it back into the overlay"; exit 1; }
+done
+grep -qF 'VoiceCast' Scripts/install.sh \
+  || { echo "::error::installer lost the VoiceCast branding"; exit 1; }
+grep -qF 'VoiceCast' Scripts/release-notes.sh \
+  || { echo "::error::release notes lost the VoiceCast branding"; exit 1; }
+bash -n Scripts/install.sh Scripts/build-dmg.sh Scripts/release-notes.sh Scripts/verify-release.sh \
+  && bash -n .1tuz/apply.sh .1tuz/gate.sh .1tuz/branding/apply.sh \
+  || { echo "::error::shell syntax check failed"; exit 1; }
+printf '%s\n' 'VoiceCast brand gate: ok'
 echo "::endgroup::"
 
 echo "::group::xcodebuild Release smoke"

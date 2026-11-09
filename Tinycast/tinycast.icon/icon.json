@@ -4,17 +4,17 @@
     {
       "layers": [
         {
-          "image-name": "thunder.svg",
-          "name": "thunder"
+          "image-name": "voicecast.svg",
+          "name": "VoiceCast"
         }
       ],
       "shadow": {
         "kind": "neutral",
-        "opacity": 0.5
+        "opacity": 0.3
       },
       "translucency": {
-        "enabled": true,
-        "value": 0.5
+        "enabled": false,
+        "value": 0
       }
     }
   ],
