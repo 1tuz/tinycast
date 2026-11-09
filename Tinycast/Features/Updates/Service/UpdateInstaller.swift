@@ -13,7 +13,7 @@ struct UpdateInstaller: Sendable {
                 return String(localized: "Downloading… \(Self.size(received)) of \(Self.size(expected))")
             case .mounting: return String(localized: "Mounting the update…")
             case .verifying: return String(localized: "Verifying…")
-            case .replacing: return String(localized: "Replacing Tinycast…")
+            case .replacing: return String(localized: "Replacing VoiceCast…")
             }
         }
 
@@ -86,10 +86,6 @@ struct UpdateInstaller: Sendable {
     }
 
     private func verify(_ staged: URL, is release: AvailableRelease) throws {
-        if Quarantine.isSet(on: staged) { Quarantine.clear(from: staged) }
-        // Refuse rather than install something the user would then have to unquarantine by hand.
-        guard !Quarantine.isSet(on: staged) else { throw UpdateFailure.quarantined }
-
         let info = Self.info(at: staged)
         guard info?["CFBundleIdentifier"] as? String == Bundle.main.bundleIdentifier else {
             throw UpdateFailure.bundleMismatch

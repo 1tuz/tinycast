@@ -4,8 +4,6 @@ enum UpdateFailure: LocalizedError, Equatable {
     case downloadFailed(String)
     case mountFailed(String)
     case noAppInImage
-    case copyFailed(String)
-    case quarantined
     case bundleMismatch
     case identityMismatch
     case versionMismatch(expected: String, found: String)
@@ -18,21 +16,18 @@ enum UpdateFailure: LocalizedError, Equatable {
         case .mountFailed(let detail):
             return String(localized: "The downloaded disk image could not be mounted. \(detail)")
         case .noAppInImage:
-            return String(localized: "The downloaded disk image does not contain Tinycast.")
+            return String(localized: "The downloaded archive does not contain VoiceCast.")
         case .copyFailed(let detail):
             return String(localized: "The downloaded app could not be copied out of the disk image. \(detail)")
-        case .quarantined:
-            return String(
-                localized: "macOS quarantined the downloaded app and Tinycast could not clear the flag.")
         case .bundleMismatch:
-            return String(localized: "The downloaded app is not this build of Tinycast.")
+            return String(localized: "The downloaded app is not this build of VoiceCast.")
         case .identityMismatch:
             return String(
                 localized: "The downloaded app is not signed by the identity this copy was signed with.")
         case .versionMismatch(let expected, let found):
             return String(localized: "The downloaded app is version \(found), not \(expected).")
         case .replaceFailed(let detail):
-            return String(localized: "Tinycast could not be replaced. \(detail)")
+            return String(localized: "VoiceCast could not be replaced. \(detail)")
         }
     }
 
@@ -50,8 +45,6 @@ enum UpdateFailure: LocalizedError, Equatable {
                     Nothing was installed. This usually means /Applications is not writable by \
                     your account.
                     """)
-        case .quarantined:
-            return String(localized: "Nothing was installed.")
         default:
             return nil
         }
