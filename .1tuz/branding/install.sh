@@ -80,7 +80,21 @@ else
     version="$(printf '%s\n' "$metadata" | sed -n 's/^[[:space:]]*"tag_name": "\([^"]*\)".*/\1/p' | head -1)"
     asset="$(printf '%s\n' "$metadata" | sed -n \
         's/^[[:space:]]*"browser_download_url": "\(https:[^"]*\/VoiceCast-[^"]*\.dmg\)".*/\1/p' | head -1)"
-    [ -n "$asset" ] || fail "No VoiceCast DMG found. Release signing may not be set up yet."
+    if [ -z "$asset" ]; then
+        # No notarized stable build yet: fall back to the newest published VoiceCast DMG,
+        # which may be a pre-release. Its signature is still checked below.
+        releases="$(curl --retry 3 -fsSL --connect-timeout 15 \
+            "https://api.github.com/repos/$repo/releases?per_page=30")" \
+            || fail "No VoiceCast DMG found and cannot list pre-releases."
+        line="$(printf '%s\n' "$releases" \
+            | grep -n '"browser_download_url".*\/VoiceCast-[^"]*\.dmg"' | head -1 | cut -d: -f1)"
+        [ -n "$line" ] || fail "No VoiceCast DMG found. Release signing may not be set up yet."
+        asset="$(printf '%s\n' "$releases" | sed -n "${line}s/.*\"browser_download_url\": \"\([^\"]*\)\".*/\1/p")"
+        version="$(printf '%s\n' "$releases" | head -n "$line" \
+            | sed -n 's/^[[:space:]]*"tag_name": "\([^"]*\)".*/\1/p' | tail -1)"
+        printf '  %sNo stable VoiceCast release yet; using pre-release %s%s\n' \
+            "$bold" "${version:-latest}" "$reset" >&2
+    fi
     case "$asset" in
         "https://github.com/$repo/releases/download/"*) ;;
         *) fail "Unexpected release asset URL." ;;

@@ -25,6 +25,11 @@ Gatekeeper. For that build only, `Scripts/install.sh` prints a warning and
 clears the quarantine flag on the copy it has just installed, so testing a
 local build also needs no manual `xattr` command.
 
+When the newest stable release carries no `VoiceCast-*.dmg`, the installer
+falls back to the newest published build that does — a pre-release — and says
+so before downloading. The same verification runs, so a pre-release signed
+with the local identity installs only through the guarded fallback above.
+
 The release workflow (`.github/workflows/release.yml`) is manually triggered
 and **fails before publishing anything** when any of the six secrets is
 missing or when the verification fails. Every publish is gated by two jobs on
