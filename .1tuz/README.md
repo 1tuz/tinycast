@@ -14,11 +14,11 @@ Everything that makes this fork differ from [abue-ammar/tinycast](https://github
 | `patches/0017-roadmap-features.patch` | Carries local roadmap features and removes upstream Dictation/microphone capture |
 | `patches/0018-speech-runtime-voice.patch` | Restores Voice Ask with local Speech Runtime transcriptions, Hyper PTT and Quick AI delivery |
 | `patches/0019-voice-commands.patch` | Voice control, typo-tolerant matching, searchable command catalog, multiple aliases and conservative ASR typo correction |
-| `patches/0021-voicecast-rebrand.patch` | The VoiceCast identity in source, tests, docs and build metadata, plus the Developer ID / notarized release posture |
+| `patches/0021-voicecast-rebrand.patch` | The pre-SpeechCast VoiceCast identity in source, tests, docs and build metadata, plus the Developer ID / notarized release posture. The SpeechCast overlay rebrands its visible output; the patch itself is not edited |
 | `patches/0022-focus-sessions.patch` | Local Focus sessions: profiles, soft app and browser-tab blocking, menu bar and HUD timer, deterministic voice commands |
-| `branding/` | The VoiceCast overlay: README, INSTALL, dock + menu bar icons, logo, distribution guidance, `install.sh`, `build-dmg.sh` and `release-notes.sh`; `Scripts/verify-release.sh` ships in the patch. `branding/apply.sh` reapplies the overlay idempotently after every patch queue run |
+| `branding/` | The SpeechCast overlay: README, INSTALL, dock + menu bar icons, logo, distribution guidance, `install.sh`, `build-dmg.sh` and `release-notes.sh`; `Scripts/verify-release.sh` ships in the patch. `branding/apply.sh` reapplies the overlay idempotently after every patch queue run |
 | `apply.sh` | Applies patches, reapplies the branding overlay, removes website source and publishing workflows, rewrites release links, regenerates the XcodeGen project |
-| `gate.sh` | Requires the local Voice Ask implementation, rejects obsolete Codex realtime audio, guards the VoiceCast branding, requires the Developer ID + notarization release pipeline, forbids a quarantine bypass anywhere in the release path, checks overlay/canonical drift, and runs a Release build and focused harnesses |
+| `gate.sh` | Requires the local Voice Ask implementation, rejects obsolete Codex realtime audio, guards the SpeechCast branding, requires the Developer ID + notarization release pipeline, forbids a quarantine bypass anywhere in the release path, checks overlay/canonical drift, and runs a Release build and focused harnesses |
 | `UPSTREAM` | Upstream commit SHA used for the last rebuild |
 
 ## Automation

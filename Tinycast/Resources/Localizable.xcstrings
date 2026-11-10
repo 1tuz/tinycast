@@ -35080,54 +35080,54 @@
         }
       }
     },
-    "Close VoiceCast's window first." : {
+    "Close SpeechCast's window first." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Schließe zuerst das Fenster von VoiceCast."
+            "value" : "Schließe zuerst das Fenster von SpeechCast."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cierra primero la ventana de VoiceCast."
+            "value" : "Cierra primero la ventana de SpeechCast."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fermez d’abord la fenêtre de VoiceCast."
+            "value" : "Fermez d’abord la fenêtre de SpeechCast."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "先にVoiceCastのウインドウを閉じてください。"
+            "value" : "先にSpeechCastのウインドウを閉じてください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "먼저 VoiceCast 윈도우를 닫으십시오."
+            "value" : "먼저 SpeechCast 윈도우를 닫으십시오."
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Feche primeiro a janela do VoiceCast."
+            "value" : "Feche primeiro a janela do SpeechCast."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Сначала закройте окно VoiceCast."
+            "value" : "Сначала закройте окно SpeechCast."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请先关闭 VoiceCast 的窗口。"
+            "value" : "请先关闭 SpeechCast 的窗口。"
           }
         }
       }
@@ -96054,54 +96054,54 @@
         }
       }
     },
-    "Relaunch VoiceCast?" : {
+    "Relaunch SpeechCast?" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "VoiceCast neu starten?"
+            "value" : "SpeechCast neu starten?"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "¿Volver a abrir VoiceCast?"
+            "value" : "¿Volver a abrir SpeechCast?"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Relancer VoiceCast ?"
+            "value" : "Relancer SpeechCast ?"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "VoiceCastを再起動しますか?"
+            "value" : "SpeechCastを再起動しますか?"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "VoiceCast를 다시 실행하시겠습니까?"
+            "value" : "SpeechCast를 다시 실행하시겠습니까?"
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Reabrir o VoiceCast?"
+            "value" : "Reabrir o SpeechCast?"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Перезапустить VoiceCast?"
+            "value" : "Перезапустить SpeechCast?"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "要重新打开 VoiceCast 吗？"
+            "value" : "要重新打开 SpeechCast 吗？"
           }
         }
       }
@@ -98261,54 +98261,54 @@
         }
       }
     },
-    "Replacing VoiceCast…" : {
+    "Replacing SpeechCast…" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "VoiceCast wird ersetzt …"
+            "value" : "SpeechCast wird ersetzt …"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Reemplazando VoiceCast…"
+            "value" : "Reemplazando SpeechCast…"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Remplacement de VoiceCast…"
+            "value" : "Remplacement de SpeechCast…"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "VoiceCastを置き換え中…"
+            "value" : "SpeechCastを置き換え中…"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "VoiceCast 교체 중…"
+            "value" : "SpeechCast 교체 중…"
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Substituindo o VoiceCast…"
+            "value" : "Substituindo o SpeechCast…"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Замена VoiceCast…"
+            "value" : "Замена SpeechCast…"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在替换 VoiceCast…"
+            "value" : "正在替换 SpeechCast…"
           }
         }
       }
@@ -117895,54 +117895,54 @@
         }
       }
     },
-    "The downloaded app is not this build of VoiceCast." : {
+    "The downloaded app is not this build of SpeechCast." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die geladene App ist nicht diese Build-Version von VoiceCast."
+            "value" : "Die geladene App ist nicht diese Build-Version von SpeechCast."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La app descargada no corresponde a esta compilación de VoiceCast."
+            "value" : "La app descargada no corresponde a esta compilación de SpeechCast."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "L’app téléchargée ne correspond pas à cette version de VoiceCast."
+            "value" : "L’app téléchargée ne correspond pas à cette version de SpeechCast."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ダウンロードしたAppは、このビルドのVoiceCastではありません。"
+            "value" : "ダウンロードしたAppは、このビルドのSpeechCastではありません。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "다운로드한 앱은 이 VoiceCast 빌드가 아닙니다."
+            "value" : "다운로드한 앱은 이 SpeechCast 빌드가 아닙니다."
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O app baixado não é esta compilação do VoiceCast."
+            "value" : "O app baixado não é esta compilação do SpeechCast."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Загруженное приложение не соответствует этой сборке VoiceCast."
+            "value" : "Загруженное приложение не соответствует этой сборке SpeechCast."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "下载的 App 不是此版本的 VoiceCast。"
+            "value" : "下载的 App 不是此版本的 SpeechCast。"
           }
         }
       }
@@ -118005,54 +118005,54 @@
         }
       }
     },
-    "The downloaded archive does not contain VoiceCast." : {
+    "The downloaded archive does not contain SpeechCast." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das geladene Archiv enthält VoiceCast nicht."
+            "value" : "Das geladene Archiv enthält SpeechCast nicht."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "El archivo descargado no contiene VoiceCast."
+            "value" : "El archivo descargado no contiene SpeechCast."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "L’archive téléchargée ne contient pas VoiceCast."
+            "value" : "L’archive téléchargée ne contient pas SpeechCast."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ダウンロードしたアーカイブにVoiceCastが含まれていません。"
+            "value" : "ダウンロードしたアーカイブにSpeechCastが含まれていません。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "다운로드한 아카이브에 VoiceCast가 없습니다."
+            "value" : "다운로드한 아카이브에 SpeechCast가 없습니다."
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O arquivo baixado não contém o VoiceCast."
+            "value" : "O arquivo baixado não contém o SpeechCast."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Загруженный архив не содержит VoiceCast."
+            "value" : "Загруженный архив не содержит SpeechCast."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "下载的归档中不包含 VoiceCast。"
+            "value" : "下载的归档中不包含 SpeechCast。"
           }
         }
       }
@@ -119305,54 +119305,54 @@
         }
       }
     },
-    "The new language applies after VoiceCast relaunches." : {
+    "The new language applies after SpeechCast relaunches." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die neue Sprache wird nach einem Neustart von VoiceCast übernommen."
+            "value" : "Die neue Sprache wird nach einem Neustart von SpeechCast übernommen."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "El nuevo idioma se aplicará al reiniciar VoiceCast."
+            "value" : "El nuevo idioma se aplicará al reiniciar SpeechCast."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La nouvelle langue s’appliquera après le redémarrage de VoiceCast."
+            "value" : "La nouvelle langue s’appliquera après le redémarrage de SpeechCast."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新しい言語は、VoiceCastを再起動すると適用されます。"
+            "value" : "新しい言語は、SpeechCastを再起動すると適用されます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "새 언어는 VoiceCast를 다시 실행한 후 적용됩니다."
+            "value" : "새 언어는 SpeechCast를 다시 실행한 후 적용됩니다."
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O novo idioma será aplicado após reiniciar o VoiceCast."
+            "value" : "O novo idioma será aplicado após reiniciar o SpeechCast."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Новый язык будет применен после перезапуска VoiceCast."
+            "value" : "Новый язык будет применен после перезапуска SpeechCast."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新语言将在 VoiceCast 重新打开后生效。"
+            "value" : "新语言将在 SpeechCast 重新打开后生效。"
           }
         }
       }
@@ -131575,54 +131575,54 @@
         }
       }
     },
-    "Updated to VoiceCast %@" : {
+    "Updated to SpeechCast %@" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Auf VoiceCast %@ aktualisiert"
+            "value" : "Auf SpeechCast %@ aktualisiert"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Actualizado a VoiceCast %@"
+            "value" : "Actualizado a SpeechCast %@"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mis à jour vers VoiceCast %@"
+            "value" : "Mis à jour vers SpeechCast %@"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "VoiceCast %@ にアップデートしました"
+            "value" : "SpeechCast %@ にアップデートしました"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "VoiceCast %@(으)로 업데이트됨"
+            "value" : "SpeechCast %@(으)로 업데이트됨"
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Atualizado para VoiceCast %@"
+            "value" : "Atualizado para SpeechCast %@"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "VoiceCast обновлён до %@"
+            "value" : "SpeechCast обновлён до %@"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已更新到 VoiceCast %@"
+            "value" : "已更新到 SpeechCast %@"
           }
         }
       }
@@ -132887,106 +132887,106 @@
         }
       }
     },
-    "VoiceCast could not be replaced. %@" : {
+    "SpeechCast could not be replaced. %@" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "VoiceCast konnte nicht ersetzt werden. %@"
+            "value" : "SpeechCast konnte nicht ersetzt werden. %@"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No se pudo reemplazar VoiceCast. %@"
+            "value" : "No se pudo reemplazar SpeechCast. %@"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "VoiceCast n’a pas pu être remplacé. %@"
+            "value" : "SpeechCast n’a pas pu être remplacé. %@"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "VoiceCastを置き換えられませんでした。%@"
+            "value" : "SpeechCastを置き換えられませんでした。%@"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "VoiceCast를 교체할 수 없습니다. %@"
+            "value" : "SpeechCast를 교체할 수 없습니다. %@"
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Não foi possível substituir o VoiceCast. %@"
+            "value" : "Não foi possível substituir o SpeechCast. %@"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Не удалось заменить VoiceCast. %@"
+            "value" : "Не удалось заменить SpeechCast. %@"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无法替换 VoiceCast。%@"
+            "value" : "无法替换 SpeechCast。%@"
           }
         }
       }
     },
-    "VoiceCast could not reach GitHub." : {
+    "SpeechCast could not reach GitHub." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "VoiceCast konnte GitHub nicht erreichen."
+            "value" : "SpeechCast konnte GitHub nicht erreichen."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "VoiceCast no pudo contactar con GitHub."
+            "value" : "SpeechCast no pudo contactar con GitHub."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "VoiceCast n’a pas pu joindre GitHub."
+            "value" : "SpeechCast n’a pas pu joindre GitHub."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "VoiceCastはGitHubに接続できませんでした。"
+            "value" : "SpeechCastはGitHubに接続できませんでした。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "VoiceCast가 GitHub에 연결할 수 없습니다."
+            "value" : "SpeechCast가 GitHub에 연결할 수 없습니다."
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O VoiceCast não conseguiu contatar o GitHub."
+            "value" : "O SpeechCast não conseguiu contatar o GitHub."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "VoiceCast не смог связаться с GitHub."
+            "value" : "SpeechCast не смог связаться с GitHub."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "VoiceCast 无法连接到 GitHub。"
+            "value" : "SpeechCast 无法连接到 GitHub。"
           }
         }
       }

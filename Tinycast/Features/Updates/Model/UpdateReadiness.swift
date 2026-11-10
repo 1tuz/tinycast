@@ -29,7 +29,7 @@ enum UpdateReadiness {
             case .uninstalling: return String(localized: "Waiting for the uninstaller to finish.")
             case .recordingHotKey: return String(localized: "Finish recording the shortcut first.")
             case .dialogOpen: return String(localized: "Close the open dialog first.")
-            case .paletteOpen: return String(localized: "Close VoiceCast's window first.")
+            case .paletteOpen: return String(localized: "Close SpeechCast's window first.")
             }
         }
     }

@@ -2,19 +2,19 @@
 
 How a build reaches a user. The local development loop is in [development.md](development.md);
 the signing identities are in [signing.md](signing.md), and the CI signing and notarization
-secrets runbook is in [voicecast-distribution.md](voicecast-distribution.md).
+secrets runbook is in [speechcast-distribution.md](speechcast-distribution.md).
 
 ## Packaging a DMG locally
 
 ```sh
-./Scripts/build-dmg.sh            # -> build/VoiceCast-local-<version>.dmg (version from project.yml)
-./Scripts/build-dmg.sh 0.5.7      # -> build/VoiceCast-local-0.5.7.dmg
+./Scripts/build-dmg.sh            # -> build/SpeechCast-local-<version>.dmg (version from project.yml)
+./Scripts/build-dmg.sh 0.5.7      # -> build/SpeechCast-local-0.5.7.dmg
 ```
 
-It builds a Release `VoiceCast.app` signed with the local `Tinycast Self-Signed` identity and packs
+It builds a Release `SpeechCast.app` signed with the local `Tinycast Self-Signed` identity and packs
 it with an `/Applications` symlink. This is a **dev-only** artifact: a local build cannot be
 Developer ID-signed or notarized — that happens only in CI with the team certificate — so never
-distribute a `VoiceCast-local-*.dmg`. Official releases are built, signed and notarized by CI,
+distribute a `SpeechCast-local-*.dmg`. Official releases are built, signed and notarized by CI,
 below.
 
 ## Signing & Gatekeeper
@@ -27,12 +27,12 @@ status `Accepted`, and staples the ticket to the `.app` and then the `.dmg`. A d
 passes Gatekeeper on first launch — no warning and no confirmation step — and nothing in the
 release or install path ever removes quarantine attributes or disables Gatekeeper. The six CI
 secrets behind this, and how to produce each, are documented in
-[signing.md](signing.md) and [voicecast-distribution.md](voicecast-distribution.md).
+[signing.md](signing.md) and [speechcast-distribution.md](speechcast-distribution.md).
 
 ## How the in-app updater consumes a release
 
-Every release publishes two assets from one build: `VoiceCast-<version>.dmg` and
-`VoiceCast-<version>.zip`. `ReleaseFeed` selects **any `.dmg` asset**, so the in-app updater
+Every release publishes two assets from one build: `SpeechCast-<version>.dmg` and
+`SpeechCast-<version>.zip`. `ReleaseFeed` selects **any `.dmg` asset**, so the in-app updater
 installs the notarized DMG — the same file a hand downloader gets. The ZIP is an extra
 artifact for tooling that prefers an archive; the updater does not depend on it.
 
@@ -45,7 +45,7 @@ Three things a release must keep true, or the updater skips it:
   mis-published and skipped.
 - **It is not a draft.**
 
-**There is no Homebrew cask.** VoiceCast installs from `Scripts/install.sh` or the release DMG, both
+**There is no Homebrew cask.** SpeechCast installs from `Scripts/install.sh` or the release DMG, both
 of which read the same release asset, so Homebrew never manages a copy and `brew upgrade` never
 fights the in-app updater. See [features/updates.md](features/updates.md).
 
@@ -62,7 +62,7 @@ gate — it neither runs the harnesses nor builds the app, so the whole bar in
 needed. Run it from the **Actions** tab (`Release` → **Run workflow**) and pick:
 
 - **version** — semver, e.g. `0.3.0`. One app, one bundle id (`com.tinycast.app`), alongside the
-  local `VoiceCast Dev.app`.
+  local `SpeechCast Dev.app`.
 
 Its first step is `Scripts/check-migrations.sh`: a migration that a stable release already shipped
 stops the run until it is deleted ([migrations.md](migrations.md)). The check reads tags and history,
@@ -82,7 +82,7 @@ installs the DMG through a real Safari quarantine flag with Gatekeeper enabled a
 seal, bundle id, hardened runtime, the Developer ID chain, the stapled ticket and `spctl`
 acceptance; **verify-upgrade** installs the previous published release, upgrades it in place, and
 proves the settings file and bundle id survive. If either fails — or any signing or notarization
-secret is missing — nothing is published. See [voicecast-distribution.md](voicecast-distribution.md).
+secret is missing — nothing is published. See [speechcast-distribution.md](speechcast-distribution.md).
 
 Builds override `TINYCAST_BUNDLE_IDENTIFIER`, not the target-wide `PRODUCT_BUNDLE_IDENTIFIER`.
 

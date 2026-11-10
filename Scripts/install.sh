@@ -1,5 +1,5 @@
 #!/bin/bash
-# VoiceCast: install the latest GitHub Release.
+# SpeechCast: install the latest GitHub Release.
 # Published releases are Developer ID-signed and notarized, and are verified before the copy
 # happens. A local self-signed DMG can never satisfy Gatekeeper, so for that build only the
 # installer clears the quarantine flag on the installed copy; it never disables Gatekeeper.
@@ -17,14 +17,14 @@ else
 fi
 
 fail() {
-    printf '\n%sVoiceCast: %s%s\n' "$bold" "$1" "$reset" >&2
+    printf '\n%sSpeechCast: %s%s\n' "$bold" "$1" "$reset" >&2
     exit 1
 }
 step() { printf '%s[%s/4]%s %s\n' "$green" "$1" "$reset" "$2"; }
 
 printf '\n%s' "$bold"
 printf '  ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n'
-printf '  ┃                VoiceCast                     ┃\n'
+printf '  ┃                SpeechCast                     ┃\n'
 printf '  ┃      Search · Speak · Act · Automate        ┃\n'
 printf '  ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n'
 printf '%s%s\n\n' "$reset" "$dim"
@@ -36,11 +36,11 @@ command -v hdiutil >/dev/null || fail "hdiutil is required."
 major="$(sw_vers -productVersion | cut -d. -f1)"
 [ "$major" -ge 26 ] || fail "macOS 26 or newer is required."
 
-if pgrep -x VoiceCast >/dev/null || pgrep -x Tinycast >/dev/null; then
-    fail "Quit VoiceCast / Tinycast before installing."
+if pgrep -x SpeechCast >/dev/null || pgrep -x VoiceCast >/dev/null || pgrep -x Tinycast >/dev/null; then
+    fail "Quit SpeechCast (or the older VoiceCast / Tinycast) before installing."
 fi
 
-workdir="$(mktemp -d "${TMPDIR:-/tmp}/voicecast-install.XXXXXX")"
+workdir="$(mktemp -d "${TMPDIR:-/tmp}/speechcast-install.XXXXXX")"
 mount="$workdir/mount"
 mounted=false
 staged=""
@@ -67,8 +67,9 @@ if [ -n "${VOICECAST_DMG:-}" ]; then
     hdiutil attach -readonly -nobrowse -quiet -mountpoint "$mount" "$VOICECAST_DMG" \
         || fail "Cannot mount the disk image."
     mounted=true
-    app="$mount/VoiceCast.app"
-    [ -d "$app" ] || fail "The DMG does not contain VoiceCast.app."
+    app="$mount/SpeechCast.app"
+    if [ ! -d "$app" ] && [ -d "$mount/VoiceCast.app" ]; then app="$mount/VoiceCast.app"; fi
+    [ -d "$app" ] || fail "The DMG does not contain SpeechCast.app."
     version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' \
         "$app/Contents/Info.plist" 2>/dev/null)" || version=""
     printf '  Version: %s\n' "${version:-unknown}"
@@ -79,29 +80,30 @@ else
         "https://api.github.com/repos/$repo/releases/latest")" || fail "Cannot read GitHub Releases."
     version="$(printf '%s\n' "$metadata" | sed -n 's/^[[:space:]]*"tag_name": "\([^"]*\)".*/\1/p' | head -1)"
     asset="$(printf '%s\n' "$metadata" | sed -n \
-        's/^[[:space:]]*"browser_download_url": "\(https:[^"]*\/VoiceCast-[^"]*\.dmg\)".*/\1/p' | head -1)"
+        's/^[[:space:]]*"browser_download_url": "\(https:[^"]*\/SpeechCast-[^"]*\.dmg\)".*/\1/p' | head -1)"
     if [ -z "$asset" ]; then
-        # No notarized stable build yet: fall back to the newest published VoiceCast DMG,
-        # which may be a pre-release. Its signature is still checked below.
+        # No notarized stable build yet: fall back to the newest published SpeechCast DMG
+        # (or, before the rename, a VoiceCast one), which may be a pre-release. Its
+        # signature is still checked below.
         releases="$(curl --retry 3 -fsSL --connect-timeout 15 \
             "https://api.github.com/repos/$repo/releases?per_page=30")" \
-            || fail "No VoiceCast DMG found and cannot list pre-releases."
+            || fail "No SpeechCast DMG found and cannot list pre-releases."
         pair="$(printf '%s\n' "$releases" | awk '
             /"tag_name"/ && !found {
                 tag = $0
                 sub(/^.*"tag_name": "/, "", tag); sub(/".*$/, "", tag)
             }
-            /"browser_download_url"/ && /VoiceCast-[^"]*\.dmg/ && !found {
+            /"browser_download_url"/ && /(SpeechCast|VoiceCast)-[^"]*\.dmg/ && !found {
                 asset = $0
                 sub(/^.*"browser_download_url": "/, "", asset); sub(/".*$/, "", asset)
                 found = 1
             }
             END { if (found) printf "%s\t%s\n", tag, asset }
         ')"
-        [ -n "$pair" ] || fail "No VoiceCast DMG found. Release signing may not be set up yet."
+        [ -n "$pair" ] || fail "No SpeechCast DMG found. Release signing may not be set up yet."
         version="${pair%%$'\t'*}"
         asset="${pair#*$'\t'}"
-        printf '  %sNo stable VoiceCast release yet; using pre-release %s%s\n' \
+        printf '  %sNo stable SpeechCast release yet; using pre-release %s%s\n' \
             "$bold" "${version:-latest}" "$reset" >&2
     fi
     case "$asset" in
@@ -111,14 +113,15 @@ else
     printf '  Version: %s\n' "${version:-latest}"
 
     step 2 'Downloading disk image'
-    curl --retry 3 -fL --connect-timeout 20 "$asset" -o "$workdir/VoiceCast.dmg" \
+    curl --retry 3 -fL --connect-timeout 20 "$asset" -o "$workdir/SpeechCast.dmg" \
         || fail "Download failed."
     mkdir -p "$mount"
-    hdiutil attach -readonly -nobrowse -quiet -mountpoint "$mount" "$workdir/VoiceCast.dmg" \
+    hdiutil attach -readonly -nobrowse -quiet -mountpoint "$mount" "$workdir/SpeechCast.dmg" \
         || fail "Cannot mount the disk image."
     mounted=true
-    app="$mount/VoiceCast.app"
-    [ -d "$app" ] || fail "The DMG does not contain VoiceCast.app."
+    app="$mount/SpeechCast.app"
+    if [ ! -d "$app" ] && [ -d "$mount/VoiceCast.app" ]; then app="$mount/VoiceCast.app"; fi
+    [ -d "$app" ] || fail "The DMG does not contain SpeechCast.app."
 fi
 
 step 3 'Verifying signature, notarization and bundle identity'
@@ -150,7 +153,8 @@ info="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/In
 step 4 'Installing verified application'
 if [ -n "${VOICECAST_INSTALL_DIR:-}" ]; then
     install_root="$VOICECAST_INSTALL_DIR"
-elif [ -d /Applications/VoiceCast.app ] || [ -d /Applications/Tinycast.app ]; then
+elif [ -d /Applications/SpeechCast.app ] || [ -d /Applications/VoiceCast.app ] \
+    || [ -d /Applications/Tinycast.app ]; then
     [ -w /Applications ] || fail "Cannot update /Applications without write permission."
     install_root=/Applications
 elif [ -w /Applications ]; then
@@ -159,17 +163,22 @@ else
     install_root="$HOME/Applications"
 fi
 mkdir -p "$install_root" || fail "Cannot create $install_root."
-destination="$install_root/VoiceCast.app"
-legacy="$install_root/Tinycast.app"
-[ ! -e "$legacy" ] || [ ! -e "$destination" ] \
-    || fail "Both VoiceCast.app and Tinycast.app exist. Remove the obsolete duplicate first."
-staged="$install_root/.VoiceCast.app.new.$$"
-backup="$install_root/.VoiceCast.app.backup.$$"
-ditto "$app" "$staged" || fail "Could not stage VoiceCast.app."
+destination="$install_root/SpeechCast.app"
+legacy=""
+for candidate in VoiceCast Tinycast; do
+    if [ -e "$install_root/$candidate.app" ] && [ ! -e "$destination" ]; then
+        legacy="$install_root/$candidate.app"
+    fi
+done
+[ "$legacy" = "" ] || [ ! -e "$destination" ] \
+    || fail "Both SpeechCast.app and a legacy VoiceCast.app/Tinycast.app exist. Remove the obsolete duplicate first."
+staged="$install_root/.SpeechCast.app.new.$$"
+backup="$install_root/.SpeechCast.app.backup.$$"
+ditto "$app" "$staged" || fail "Could not stage SpeechCast.app."
 codesign --verify --deep --strict "$staged" || fail "Staged signature verification failed."
 if [ -e "$destination" ]; then
     replaced="$destination"
-elif [ -e "$legacy" ]; then
+elif [ -n "$legacy" ]; then
     replaced="$legacy"
 else
     replaced=""
@@ -179,7 +188,7 @@ if [ -n "$replaced" ]; then
 fi
 if ! mv "$staged" "$destination"; then
     if [ -n "$replaced" ] && [ -e "$backup" ]; then mv "$backup" "$replaced" || true; fi
-    fail "Could not install VoiceCast.app."
+    fail "Could not install SpeechCast.app."
 fi
 staged=""
 if [ -e "$backup" ]; then rm -rf "$backup"; fi
@@ -191,4 +200,4 @@ if [ "$notarized" = 0 ] || [ "${VOICECAST_STRIP_QUARANTINE:-0}" = "1" ]; then
 fi
 printf '\n%s✓%s Installed %s\n' "$green" "$reset" "$destination"
 printf '%s  %s%s\n' "$dim" \
-    "Open VoiceCast from Applications — no additional step is needed." "$reset"
+    "Open SpeechCast from Applications — no additional step is needed." "$reset"

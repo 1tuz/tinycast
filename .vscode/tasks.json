@@ -9,7 +9,7 @@
       // database from it — that's what keeps cross-file symbols resolving in VS Code as you
       // add and rename files. pipefail preserves the xcodebuild exit code so a failed build
       // still blocks F5 / the run step.
-      "label": "Build VoiceCast.app (debug)",
+      "label": "Build SpeechCast.app (debug)",
       "type": "shell",
       "command": "bash -c 'set -o pipefail; xcodebuild -project Tinycast.xcodeproj -scheme Tinycast -configuration Debug -derivedDataPath build/DerivedData build 2>&1 | tee \"${TMPDIR:-/tmp}/tinycast-build.log\"; ec=$?; ./Scripts/sync-lsp.sh \"${TMPDIR:-/tmp}/tinycast-build.log\" >/dev/null 2>&1 || true; exit $ec'",
       "options": {
@@ -21,11 +21,11 @@
     },
     {
       // Rebuild, then relaunch the menu-bar app. Default build task (⌘⇧B).
-      "label": "Build & Run VoiceCast (debug)",
+      "label": "Build & Run SpeechCast (debug)",
       "type": "shell",
-      "command": "killall 'VoiceCast Dev' 2>/dev/null; open 'build/DerivedData/Build/Products/Debug/VoiceCast Dev.app'",
+      "command": "killall 'SpeechCast Dev' 2>/dev/null; open 'build/DerivedData/Build/Products/Debug/SpeechCast Dev.app'",
       "options": { "cwd": "${workspaceFolder}" },
-      "dependsOn": "Build VoiceCast.app (debug)",
+      "dependsOn": "Build SpeechCast.app (debug)",
       "group": { "kind": "build", "isDefault": true },
       "problemMatcher": []
     },

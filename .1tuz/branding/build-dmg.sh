@@ -15,7 +15,7 @@ if ! security find-identity -p codesigning | grep -q "$IDENTITY"; then
     exit 1
 fi
 
-echo "▸ Building VoiceCast.app (self-signed, developer-only)…"
+echo "▸ Building SpeechCast.app (self-signed, developer-only)…"
 # Hardened runtime on so the local build matches the shipped target; no
 # --timestamp (self-signed identities cannot use a secure timestamp).
 xcodebuild -project Tinycast.xcodeproj -scheme Tinycast -configuration Release \
@@ -25,9 +25,9 @@ xcodebuild -project Tinycast.xcodeproj -scheme Tinycast -configuration Release \
     ${1:+MARKETING_VERSION="$1"} \
     build
 
-APP="$DERIVED/Build/Products/Release/VoiceCast.app"
+APP="$DERIVED/Build/Products/Release/SpeechCast.app"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"
-DMG="build/VoiceCast-local-${VERSION}.dmg"
+DMG="build/SpeechCast-local-${VERSION}.dmg"
 
 mkdir -p build
 STAGE="$(mktemp -d)"
@@ -35,6 +35,6 @@ trap 'rm -rf "$STAGE"' EXIT
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
 rm -f "$DMG"
-diskutil image create from "$STAGE" --format UDZO --volumeName "VoiceCast Local" "$DMG" >/dev/null
+diskutil image create from "$STAGE" --format UDZO --volumeName "SpeechCast Local" "$DMG" >/dev/null
 
 echo "✓ $DMG (developer-only local build: self-signed, not notarized, NOT distributable — public releases are Developer ID-signed and notarized in CI)"

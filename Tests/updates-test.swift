@@ -30,7 +30,7 @@ struct UpdatesTests {
         laysOutTheChangelog()
         linksMentionsAndPullRequests()
         blocksWhileBusy()
-        acceptsVoiceCastDmgAssets()
+        acceptsSpeechCastDmgAssets()
 
         print("\(passes) passed, \(failures) failed")
         if failures > 0 { exit(1) }
@@ -216,17 +216,23 @@ struct UpdatesTests {
                 == AppVersion("0.3.0"),
             "one bad entry does not discard the whole feed")
     }
-    /// A rebranded release ships only `VoiceCast-<version>.dmg`; a stable build still installs it.
-    static func acceptsVoiceCastDmgAssets() {
-        let voicecast = feed(
-            entry(tag: "v0.3.0", prerelease: false, assets: ["VoiceCast-0.3.0.dmg"]))
+    /// A rebranded release ships only `SpeechCast-<version>.dmg`; a stable build still installs it.
+    static func acceptsSpeechCastDmgAssets() {
+        let speechcast = feed(
+            entry(tag: "v0.3.0", prerelease: false, assets: ["SpeechCast-0.3.0.dmg"]))
         let offer = ReleaseFeed.newest(
-            from: voicecast, channel: .stable, architecture: .appleSilicon)
-        expect(offer?.version == AppVersion("0.3.0"), "a VoiceCast-only release is an update")
+            from: speechcast, channel: .stable, architecture: .appleSilicon)
+        expect(offer?.version == AppVersion("0.3.0"), "a SpeechCast-only release is an update")
         expect(
             offer?.assetURL.absoluteString.hasSuffix(".dmg") == true,
             "and the rebranded asset URL still ends in .dmg")
 
+        expect(
+            ReleaseFeed.newest(
+                from: feed(
+                    entry(tag: "v0.3.0", prerelease: false, assets: ["VoiceCast-0.3.0.dmg"])),
+                channel: .stable, architecture: .appleSilicon)?.version == AppVersion("0.3.0"),
+            "a pre-rename VoiceCast-named release remains installable")
         expect(
             ReleaseFeed.newest(
                 from: feed(

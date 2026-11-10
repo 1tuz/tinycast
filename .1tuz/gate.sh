@@ -28,12 +28,12 @@ grep -qF 'static let repository = "1tuz/tinycast"' Tinycast/Features/Updates/Mod
   || { echo "::error::ReleaseFeed still points at upstream"; exit 1; }
 grep -qF 'pump = nil' Tinycast/Features/Support/Service/SupportReminderStore.swift \
   || { echo "::error::Support reminder pump not disabled"; exit 1; }
-grep -qF 'VoiceCast' Tinycast/Info.plist \
-  || { echo "::error::VoiceCast display name missing"; exit 1; }
-grep -qF 'voicecast.svg' Tinycast/tinycast.icon/icon.json \
-  || { echo "::error::VoiceCast Dock icon not selected"; exit 1; }
-grep -qF 'voicecast.svg' Tinycast/Assets.xcassets/MenuBarIcon.imageset/Contents.json \
-  || { echo "::error::VoiceCast menu bar icon not selected"; exit 1; }
+grep -qF 'SpeechCast' Tinycast/Info.plist \
+  || { echo "::error::SpeechCast display name missing"; exit 1; }
+grep -qF 'speechcast.svg' Tinycast/tinycast.icon/icon.json \
+  || { echo "::error::SpeechCast Dock icon not selected"; exit 1; }
+grep -qF 'speechcast.svg' Tinycast/Assets.xcassets/MenuBarIcon.imageset/Contents.json \
+  || { echo "::error::SpeechCast menu bar icon not selected"; exit 1; }
 # Post-sync guardrails: the public build must stay a Developer ID, notarized release. A sync
 # that brings the upstream self-signed pipeline back has to fail here, not in front of a user.
 RELEASE=.github/workflows/release.yml
@@ -85,27 +85,27 @@ grep -qF 'Notarized Developer ID' .github/workflows/release.yml \
 # The overlay is what the daily sync copies, so it may never drift from the canonical file.
 for pair in \
   "README.md:README.md" "INSTALL.md:INSTALL.md" \
-  "docs/voicecast-distribution.md:distribution.md" \
+  "docs/speechcast-distribution.md:distribution.md" \
   "Scripts/install.sh:install.sh" "Scripts/build-dmg.sh:build-dmg.sh" \
   "Scripts/release-notes.sh:release-notes.sh" \
   "Tinycast/tinycast.icon/icon.json:icon.json" \
-  "Tinycast/tinycast.icon/Assets/voicecast.svg:icon.svg" \
+  "Tinycast/tinycast.icon/Assets/speechcast.svg:icon.svg" \
   "Tinycast/Assets.xcassets/MenuBarIcon.imageset/Contents.json:menuicon.json" \
-  "Tinycast/Assets.xcassets/MenuBarIcon.imageset/voicecast.svg:menubar.svg" \
-  "docs/voicecast-logo.svg:logo.svg"; do
+  "Tinycast/Assets.xcassets/MenuBarIcon.imageset/speechcast.svg:menubar.svg" \
+  "docs/speechcast-logo.svg:logo.svg"; do
   canonical="${pair%%:*}"
   overlay=".1tuz/branding/${pair#*:}"
   cmp -s "$canonical" "$overlay" \
     || { echo "::error::$overlay drifted from $canonical; copy it back into the overlay"; exit 1; }
 done
-grep -qF 'VoiceCast' Scripts/install.sh \
-  || { echo "::error::installer lost the VoiceCast branding"; exit 1; }
-grep -qF 'VoiceCast' Scripts/release-notes.sh \
-  || { echo "::error::release notes lost the VoiceCast branding"; exit 1; }
+grep -qF 'SpeechCast' Scripts/install.sh \
+  || { echo "::error::installer lost the SpeechCast branding"; exit 1; }
+grep -qF 'SpeechCast' Scripts/release-notes.sh \
+  || { echo "::error::release notes lost the SpeechCast branding"; exit 1; }
 bash -n Scripts/install.sh Scripts/build-dmg.sh Scripts/release-notes.sh Scripts/verify-release.sh \
   && bash -n .1tuz/apply.sh .1tuz/gate.sh .1tuz/branding/apply.sh \
   || { echo "::error::shell syntax check failed"; exit 1; }
-printf '%s\n' 'VoiceCast brand gate: ok'
+printf '%s\n' 'SpeechCast brand gate: ok'
 echo "::endgroup::"
 
 echo "::group::xcodebuild Release smoke"

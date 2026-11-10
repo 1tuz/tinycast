@@ -1,7 +1,7 @@
 name: Release
 
 # Shown in the Actions list instead of a bare "Release" — carries the version.
-run-name: "VoiceCast ${{ inputs.version }} #${{ github.run_number }}"
+run-name: "SpeechCast ${{ inputs.version }} #${{ github.run_number }}"
 
 # Manually triggered from the Actions tab with a version.
 on:
@@ -59,9 +59,9 @@ jobs:
           fi
           {
             echo "full_version=${FULL}"
-            echo "display_name=VoiceCast"
-            echo "dmg_file=VoiceCast-${FULL}.dmg"
-            echo "zip_file=VoiceCast-${FULL}.zip"
+            echo "display_name=SpeechCast"
+            echo "dmg_file=SpeechCast-${FULL}.dmg"
+            echo "zip_file=SpeechCast-${FULL}.zip"
           } >> "$GITHUB_OUTPUT"
 
       # Fail before any signing/build work so a secret typo is a 30s failure, not a 2h one.
@@ -165,7 +165,7 @@ jobs:
             TINYCAST_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
             MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
             build
-          APP="$RUNNER_TEMP/DerivedData/Build/Products/Release/VoiceCast.app"
+          APP="$RUNNER_TEMP/DerivedData/Build/Products/Release/SpeechCast.app"
           [ -d "$APP" ] || {
             echo "::error::expected built app at $APP (product name comes from the project)"
             exit 1
@@ -176,13 +176,13 @@ jobs:
       - name: Assert the build is arm64-only
         run: |
           set -euo pipefail
-          APP="$RUNNER_TEMP/DerivedData/Build/Products/Release/VoiceCast.app"
+          APP="$RUNNER_TEMP/DerivedData/Build/Products/Release/SpeechCast.app"
           MACHOS="$(while IFS= read -r -d '' f; do
               if file -b "$f" | grep -q "Mach-O"; then
                   echo "$f"
               fi
           done < <(find "$APP/Contents/Helpers" -type f -print0); true)"
-          BINS="$APP/Contents/MacOS/VoiceCast $MACHOS"
+          BINS="$APP/Contents/MacOS/SpeechCast $MACHOS"
           while IFS= read -r BIN; do
             [ -n "$BIN" ] || continue
             SLICES="$(lipo -archs "$BIN")"
@@ -196,7 +196,7 @@ jobs:
       # strings the permission prompts need are entitled.
       - name: Assert the signature is release-safe
         run: ./Scripts/verify-signature.sh \
-          "$RUNNER_TEMP/DerivedData/Build/Products/Release/VoiceCast.app"
+          "$RUNNER_TEMP/DerivedData/Build/Products/Release/SpeechCast.app"
 
       # The updater trusts a Developer ID for team J656U8XZ93. If the certificate and that pin
       # ever disagree, every future update is rejected at install time, so fail the release here.
@@ -207,7 +207,7 @@ jobs:
             Tinycast/Features/Updates/Service/BundleSignature.swift \
             || { echo "::error::BundleSignature no longer pins team J656U8XZ93"; exit 1; }
           ./Scripts/verify-release.sh app \
-            "$RUNNER_TEMP/DerivedData/Build/Products/Release/VoiceCast.app" \
+            "$RUNNER_TEMP/DerivedData/Build/Products/Release/SpeechCast.app" \
             --version "${{ steps.meta.outputs.full_version }}" --unnotarized
 
       - name: Notarize app
@@ -217,12 +217,12 @@ jobs:
           API_ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
         run: |
           set -euo pipefail
-          APP="$RUNNER_TEMP/DerivedData/Build/Products/Release/VoiceCast.app"
+          APP="$RUNNER_TEMP/DerivedData/Build/Products/Release/SpeechCast.app"
           SUBMIT_DIR="$RUNNER_TEMP/notarize-app"
           mkdir -p "$SUBMIT_DIR"
           # notarytool takes a zip for an .app; ditto is the only archiver that keeps the seal.
-          ditto -c -k --keepParent --sequesterRsrc "$APP" "$SUBMIT_DIR/VoiceCast.zip"
-          xcrun notarytool submit "$SUBMIT_DIR/VoiceCast.zip" \
+          ditto -c -k --keepParent --sequesterRsrc "$APP" "$SUBMIT_DIR/SpeechCast.zip"
+          xcrun notarytool submit "$SUBMIT_DIR/SpeechCast.zip" \
             --key "$NOTARY_KEY_PATH" --key-id "$API_KEY_ID" --issuer "$API_ISSUER" \
             --wait --output-format json | tee "$SUBMIT_DIR/submit.json"
           STATUS="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["status"])' \
@@ -249,13 +249,13 @@ jobs:
           API_ISSUER: ${{ secrets.APPSTORE_ISSUER_ID }}
         run: |
           set -euo pipefail
-          APP="$RUNNER_TEMP/DerivedData/Build/Products/Release/VoiceCast.app"
+          APP="$RUNNER_TEMP/DerivedData/Build/Products/Release/SpeechCast.app"
           STAGE="$(mktemp -d)"
           cp -R "$APP" "$STAGE/"
           ln -s /Applications "$STAGE/Applications"
           mkdir -p dist
           diskutil image create from "$STAGE" --format UDZO \
-            --volumeName "VoiceCast" "dist/${DMG_FILE}"
+            --volumeName "SpeechCast" "dist/${DMG_FILE}"
           # Sign the disk image itself, or Gatekeeper reports it as an unsigned download.
           codesign --force --sign "$CODESIGN_IDENTITY" --options runtime --timestamp \
             "dist/${DMG_FILE}"
@@ -292,11 +292,11 @@ jobs:
           EXTRACT_DIR="$RUNNER_TEMP/zip-extract"
           mkdir -p "$EXTRACT_DIR"
           ditto -x -k --sequesterRsrc "dist/${ZIP_FILE}" "$EXTRACT_DIR"
-          ./Scripts/verify-release.sh app "$EXTRACT_DIR/VoiceCast.app" --version "$VERSION"
+          ./Scripts/verify-release.sh app "$EXTRACT_DIR/SpeechCast.app" --version "$VERSION"
 
       - uses: actions/upload-artifact@v7
         with:
-          name: VoiceCast-${{ steps.meta.outputs.full_version }}
+          name: SpeechCast-${{ steps.meta.outputs.full_version }}
           path: dist
 
       # The import keychain and the API key never outlive the job, even when signing failed.
@@ -318,7 +318,7 @@ jobs:
 
       - uses: actions/download-artifact@v7
         with:
-          name: VoiceCast-${{ needs.build.outputs.full_version }}
+          name: SpeechCast-${{ needs.build.outputs.full_version }}
           path: dist
 
       # Clean-machine install: the DMG carries a real Safari quarantine flag, nothing clears it,
@@ -329,8 +329,8 @@ jobs:
           VERSION: ${{ needs.build.outputs.full_version }}
         run: |
           set -euo pipefail
-          DMG="dist/VoiceCast-${VERSION}.dmg"
-          ZIP="dist/VoiceCast-${VERSION}.zip"
+          DMG="dist/SpeechCast-${VERSION}.dmg"
+          ZIP="dist/SpeechCast-${VERSION}.zip"
           [ -f "$DMG" ] || { echo "::error::$DMG missing from artifact"; exit 1; }
           [ -f "$ZIP" ] || { echo "::error::$ZIP missing from artifact"; exit 1; }
 
@@ -348,7 +348,7 @@ jobs:
           INSTALL="$RUNNER_TEMP/Applications"
           mkdir -p "$INSTALL"
           # Hand-install path: drag the mounted app out of the image, as a user would.
-          ditto "$MOUNT/VoiceCast.app" "$INSTALL/VoiceCast.app"
+          ditto "$MOUNT/SpeechCast.app" "$INSTALL/SpeechCast.app"
           hdiutil detach "$MOUNT" -quiet
 
           # Installer path: the documented Scripts/install.sh must accept this same quarantined
@@ -357,11 +357,11 @@ jobs:
           mkdir -p "$INSTALLED_BY_SCRIPT"
           VOICECAST_DMG="$DMG" VOICECAST_INSTALL_DIR="$INSTALLED_BY_SCRIPT" \
             ./Scripts/install.sh
-          [ -d "$INSTALLED_BY_SCRIPT/VoiceCast.app" ] \
-            || { echo "::error::Scripts/install.sh did not install VoiceCast.app"; exit 1; }
-          ./Scripts/verify-release.sh app "$INSTALLED_BY_SCRIPT/VoiceCast.app" --version "$VERSION"
+          [ -d "$INSTALLED_BY_SCRIPT/SpeechCast.app" ] \
+            || { echo "::error::Scripts/install.sh did not install SpeechCast.app"; exit 1; }
+          ./Scripts/verify-release.sh app "$INSTALLED_BY_SCRIPT/SpeechCast.app" --version "$VERSION"
 
-          APP="$INSTALL/VoiceCast.app"
+          APP="$INSTALL/SpeechCast.app"
           [ -d "$APP" ] || { echo "::error::installed copy is missing"; exit 1; }
           # LaunchServices stamps the extracted app with the same quarantine record the download
           # carried. Stamping it here makes the check deterministic instead of relying on whether
@@ -384,7 +384,7 @@ jobs:
           EXTRACT_DIR="$RUNNER_TEMP/zip-extract"
           mkdir -p "$EXTRACT_DIR"
           ditto -x -k --sequesterRsrc "$ZIP" "$EXTRACT_DIR"
-          ./Scripts/verify-release.sh app "$EXTRACT_DIR/VoiceCast.app" --version "$VERSION"
+          ./Scripts/verify-release.sh app "$EXTRACT_DIR/SpeechCast.app" --version "$VERSION"
 
   verify-upgrade:
     runs-on: macos-26
@@ -397,7 +397,7 @@ jobs:
 
       - uses: actions/download-artifact@v7
         with:
-          name: VoiceCast-${{ needs.build.outputs.full_version }}
+          name: SpeechCast-${{ needs.build.outputs.full_version }}
           path: dist
 
       # The fork shipped self-signed Tinycast copies before the switch. Install the previous
@@ -442,7 +442,7 @@ jobs:
           trap 'hdiutil detach "$MOUNT" -force >/dev/null 2>&1 || true' EXIT
           PREV_APP="$(find "$MOUNT" -maxdepth 1 -name '*.app' -type d -print -quit)"
           [ -n "$PREV_APP" ] || { echo "::error::$PREV_ASSET contains no app"; exit 1; }
-          # Keep the shipped name: a pre-switch release ships either Tinycast.app or VoiceCast.app,
+          # Keep the shipped name: a pre-rename release ships Tinycast.app or VoiceCast.app,
           # and the installer has to take both over.
           ditto "$PREV_APP" "$LEGACY_DIR/$(basename "$PREV_APP")"
           hdiutil detach "$MOUNT" -quiet
@@ -460,7 +460,7 @@ jobs:
           [ "$PREV_INFO" = "com.tinycast.app" ] \
             || { echo "::error::$PREV_TAG has bundle id '$PREV_INFO', not com.tinycast.app"; exit 1; }
 
-          VOICECAST_INSTALL_DIR="$LEGACY_DIR" VOICECAST_DMG="dist/VoiceCast-${VERSION}.dmg" \
+          VOICECAST_INSTALL_DIR="$LEGACY_DIR" VOICECAST_DMG="dist/SpeechCast-${VERSION}.dmg" \
             ./Scripts/install.sh
 
           AFTER="$(shasum -a 256 "$SETTINGS_DIR/settings.json")"
@@ -468,12 +468,12 @@ jobs:
             || { echo "::error::upgrade modified the user's settings file"; exit 1; }
           [ ! -e "$LEGACY_DIR/Tinycast.app" ] \
             || { echo "::error::legacy Tinycast.app was left behind"; exit 1; }
-          ./Scripts/verify-release.sh app "$LEGACY_DIR/VoiceCast.app" --version "$VERSION"
+          ./Scripts/verify-release.sh app "$LEGACY_DIR/SpeechCast.app" --version "$VERSION"
           # The updater's own acceptance test: the requirement string from BundleSignature must
           # evaluate true against the installed bundle, not merely match a display name.
           codesign --verify --strict \
             -R='certificate leaf[subject.OU] = "J656U8XZ93"' \
-            "$LEGACY_DIR/VoiceCast.app" \
+            "$LEGACY_DIR/SpeechCast.app" \
             || { echo "::error::the installed app does not satisfy BundleSignature's team requirement"; exit 1; }
           echo "✓ $PREV_TAG upgraded in place to $VERSION with settings intact"
 
@@ -488,7 +488,7 @@ jobs:
 
       - uses: actions/download-artifact@v7
         with:
-          name: VoiceCast-${{ needs.build.outputs.full_version }}
+          name: SpeechCast-${{ needs.build.outputs.full_version }}
           path: dist
 
       # The changelog GitHub derives from the merged PRs, with the install text below a marker the
@@ -510,12 +510,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.build.outputs.full_version }}
-          DMG_FILE: VoiceCast-${{ needs.build.outputs.full_version }}.dmg
-          ZIP_FILE: VoiceCast-${{ needs.build.outputs.full_version }}.zip
+          DMG_FILE: SpeechCast-${{ needs.build.outputs.full_version }}.dmg
+          ZIP_FILE: SpeechCast-${{ needs.build.outputs.full_version }}.zip
         run: |
           TAG="v$VERSION"
           gh release create "$TAG" \
             "dist/$DMG_FILE" \
             "dist/$ZIP_FILE" \
-            --title "VoiceCast $VERSION" \
+            --title "SpeechCast $VERSION" \
             --notes-file "$RUNNER_TEMP/notes.md"

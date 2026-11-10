@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// VoiceCast's menu-bar item. Template rendering adapts the monochrome mark to light/dark mode.
+/// SpeechCast's menu-bar item. Template rendering adapts the monochrome mark to light/dark mode.
 struct MenuBarLabel: View {
     let appName: String
 

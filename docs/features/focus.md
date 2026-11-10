@@ -1,7 +1,7 @@
 # Focus sessions
 
 A local, deliberately soft concentration timer: profiles hide configured applications and redirect
-blocked tabs in supported browsers, with an optional VoiceCast Workflow or Apple Shortcut at start
+blocked tabs in supported browsers, with an optional SpeechCast Workflow or Apple Shortcut at start
 and end. It runs without the Speech Runtime, a microphone, an AI model, a Python process or elevated
 privileges.
 
@@ -16,7 +16,7 @@ privileges.
   background requests, private windows, Firefox/Zen and anything outside the four supported browsers
   are explicitly out of scope. No `/etc/hosts`, firewall or Network Extension is touched.
 - **System surfaces are never blocked.** `protectedBundleIDs` covers Finder, Dock, loginwindow and
-  both VoiceCast bundle IDs; `addApplication`, `blockApplication` and `blockIfNeeded` all enforce it.
+  both SpeechCast bundle IDs; `addApplication`, `blockApplication` and `blockIfNeeded` all enforce it.
 - **The session is owned by one file.** `Application Support/<bundle id>/focus-sessions.json` is the
   only state; the coordinator, owned lazily by `AppCore`, is the only writer, and observers installed
   in `startMonitoring()` are removed in `prepareForTermination()`. A relaunch restores the session and
@@ -36,14 +36,14 @@ privileges.
 ## Settings and UI
 
 Open **Settings → Focus**. Create a profile, set a duration (5–240 minutes), choose apps and domains,
-and optionally select existing VoiceCast Workflows and Apple Shortcuts for start/finish actions.
+and optionally select existing SpeechCast Workflows and Apple Shortcuts for start/finish actions.
 Shortcuts can open an IDE, arrange windows, or change macOS's Do Not Disturb mode. The session timer
 is displayed in a small nonactivating, draggable Liquid Glass panel. Start, pause and finish are also
 in the menu bar.
 
 ## Voice commands
 
-Existing **Voice Ask → Run VoiceCast commands** must be enabled. Examples:
+Existing **Voice Ask → Run SpeechCast commands** must be enabled. Examples:
 
 - `Начни фокус на 45 минут`
 - `Запусти профиль Работа на час`
@@ -54,14 +54,14 @@ Existing **Voice Ask → Run VoiceCast commands** must be enabled. Examples:
 - `Разреши сайт youtube.com на 5 минут`
 
 The existing `Включи фокус` system action still toggles **macOS Do Not Disturb** and is deliberately
-distinct from starting a timed VoiceCast Focus session.
+distinct from starting a timed SpeechCast Focus session.
 
 ## Scope and limitations
 
 - **Apps**: `NSWorkspace.didActivateApplicationNotification` hides configured applications when they
   activate. They are **not force-quit**, so unsaved work is preserved. This is a soft restriction, not
   a security or parental-control mechanism.
-- **Websites**: while Safari, Google Chrome, Brave or Edge is frontmost, VoiceCast checks the active
+- **Websites**: while Safari, Google Chrome, Brave or Edge is frontmost, SpeechCast checks the active
   tab every ~2 seconds using AppleScript and redirects a blocked URL to `about:blank`. macOS might
   request Automation consent. Background tabs, private windows, Firefox/Zen and network requests
   outside those tabs are **not** blocked. Existing URLs are not automatically restored at session

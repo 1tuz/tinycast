@@ -1,12 +1,12 @@
-# VoiceCast
+# SpeechCast
 
 <p align="center">
-  <img src="docs/voicecast-logo.svg" alt="VoiceCast" width="480">
+  <img src="docs/speechcast-logo.svg" alt="SpeechCast" width="480">
 </p>
 
 **One command surface for your Mac. Search, speak, automate, and act.**
 
-VoiceCast is a native macOS command center built on the open-source
+SpeechCast is a native macOS command center built on the open-source
 [Tinycast](https://github.com/abue-ammar/tinycast) launcher. It keeps a compact,
 keyboard-first interface while expanding beyond app launching into voice commands,
 local speech recognition, automation, AI actions, and developer utilities.
@@ -15,14 +15,14 @@ local speech recognition, automation, AI actions, and developer utilities.
 [Installation](INSTALL.md) · [Speech Runtime](https://github.com/1tuz/Speech-Runtime) ·
 [Upstream Tinycast](https://github.com/abue-ammar/tinycast)
 
-## What VoiceCast does
+## What SpeechCast does
 
 - **Search and launch:** apps, files, folders, settings, shortcuts, and commands from one palette.
 - **Control by voice:** push-to-talk, Voice Ask, command aliases, and local intent matching for
   system actions such as screenshots, Focus, screen recording, and clipboard translation.
 - **Use local transcription:** connect to the independent
   [Speech Runtime](https://github.com/1tuz/Speech-Runtime) service for speech-to-text.
-  Speech Runtime manages the models; VoiceCast is the command and interaction client.
+  Speech Runtime manages the models; SpeechCast is the command and interaction client.
 - **Automate:** quicklinks, snippets, shell commands, hotkeys, Apple Shortcuts,
   workflows, and window management.
 - **Work with AI:** Quick AI, text actions, chat, and configurable providers.
@@ -37,7 +37,7 @@ must be running for its voice-to-text integration.
 
 ## Why this fork exists
 
-| | Tinycast (upstream) | VoiceCast (this fork) |
+| | Tinycast (upstream) | SpeechCast (this fork) |
 |---|---|---|
 | Primary focus | Small native launcher | Universal command surface, including voice |
 | Speech | Upstream speech features | Separate, local **Speech Runtime** integration |
@@ -55,7 +55,7 @@ The fork periodically incorporates upstream changes through the `.1tuz/` patch q
 curl -fsSL https://raw.githubusercontent.com/1tuz/tinycast/main/Scripts/install.sh | VOICECAST_STRIP_QUARANTINE=1 /bin/bash
 ```
 
-Alternatively, download the `VoiceCast-<version>.dmg` attached to a
+Alternatively, download the `SpeechCast-<version>.dmg` attached to a
 [GitHub Release](https://github.com/1tuz/tinycast/releases).
 See [INSTALL.md](INSTALL.md) for details and migration from Tinycast.
 
@@ -80,7 +80,7 @@ xcodebuild -project Tinycast.xcodeproj -scheme Tinycast -configuration Release \
 ```
 
 Release distribution — the CI signing secrets and runbook — is described in
-[docs/voicecast-distribution.md](docs/voicecast-distribution.md).
+[docs/speechcast-distribution.md](docs/speechcast-distribution.md).
 
 ## Compatibility
 
@@ -88,13 +88,13 @@ The app intentionally retains bundle ID `com.tinycast.app`, existing preference 
 backup format, and `tinycast://` links during the transition. This avoids silently losing
 settings and allows existing installations to keep updating. The updater's `BundleSignature`
 check accepts the pinned Developer ID requirement (team `J656U8XZ93`), and the last pre-switch
-release already carries that same check, so an old Tinycast updates into VoiceCast in place; the
+release already carries that same check, so an old Tinycast updates into SpeechCast in place; the
 leaf branch below it keeps locally signed builds updatable. The user-facing app and release
-artifact names are **VoiceCast**, and `Scripts/install.sh` renames an existing
-`Tinycast.app` to `VoiceCast.app`.
+artifact names are **SpeechCast**, and `Scripts/install.sh` renames an existing
+`Tinycast.app` to `SpeechCast.app`.
 
 ## License and attribution
 
-VoiceCast is distributed under [AGPL-3.0](LICENSE). It is based on
+SpeechCast is distributed under [AGPL-3.0](LICENSE). It is based on
 [Tinycast by abue-ammar and contributors](https://github.com/abue-ammar/tinycast).
 Third-party notices remain in [NOTICE.md](NOTICE.md).

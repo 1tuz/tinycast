@@ -13,7 +13,7 @@ struct UpdateInstaller: Sendable {
                 return String(localized: "Downloading… \(Self.size(received)) of \(Self.size(expected))")
             case .mounting: return String(localized: "Mounting the update…")
             case .verifying: return String(localized: "Verifying…")
-            case .replacing: return String(localized: "Replacing VoiceCast…")
+            case .replacing: return String(localized: "Replacing SpeechCast…")
             }
         }
 
@@ -63,6 +63,7 @@ struct UpdateInstaller: Sendable {
             // the old bundle; parent-directory renames still work on an admin-writable /Applications.
             try replaceByRenamingAside(staged: staged)
         }
+        try renameToProductName()
         try? FileManager.default.removeItem(at: expanded)
     }
 
@@ -80,6 +81,30 @@ struct UpdateInstaller: Sendable {
             // /Applications entry is worse than no update.
             if !fm.fileExists(atPath: bundleURL.path) {
                 try? fm.moveItem(at: aside, to: bundleURL)
+            }
+            throw UpdateFailure.replaceFailed(error.localizedDescription)
+        }
+    }
+
+    /// A pre-SpeechCast update still runs as VoiceCast.app or Tinycast.app; the replace keeps the
+    /// old folder name, so the swap ends by claiming the product name, rolling back if it cannot.
+    private func renameToProductName() throws {
+        let productURL = bundleURL.deletingLastPathComponent()
+            .appendingPathComponent("SpeechCast.app")
+        guard productURL != bundleURL else { return }
+        let fm = FileManager.default
+        let aside = bundleURL.deletingLastPathComponent()
+            .appendingPathComponent(productURL.lastPathComponent + ".pre-rename")
+        let clash = fm.fileExists(atPath: productURL.path)
+        if clash {
+            try? fm.trashItem(at: aside, resultingItemURL: nil)
+            try fm.moveItem(at: productURL, to: aside)
+        }
+        do {
+            try fm.moveItem(at: bundleURL, to: productURL)
+        } catch {
+            if clash {
+                try? fm.moveItem(at: aside, to: productURL)
             }
             throw UpdateFailure.replaceFailed(error.localizedDescription)
         }

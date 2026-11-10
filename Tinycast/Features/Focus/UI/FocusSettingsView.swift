@@ -178,7 +178,7 @@ struct FocusSettingsView: View {
                 shortcutOptions
             }
             Text(
-                "Сценарии VoiceCast и Apple Shortcuts выполняются автоматически. Через Shortcuts " +
+                "Сценарии SpeechCast и Apple Shortcuts выполняются автоматически. Через Shortcuts " +
                 "можно запускать приложения, расставлять окна и включать системное «Не беспокоить».")
                 .font(.caption)
                 .foregroundStyle(.secondary)

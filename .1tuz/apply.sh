@@ -44,7 +44,7 @@ for patch in .1tuz/patches/*.patch; do
   fi
 done
 
-# Keep the independent VoiceCast identity on every automatic upstream sync.
+# Keep the independent SpeechCast identity on every automatic upstream sync.
 bash .1tuz/branding/apply.sh
 
 # Optional rewrites: leftover upstream releases-page links.

@@ -47,7 +47,7 @@ executable name stays fixed even when release builds override the app's product 
 
 ### The dev channel
 
-Debug builds are a separate channel: **`VoiceCast Dev.app`**, bundle id `com.tinycast.app.dev`. Every
+Debug builds are a separate channel: **`SpeechCast Dev.app`**, bundle id `com.tinycast.app.dev`. Every
 persisted thing is keyed by bundle id — `~/Library/Preferences/<id>.plist` (settings and hotkey
 bindings), `~/Library/Application Support/<id>/` (the onboarding marker, Notes, snippets, quicklinks,
 clipboard history, calculator history, launch ranking and frequent emoji; Notes and snippets unless
@@ -89,7 +89,7 @@ xcodebuild -project Tinycast.xcodeproj -scheme Tinycast -configuration Debug \
 
 Both files are git-ignored because they embed absolute paths, and `sourcekit-lsp` looks for
 `buildServer.json` at the workspace root by name, so it cannot live in a subfolder. After this the
-**Build VoiceCast.app (debug)** task (⌘⇧B) and **F5** re-run the script on every build, so new and
+**Build SpeechCast.app (debug)** task (⌘⇧B) and **F5** re-run the script on every build, so new and
 renamed files keep resolving.
 
 **Do not run `xcode-build-server config`.** It writes `kind: xcode`, and in that mode the server ignores

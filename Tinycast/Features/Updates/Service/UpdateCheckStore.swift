@@ -173,7 +173,7 @@ final class UpdateCheckStore {
     private nonisolated static func body() async -> Data? {
         var request = URLRequest(url: endpoint, timeoutInterval: 20)
         // GitHub rejects an API request carrying no User-Agent outright.
-        request.setValue("VoiceCast", forHTTPHeaderField: "User-Agent")
+        request.setValue("SpeechCast", forHTTPHeaderField: "User-Agent")
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
         guard let (data, response) = try? await session.data(for: request),

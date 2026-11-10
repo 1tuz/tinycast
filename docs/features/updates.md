@@ -1,20 +1,20 @@
 # Updates
 
-By default, VoiceCast checks GitHub Releases once a day and offers the newest release in a native
+By default, SpeechCast checks GitHub Releases once a day and offers the newest release in a native
 window with its release notes, installs it and relaunches. There is no Sparkle and
 no appcast: the release feed the website already reads is the feed the app reads.
 
 ## Invariants
 
-- **VoiceCast installs its own updates, and the DMG is the one artifact.** The release carries a
-  single `VoiceCast-<version>.dmg`; a hand download and the updater read that same file, so what the
+- **SpeechCast installs its own updates, and the DMG is the one artifact.** The release carries a
+  single `SpeechCast-<version>.dmg`; a hand download and the updater read that same file, so what the
   updater installs is byte-identical to what a downloader installs. A release without a DMG is not
   installable and is not offered.
 - **The DMG is arm64-only.** `ReleaseFeed.asset` answers nothing for an Intel Mac rather than
   offering a build whose only slice would refuse to launch.
-- **Nobody ever runs `xattr`, and nothing ever strips a quarantine flag.** A DMG VoiceCast fetched
+- **Nobody ever runs `xattr`, and nothing ever strips a quarantine flag.** A DMG SpeechCast fetched
   itself never carries one — macOS sets that flag for sandboxed downloaders and for apps
-  that opt in with `LSFileQuarantineEnabled`, and VoiceCast is neither — so there is no flag
+  that opt in with `LSFileQuarantineEnabled`, and SpeechCast is neither — so there is no flag
   to remove and no code to try. Releases are Developer ID-signed and notarized by Apple, so the
   first launch of an updated copy opens straight away, and no release or update path works
   around Gatekeeper.
@@ -127,15 +127,18 @@ One route, whatever the install came from:
    is admin-writable — the old bundle's interior is read-only for this account. The installer then
    renames the old bundle aside in the same parent directory and moves the staged one into place,
    both parent-directory operations an admin account may perform. The old copy is kept as
-   `VoiceCast.app.pre-update` (a previous leftover is trashed first) so a broken new bundle can
+   `SpeechCast.app.pre-update` (a previous leftover is trashed first) so a broken new bundle can
    still be rolled back by hand; a failed swap restores the old copy to its name before the
    failure surfaces. Everything else about the failure — including a `/Applications` the account
-   genuinely cannot write — is still reported, never escalated.
+   genuinely cannot write — is still reported, never escalated. When the running bundle still
+   carries a pre-rename folder name (`Tinycast.app`, `VoiceCast.app`), the replace keeps that
+   name and the installer then renames the installed bundle to `SpeechCast.app`, restoring the
+   previous state if the rename fails.
 5. Offer Relaunch, which spawns a detached waiter that reopens the app once this process exits —
    `open` on a bundle id that is still running would only re-activate the instance on its way out.
 
 A successful install records its version as `installedVersion`. The first launch running that
-version takes it and shows an "Updated to VoiceCast <version>" HUD, whether it came from Relaunch or a
+version takes it and shows an "Updated to SpeechCast <version>" HUD, whether it came from Relaunch or a
 later quit and reopen. A launch of any other version only clears it, so a hand install never reports.
 
 Nothing here touches `~/Library/Preferences`, `~/Library/Caches` or `Application Support`, so no
@@ -144,14 +147,14 @@ setting, clipboard entry, note or snippet is affected by an update.
 Every update lands on the same bundle id, `com.tinycast.app`, that an older Tinycast copy already
 runs — the installed bundle is replaced in place, so preferences, caches, TCC grants and the login
 item keyed to that id all carry over with nothing to migrate. The last pre-switch release already
-carries the Developer ID branch of `BundleSignature`, so an old Tinycast updates into VoiceCast in
+carries the Developer ID branch of `BundleSignature`, so an old Tinycast updates into SpeechCast in
 place with its settings intact; the installer (`Scripts/install.sh`) also renames the old
-`Tinycast.app` folder to `VoiceCast.app`.
+`Tinycast.app` or `VoiceCast.app` folder to `SpeechCast.app`.
 
 ## Releasing into it
 
-`.github/workflows/release.yml` publishes two assets from one build: `VoiceCast-<version>.dmg`, which
-a hand download and the updater both read, and `VoiceCast-<version>.zip` as an extra artifact for
+`.github/workflows/release.yml` publishes two assets from one build: `SpeechCast-<version>.dmg`, which
+a hand download and the updater both read, and `SpeechCast-<version>.zip` as an extra artifact for
 tooling that prefers an archive. The zip is made with
 
 ```sh

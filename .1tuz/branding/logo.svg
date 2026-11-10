@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="760" height="180" viewBox="0 0 760 180">
-  <title>VoiceCast wordmark</title>
+  <title>SpeechCast wordmark</title>
   <g transform="translate(0,10) scale(0.15)">
     <rect x="0" y="0" width="1024" height="1024" rx="224" fill="#080808"/>
     <path d="M235 399Q199 431 199 512Q199 593 235 625Q223 599 223 512Q223 425 235 399Z" fill="#777"/>
@@ -14,5 +14,5 @@
       <rect x="623" y="482" width="22" height="62" rx="11"/>
     </g>
   </g>
-  <text x="182" y="123" font-size="92" font-family="-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif" font-weight="750" letter-spacing="-3" fill="#080808">VoiceCast</text>
+  <text x="182" y="123" font-size="92" font-family="-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif" font-weight="750" letter-spacing="-3" fill="#080808">SpeechCast</text>
 </svg>

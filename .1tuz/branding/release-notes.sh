@@ -9,7 +9,7 @@ REPO="${REPO:-1tuz/tinycast}"
 TAG="${TAG:?TAG is required, e.g. v0.3.0}"
 SHA="${SHA:-$(git rev-parse HEAD)}"
 VERSION="${VERSION:-${TAG#v}}"
-DISPLAY_NAME="${DISPLAY_NAME:-VoiceCast}"
+DISPLAY_NAME="${DISPLAY_NAME:-SpeechCast}"
 BUNDLE_ID="${BUNDLE_ID:-com.tinycast.app}"
 # Preserve the existing release-notes parser's marker for update compatibility.
 MARKER="<!-- tinycast:install -->"
@@ -37,9 +37,9 @@ CHANGELOG="$(printf '%s\n' "$GENERATED" | sed -E \
     printf 'Built from %s.' "$SHA"
     if [ -n "$COMPARE_URL" ]; then printf ' [Full changelog](%s)' "$COMPARE_URL"; fi
     printf '\n\n'
-    printf '%s\n' "Download the VoiceCast DMG attached to this release or run:"
+    printf '%s\n' "Download the SpeechCast DMG attached to this release or run:"
     printf '```sh\ncurl -fsSL https://raw.githubusercontent.com/1tuz/tinycast/main/Scripts/install.sh | VOICECAST_STRIP_QUARANTINE=1 /bin/bash\n```\n'
-    printf '%s\n' "Signed with Apple **Developer ID** (team \`J656U8XZ93\`) and **notarized by Apple**. Download, open the DMG, drag **VoiceCast** to Applications and launch it — no terminal commands, no Gatekeeper warnings. The one-liner above also clears the quarantine flag on the installed copy if Gatekeeper still refuses the download."
+    printf '%s\n' "Signed with Apple **Developer ID** (team \`J656U8XZ93\`) and **notarized by Apple**. Download, open the DMG, drag **SpeechCast** to Applications and launch it — no terminal commands, no Gatekeeper warnings. The one-liner above also clears the quarantine flag on the installed copy if Gatekeeper still refuses the download."
 } > "$BODY_OUT"
 
 printf '%s\n' "$CHANGELOG" | awk -v budget="$DISCORD_BUDGET" -v bullets="$DISCORD_BULLETS" '

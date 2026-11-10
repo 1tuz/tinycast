@@ -1,6 +1,6 @@
 # Signing
 
-VoiceCast uses two signing identities, one per audience:
+SpeechCast uses two signing identities, one per audience:
 
 - **Local development** signs with the persistent self-signed identity **`Tinycast Self-Signed`**
   (`project.yml`). Keeping the same identity on every local build is what makes macOS remember the
@@ -13,7 +13,7 @@ VoiceCast uses two signing identities, one per audience:
   notary service, waits for `Accepted`, and staples the ticket to the `.app` and then the `.dmg`.
   A downloaded release passes Gatekeeper on first launch with no warning and no confirmation
   step. The CI setup — the six secrets and how to produce each — is §2 below; the runbook is in
-  [voicecast-distribution.md](voicecast-distribution.md).
+  [speechcast-distribution.md](speechcast-distribution.md).
 
 The two identities coexist on purpose: the product is one app with one bundle id
 (`com.tinycast.app`), and the updater trusts a release through the Developer ID requirement pinned
@@ -113,7 +113,7 @@ branches:
 - the **leaf fallback**, which accepts a bundle signed with the running app's own leaf
   certificate. That is what keeps a locally self-signed development build updatable from another
   build of the same `Tinycast Self-Signed` identity. It does **not** admit a Developer ID release
-  into a copy whose code predates the Developer ID branch; such a copy can only move to VoiceCast
+  into a copy whose code predates the Developer ID branch; such a copy can only move to SpeechCast
   through `Scripts/install.sh`. Do not remove it.
 
 Do not remove either check.
@@ -123,10 +123,10 @@ The release build signs with `CODE_SIGN_STYLE=Manual`,
 `OTHER_CODE_SIGN_FLAGS="--options runtime --timestamp"`, then notarizes:
 
 ```sh
-xcrun notarytool submit VoiceCast-<version>.dmg \
+xcrun notarytool submit SpeechCast-<version>.dmg \
   --key AuthKey_<key-id>.p8 --key-id <key-id> --issuer <issuer-id> --wait
-xcrun stapler staple VoiceCast.app
-xcrun stapler staple VoiceCast-<version>.dmg
+xcrun stapler staple SpeechCast.app
+xcrun stapler staple SpeechCast-<version>.dmg
 ```
 
 The submission must come back with status `Accepted`; anything else fails the release. The ticket
@@ -140,7 +140,7 @@ the release build only.
 
 **Release only**, on both targets: `ENABLE_HARDENED_RUNTIME: YES`, which the release
 verification asserts on every executable. Debug must stay without it — hardened runtime turns
-on library validation, and Xcode's `VoiceCast Dev.debug.dylib` is refused at launch because
+on library validation, and Xcode's `SpeechCast Dev.debug.dylib` is refused at launch because
 the local identity carries no Team ID for the loader to match. The flag is not part of the
 designated requirement, so turning it on costs no Accessibility grant. Each entitlement in
 `Tinycast/Tinycast.entitlements` earns its place:

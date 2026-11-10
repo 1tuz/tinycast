@@ -463,7 +463,7 @@ final class AppCore {
                 paletteCoordinator.showPalette(mode: .launcher)
             }
             if let version = updateChecker.takeInstalledVersion() {
-                showMessage(String(localized: "Updated to VoiceCast \(version.description)"))
+                showMessage(String(localized: "Updated to SpeechCast \(version.description)"))
             }
         }
     }
@@ -770,8 +770,8 @@ final class AppCore {
         Task {
             guard
                 await confirm(
-                    title: String(localized: "Relaunch VoiceCast?"),
-                    message: String(localized: "The new language applies after VoiceCast relaunches."),
+                    title: String(localized: "Relaunch SpeechCast?"),
+                    message: String(localized: "The new language applies after SpeechCast relaunches."),
                     symbol: "globe", confirmTitle: String(localized: "Relaunch"), tone: .neutral,
                     confirmRole: .standard, dismissTitle: String(localized: "Later")),
                 isLanguagePending

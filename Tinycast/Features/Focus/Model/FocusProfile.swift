@@ -17,7 +17,7 @@ struct FocusProfile: Codable, Equatable, Identifiable, Sendable {
     /// Existing Apple Shortcuts may orchestrate app launches, window layouts, and notifications.
     var startShortcutID: UUID?
     var endShortcutID: UUID?
-    /// VoiceCast workflows can also be attached directly to a Focus profile.
+    /// SpeechCast workflows can also be attached directly to a Focus profile.
     var startWorkflowID: UUID?
     var endWorkflowID: UUID?
 

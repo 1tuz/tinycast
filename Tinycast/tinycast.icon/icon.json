@@ -4,8 +4,8 @@
     {
       "layers": [
         {
-          "image-name": "voicecast.svg",
-          "name": "VoiceCast"
+          "image-name": "speechcast.svg",
+          "name": "SpeechCast"
         }
       ],
       "shadow": {

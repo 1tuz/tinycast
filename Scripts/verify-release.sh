@@ -1,5 +1,5 @@
 #!/bin/bash
-# Release verification for a Developer ID-signed, notarized VoiceCast
+# Release verification for a Developer ID-signed, notarized SpeechCast
 # .app or released .dmg.
 #
 # Every check is a hard failure: this is the release gate run on macOS CI.
@@ -142,9 +142,9 @@ verify_app() {
     [ -d "$app" ] || fail "$app is not an .app bundle"
     [ -d "$app/Contents" ] || fail "$app has no Contents directory"
 
-    local main_exe="$app/Contents/MacOS/VoiceCast"
-    [ -f "$main_exe" ] || fail "$name.app: missing Contents/MacOS/VoiceCast"
-    [ -x "$main_exe" ] || fail "$name.app: Contents/MacOS/VoiceCast is not executable"
+    local main_exe="$app/Contents/MacOS/SpeechCast"
+    [ -f "$main_exe" ] || fail "$name.app: missing Contents/MacOS/SpeechCast"
+    [ -x "$main_exe" ] || fail "$name.app: Contents/MacOS/SpeechCast is not executable"
 
     codesign --verify --deep --strict --verbose=2 "$app" >/dev/null 2>&1 ||
         fail "$name.app: codesign --verify --deep --strict failed"

@@ -82,7 +82,7 @@ final class UpdateCoordinator {
             } else if answered {
                 stage = .upToDate
             } else {
-                stage = .failed(.downloadFailed(String(localized: "VoiceCast could not reach GitHub.")))
+                stage = .failed(.downloadFailed(String(localized: "SpeechCast could not reach GitHub.")))
             }
         }
     }

@@ -11,7 +11,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleDisplayName</key>
-	<string>VoiceCast</string>
+	<string>SpeechCast</string>
 	<key>CFBundleName</key>
 	<string>$(PRODUCT_NAME)</string>
 	<key>CFBundlePackageType</key>
@@ -26,7 +26,7 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>Raycast and VoiceCast URL Scheme</string>
+			<string>Raycast and SpeechCast URL Scheme</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>raycast</string>
@@ -45,7 +45,7 @@
 			<key>UTTypeIdentifier</key>
 			<string>com.tinycast.backup</string>
 			<key>UTTypeDescription</key>
-			<string>VoiceCast Backup</string>
+			<string>SpeechCast Backup</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.data</string>
@@ -67,18 +67,18 @@
 	<key>NSAutoFillRequiresTextContentTypeForOneTimeCodeOnMac</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>VoiceCast uses automation to perform system actions you explicitly run.</string>
+	<string>SpeechCast uses automation to perform system actions you explicitly run.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>VoiceCast shows a camera preview so you can check yourself, and take a photo to the clipboard.</string>
+	<string>SpeechCast shows a camera preview so you can check yourself, and take a photo to the clipboard.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>VoiceCast captures microphone audio only while Voice Ask is running and sends it to the local Speech Runtime service for transcription.</string>
+	<string>SpeechCast captures microphone audio only while Voice Ask is running and sends it to the local Speech Runtime service for transcription.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>VoiceCast accesses your events to show your schedule and let you join meetings.</string>
+	<string>SpeechCast accesses your events to show your schedule and let you join meetings.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
-	<string>VoiceCast lets extensions you run read and edit your reminders.</string>
+	<string>SpeechCast lets extensions you run read and edit your reminders.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>VoiceCast uses Bluetooth access only when you run the Toggle Bluetooth action.</string>
+	<string>SpeechCast uses Bluetooth access only when you run the Toggle Bluetooth action.</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>VoiceCast</string>
+	<string>SpeechCast</string>
 </dict>
 </plist>

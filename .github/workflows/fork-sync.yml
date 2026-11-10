@@ -87,7 +87,7 @@ jobs:
           fi
           git add -A
           TREE=$(git write-tree)
-          SYNC=$(printf '1tuz: VoiceCast fork on upstream %s\n' "${UP:0:7}" \
+          SYNC=$(printf '1tuz: SpeechCast fork on upstream %s\n' "${UP:0:7}" \
             | git commit-tree "$TREE" -p "$OLD" -p "$UP")
           git reset --hard "$SYNC"
           {

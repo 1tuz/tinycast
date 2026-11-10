@@ -1,10 +1,10 @@
-# VoiceCast distribution runbook
+# SpeechCast distribution runbook
 
-This is the authoritative guide for public VoiceCast releases. The local
+This is the authoritative guide for public SpeechCast releases. The local
 development identity is in [signing.md](signing.md); the general release flow
 is in [release.md](release.md).
 
-VoiceCast ships **Developer ID-signed and notarized**. Releases are signed
+SpeechCast ships **Developer ID-signed and notarized**. Releases are signed
 with the team's **Developer ID Application** certificate for team
 **`J656U8XZ93`** (bundle id `com.tinycast.app`), built
 with the hardened runtime and a secure timestamp, notarized by Apple, and
@@ -25,7 +25,7 @@ Gatekeeper. For that build only, `Scripts/install.sh` prints a warning and
 clears the quarantine flag on the copy it has just installed, so testing a
 local build also needs no manual `xattr` command.
 
-When the newest stable release carries no `VoiceCast-*.dmg`, the installer
+When the newest stable release carries no `SpeechCast-*.dmg`, the installer
 falls back to the newest published build that does — a pre-release — and says
 so before downloading. The same verification runs, so a pre-release signed
 with the local identity installs only through the guarded fallback above.
@@ -84,19 +84,19 @@ On macOS, inspect a packaged release:
 
 ```sh
 # .app — signature is intact and deep-verifies
-codesign --verify --deep --strict --verbose=2 /Applications/VoiceCast.app
+codesign --verify --deep --strict --verbose=2 /Applications/SpeechCast.app
 
 # .app — the Developer ID Application chain and TeamIdentifier J656U8XZ93
-codesign -dv --verbose=4 /Applications/VoiceCast.app 2>&1 | grep -E 'Authority|TeamIdentifier|Timestamp'
+codesign -dv --verbose=4 /Applications/SpeechCast.app 2>&1 | grep -E 'Authority|TeamIdentifier|Timestamp'
 
 # .app — flags include the hardened runtime, and no get-task-allow
-codesign -dv --verbose=4 /Applications/VoiceCast.app 2>&1 | grep -E 'flags|get-task'
+codesign -dv --verbose=4 /Applications/SpeechCast.app 2>&1 | grep -E 'flags|get-task'
 
 # .app — Gatekeeper accepts it
-spctl -a -vvv -t exec /Applications/VoiceCast.app
+spctl -a -vvv -t exec /Applications/SpeechCast.app
 
 # .app — the notarization ticket is stapled and validates offline
-xcrun stapler validate /Applications/VoiceCast.app
+xcrun stapler validate /Applications/SpeechCast.app
 ```
 
 Expected results: `Authority=Developer ID Application: … (J656U8XZ93)`,
@@ -111,14 +111,14 @@ the release on any mismatch.
 
 ## Clean-Mac manual install checklist
 
-Do this on a Mac with no prior Tinycast/VoiceCast install:
+Do this on a Mac with no prior Tinycast/SpeechCast install:
 
-1. Download `VoiceCast-<version>.dmg` from GitHub Releases.
-2. Open (mount) the DMG and drag VoiceCast to `/Applications`.
-3. Eject the DMG, then launch VoiceCast from `/Applications` normally —
+1. Download `SpeechCast-<version>.dmg` from GitHub Releases.
+2. Open (mount) the DMG and drag SpeechCast to `/Applications`.
+3. Eject the DMG, then launch SpeechCast from `/Applications` normally —
    it opens straight away. Gatekeeper accepts the notarized, stapled,
    Developer ID-signed build; no confirmation dialog is expected.
-4. VoiceCast launches normally on every launch.
+4. SpeechCast launches normally on every launch.
 
 `Scripts/install.sh` is the same path scripted: download, verify, install.
 Disabling Gatekeeper globally — `spctl --master-disable` — must never happen
@@ -129,12 +129,12 @@ own, as described above.
 
 ## Updating from an old pre-switch Tinycast
 
-- **The bundle id stays `com.tinycast.app`.** The new VoiceCast build is the
+- **The bundle id stays `com.tinycast.app`.** The new SpeechCast build is the
   same app to macOS and to the updater, so no re-activation or migration step
   is needed.
 - **Settings survive.** Preferences and application-support data live under
   the unchanged bundle id, so an existing user's configuration carries over
-  into VoiceCast.
+  into SpeechCast.
 - **The old app accepts the new release.** `BundleSignature` checks the
   Developer ID branch first: the designated requirement pinned to team
   `J656U8XZ93`, which every new release satisfies. The last pre-switch release
@@ -142,8 +142,8 @@ own, as described above.
   build. The leaf fallback below it accepts a bundle signed with the running
   app's own leaf — local self-signed builds — and is not what admits the new
   release. Do not remove either check. An in-app update keeps the old
-  `Tinycast.app` folder name in `/Applications` (the app inside is VoiceCast);
-  `Scripts/install.sh` installs it as `VoiceCast.app` and removes the old
+  `Tinycast.app` folder name in `/Applications` (the app inside is SpeechCast);
+  `Scripts/install.sh` installs it as `SpeechCast.app` and removes the old
   folder.
 - **TCC.** A pre-switch copy re-prompts where the signing path changed; the
   bundle id stays `com.tinycast.app`, so preferences, caches and the login
@@ -158,12 +158,12 @@ the script for it.
 
 ## Rebranding facts
 
-- The app product is named VoiceCast, but the bundle id remains
+- The app product is named SpeechCast, but the bundle id remains
   `com.tinycast.app` (deliberate, for update compatibility).
 - Two helper executables ship inside `Contents/Helpers`:
   `ClipboardTextHelper` and `FileIndexHelper`. Both are signed with the
   Developer ID Application certificate and carry the hardened runtime
   exactly like the main executable.
-- Assets published per release: `VoiceCast-<version>.dmg` (the notarized
+- Assets published per release: `SpeechCast-<version>.dmg` (the notarized
   installer the updater and hand downloaders use) and
-  `VoiceCast-<version>.zip` (an extra artifact). See [release.md](release.md).
+  `SpeechCast-<version>.zip` (an extra artifact). See [release.md](release.md).
