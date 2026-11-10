@@ -108,7 +108,7 @@ enum SettingsSearchCatalog {
     static let entries: [SettingsSearchEntry] =
         general + applications + systemSettings + systemActions + commands + quicklinks
         + appleShortcuts + fallbacks + clipboard + snippets + fileSearch + windowManagement
-        + navigation + notes + calendar + emoji + ai + quickActions + extensions + permissions
+        + navigation + notes + calendar + focus + emoji + ai + quickActions + extensions + permissions
         + backup + about
 
     private static let general: [SettingsSearchEntry] = [
@@ -530,6 +530,13 @@ enum SettingsSearchCatalog {
         .init(
             .emojiAppearance, "Column Count",
             keywords: ["columns", "density", "zoom", "six", "eight", "ten"])
+    ]
+
+    private static let focus: [SettingsSearchEntry] = [
+        .init(pane: .focus, keywords: [
+            "concentration", "pomodoro", "timer", "blocking", "focus session",
+            "таймер", "концентрация", "блокировка", "профили"
+        ])
     ]
 
     private static let calendar: [SettingsSearchEntry] = [

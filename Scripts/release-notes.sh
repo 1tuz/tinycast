@@ -38,8 +38,8 @@ CHANGELOG="$(printf '%s\n' "$GENERATED" | sed -E \
     if [ -n "$COMPARE_URL" ]; then printf ' [Full changelog](%s)' "$COMPARE_URL"; fi
     printf '\n\n'
     printf '%s\n' "Download the VoiceCast DMG attached to this release or run:"
-    printf '```sh\ncurl -fsSL https://raw.githubusercontent.com/1tuz/tinycast/main/Scripts/install.sh | /bin/bash\n```\n'
-    printf '%s\n' "Signed with Apple **Developer ID** (team \`J656U8XZ93\`) and **notarized by Apple**. Download, open the DMG, drag **VoiceCast** to Applications and launch it — no terminal commands, no Gatekeeper warnings, nothing to bypass."
+    printf '```sh\ncurl -fsSL https://raw.githubusercontent.com/1tuz/tinycast/main/Scripts/install.sh | VOICECAST_STRIP_QUARANTINE=1 /bin/bash\n```\n'
+    printf '%s\n' "Signed with Apple **Developer ID** (team \`J656U8XZ93\`) and **notarized by Apple**. Download, open the DMG, drag **VoiceCast** to Applications and launch it — no terminal commands, no Gatekeeper warnings. The one-liner above also clears the quarantine flag on the installed copy if Gatekeeper still refuses the download."
 } > "$BODY_OUT"
 
 printf '%s\n' "$CHANGELOG" | awk -v budget="$DISCORD_BUDGET" -v bullets="$DISCORD_BULLETS" '

@@ -32,6 +32,10 @@ for patch in .1tuz/patches/*.patch; do
     # Generated against the exact tree the queue produces; --3way would merge it against
     # upstream, where the files the patch edits do not exist yet.
     apply_args=(--whitespace=nowarn)
+  elif [ "$name" = "0022-focus-sessions.patch" ]; then
+    # Generated against the exact tree the queue produces; --3way would merge it against
+    # upstream, where the Focus files and the router it extends do not exist yet.
+    apply_args=(--whitespace=nowarn)
   fi
   if ! git apply "${apply_args[@]}" "$patch"; then
     failed="$name"

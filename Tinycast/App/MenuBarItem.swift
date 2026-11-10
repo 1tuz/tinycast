@@ -23,6 +23,22 @@ struct MenuBarMenu: View {
                 AppCore.shared.paletteCoordinator.showPalette(mode: .clipboard)
             }
         }
+        Menu("Focus", systemImage: "timer") {
+            if AppCore.shared.focus.isActive {
+                Text(AppCore.shared.focus.clockText)
+                Button(AppCore.shared.focus.isPaused ? "Продолжить" : "Пауза") {
+                    if AppCore.shared.focus.isPaused { AppCore.shared.focus.resume() }
+                    else { AppCore.shared.focus.pause() }
+                }
+                Button("Завершить") { AppCore.shared.focus.finish() }
+            } else {
+                Button("Начать сеанс") { _ = AppCore.shared.focus.start() }
+            }
+            Divider()
+            Button("Настройки фокуса…") {
+                AppCore.shared.settingsCoordinator.showSettings(tab: .focus)
+            }
+        }
         Divider()
         Button("Check for Updates…") { AppCore.shared.updateCoordinator.checkForUpdates() }
         Button("Support \(appName)…") { AppCore.shared.supportCoordinator.showSupport() }

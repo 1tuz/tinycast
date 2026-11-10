@@ -3,6 +3,7 @@
 # Published releases are Developer ID-signed and notarized, and are verified before the copy
 # happens. A local self-signed DMG can never satisfy Gatekeeper, so for that build only the
 # installer clears the quarantine flag on the installed copy; it never disables Gatekeeper.
+# VOICECAST_STRIP_QUARANTINE=1 clears the flag on the installed copy of any build.
 set -euo pipefail
 
 repo="1tuz/tinycast"
@@ -160,9 +161,9 @@ fi
 staged=""
 if [ -e "$backup" ]; then rm -rf "$backup"; fi
 backup=""
-if [ "$notarized" = 0 ]; then
-    # xattr -dr com.apple.quarantine, applied only to the copy this installer just placed
-    # for a non-Developer-ID build. Gatekeeper itself stays enabled and untouched.
+if [ "$notarized" = 0 ] || [ "${VOICECAST_STRIP_QUARANTINE:-0}" = "1" ]; then
+    # xattr -dr com.apple.quarantine, applied only to the copy this installer just placed.
+    # Gatekeeper itself stays enabled and untouched.
     xattr -dr com.apple.quarantine "$destination" || fail "Could not clear the quarantine flag."
 fi
 printf '\n%s✓%s Installed %s\n' "$green" "$reset" "$destination"

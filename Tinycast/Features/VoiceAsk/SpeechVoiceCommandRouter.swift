@@ -158,6 +158,36 @@ enum SpeechVoiceCommandRouter {
                 core.quickAICoordinator.sendVoicePrompt("Переведи текст:\n\n" + text)
             default: break
             }
+        case .focus(let command):
+            switch command {
+            case .start(let profile, let minutes):
+                core.focus.startSpoken(profileName: profile, minutes: minutes)
+            case .pause(let minutes):
+                core.focus.pause(for: minutes)
+            case .resume:
+                core.focus.resume()
+            case .stop:
+                core.focus.finish()
+            case .status:
+                core.focus.showStatus()
+            case .blockWebsite(let domain):
+                core.focus.blockWebsite(domain)
+            case .allowWebsite(let domain, let minutes):
+                core.focus.allowWebsite(domain, for: minutes)
+            case .blockApplication(let name):
+                let resolved = Parser.resolveName(
+                    name, kinds: [.application], targets: availableTargets(core: core))
+                if case .action(.target(.application, let id)) = resolved,
+                   let entry = core.appIndex.apps.first(where: { $0.id == id }),
+                   let bundleID = entry.bundleID {
+                    core.focus.blockApplication(
+                        FocusBlockedApplication(bundleID: bundleID, name: entry.name))
+                } else if case .ambiguous(let choices) = resolved {
+                    core.voiceCommandCatalogWindow.showChoices(choices)
+                } else {
+                    core.showMessage("Приложение не найдено: \(name)", tone: .neutral)
+                }
+            }
         case .aiPrompt:
             break // Handled in route(); execute() never sees it.
         case .quitApp(let id):

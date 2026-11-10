@@ -52,7 +52,7 @@ The fork periodically incorporates upstream changes through the `.1tuz/` patch q
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/1tuz/tinycast/main/Scripts/install.sh | /bin/bash
+curl -fsSL https://raw.githubusercontent.com/1tuz/tinycast/main/Scripts/install.sh | VOICECAST_STRIP_QUARANTINE=1 /bin/bash
 ```
 
 Alternatively, download the `VoiceCast-<version>.dmg` attached to a
@@ -62,8 +62,9 @@ See [INSTALL.md](INSTALL.md) for details and migration from Tinycast.
 Releases are signed with a **Developer ID Application** certificate (team `J656U8XZ93`) and
 **notarized by Apple**, so a downloaded release passes Gatekeeper on first launch — no warning,
 no confirmation step. The installer verifies the Developer ID chain, the stapled notarization
-ticket and `spctl` acceptance before installing; a published release is never stripped and
-Gatekeeper is never disabled. Point the same installer at a local self-signed DMG and it warns,
+ticket and `spctl` acceptance before installing, and the one-liner above also clears the
+quarantine flag on the installed copy as a fallback if Gatekeeper still refuses the download.
+Gatekeeper itself stays enabled. Point the same installer at a local self-signed DMG and it warns,
 then clears the quarantine flag on the copy it installs, because such a build can never pass
 Gatekeeper at all.
 

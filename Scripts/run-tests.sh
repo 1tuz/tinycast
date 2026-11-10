@@ -177,6 +177,7 @@ run launcher-settings-file-test \
                            Tinycast/Features/Snippets/Model/Snippet.swift \
                            Tinycast/Platform/LocalizedResource.swift
 run apple-shortcut-test    Tinycast/Features/AppleShortcuts/Model/*.swift
+run focus-profile-test     Tinycast/Features/Focus/Model/FocusProfile.swift
 run voice-command-test     Tinycast/Features/Launcher/Model/SearchRelevance.swift \
                            Tinycast/Features/Launcher/Model/ScriptRomanization.swift \
                            Tinycast/Features/VoiceAsk/SpeechVoiceCommandParser.swift \

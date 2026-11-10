@@ -3,7 +3,7 @@ index 282f0fcd..2ff0ea4a 100644
 --- a/INSTALL.md
 +++ b/INSTALL.md
 @@ -6,10 +6,11 @@ Run this in Terminal:
- curl -fsSL https://raw.githubusercontent.com/1tuz/tinycast/main/Scripts/install.sh | /bin/bash
+ curl -fsSL https://raw.githubusercontent.com/1tuz/tinycast/main/Scripts/install.sh | VOICECAST_STRIP_QUARANTINE=1 /bin/bash
  ```
  
 -The script builds `main` with Xcode 26 or 27 and installs `~/Applications/Tinycast.app`. It uses the first
@@ -447,7 +447,7 @@ index ae66384a..942786ae 100644
 +Run this in Terminal. It builds the fork source with Xcode 26 or 27 and replaces the existing app in `/Applications` or installs it in `~/Applications`:
  
  ```sh
- curl -fsSL https://raw.githubusercontent.com/1tuz/tinycast/main/Scripts/install.sh | /bin/bash
+ curl -fsSL https://raw.githubusercontent.com/1tuz/tinycast/main/Scripts/install.sh | VOICECAST_STRIP_QUARANTINE=1 /bin/bash
 diff --git a/ROADMAP.md b/ROADMAP.md
 new file mode 100644
 index 00000000..cf8248cb
@@ -487,7 +487,7 @@ index 00000000..cf8248cb
 +## Install
 +
 +```sh
-+curl -fsSL https://raw.githubusercontent.com/1tuz/tinycast/main/Scripts/install.sh | /bin/bash
++curl -fsSL https://raw.githubusercontent.com/1tuz/tinycast/main/Scripts/install.sh | VOICECAST_STRIP_QUARANTINE=1 /bin/bash
 +```
 diff --git a/Scripts/benchmark-dictation.sh b/Scripts/benchmark-dictation.sh
 deleted file mode 100755

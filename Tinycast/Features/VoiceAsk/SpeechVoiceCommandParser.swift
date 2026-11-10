@@ -19,6 +19,7 @@ enum SpeechVoiceCommandParser {
         case brightness(Int)
         case volume(Int)
         case builtIn(String, query: String? = nil)
+        case focus(FocusCommand)
         case target(Target.Kind, String)
         /// Quits the application resolved by name ("закрой телеграм").
         case quitApp(String)
@@ -26,6 +27,17 @@ enum SpeechVoiceCommandParser {
         case quitLastApp
         /// Sends the rest of the phrase to Quick AI ("посмотри как дела").
         case aiPrompt(trigger: String, prompt: String)
+    }
+
+    enum FocusCommand: Equatable, Sendable {
+        case start(profile: String?, minutes: Int?)
+        case pause(minutes: Int?)
+        case resume
+        case stop
+        case status
+        case blockApplication(String)
+        case blockWebsite(String)
+        case allowWebsite(String, minutes: Int)
     }
 
     enum Resolution: Equatable, Sendable {
@@ -347,7 +359,20 @@ enum SpeechVoiceCommandParser {
             ], feature: "files"),
             .init(section: "Поиск и данные", title: "Поиск заметки по названию", phrases: [
                 "найди заметку Kubernetes"
-            ], feature: "notes")
+            ], feature: "notes"),
+            .init(section: "Фокус", title: "Начать фокус", phrases: [
+                "начни фокус", "начни фокус на 45 минут", "запусти профиль работа"
+            ], feature: nil),
+            .init(section: "Фокус", title: "Пауза и продолжение", phrases: [
+                "пауза фокуса", "пауза фокуса на 5 минут", "продолжи фокус"
+            ], feature: nil),
+            .init(section: "Фокус", title: "Завершить или узнать время", phrases: [
+                "заверши фокус", "сколько осталось фокуса"
+            ], feature: nil),
+            .init(section: "Фокус", title: "Блокировка и исключения", phrases: [
+                "заблокируй приложение Telegram", "заблокируй сайт youtube.com",
+                "разреши сайт youtube.com на 5 минут"
+            ], feature: nil)
         ]
     }
 
@@ -395,6 +420,7 @@ enum SpeechVoiceCommandParser {
         if let intent = phraseIndex[phrase] {
             return .action(intent)
         }
+        if let focus = parseFocus(phrase) { return focus }
 
         for prefix in ["громкость", "установи громкость", "поставь громкость", "сделай громкость"] {
             if let value = suffix(after: prefix, in: phrase), !value.isEmpty {
@@ -476,6 +502,88 @@ enum SpeechVoiceCommandParser {
               distance(String(spoken), String(expected), limit: 1) == 1
         else { return false }
         return Array(words.dropFirst().prefix(command.count - 1)) == Array(command.dropFirst())
+    }
+
+    /// The Focus grammar is intentionally deterministic; general dictation goes to Quick AI.
+    private static func parseFocus(_ phrase: String) -> Resolution? {
+        if ["поставь фокус на паузу", "пауза фокуса", "приостанови фокус"].contains(phrase) {
+            return .action(.focus(.pause(minutes: nil)))
+        }
+        if ["продолжи фокус", "возобнови фокус", "верни фокус"].contains(phrase) {
+            return .action(.focus(.resume))
+        }
+        if ["заверши фокус", "останови фокус", "закончи фокус"].contains(phrase) {
+            return .action(.focus(.stop))
+        }
+        if ["сколько осталось фокуса", "сколько осталось в фокусе", "покажи время фокуса"].contains(phrase) {
+            return .action(.focus(.status))
+        }
+
+        for prefix in ["пауза фокуса на", "приостанови фокус на"] {
+            if let rest = suffix(after: prefix, in: phrase) {
+                guard let minutes = focusMinutes(rest), (1...60).contains(minutes) else {
+                    return .unknown("Пауза должна быть от 1 до 60 минут")
+                }
+                return .action(.focus(.pause(minutes: minutes)))
+            }
+        }
+        for prefix in ["начни фокус", "запусти фокус", "фокус"] {
+            guard let rest = suffix(after: prefix, in: phrase) else { continue }
+            if rest.isEmpty { return .action(.focus(.start(profile: nil, minutes: nil))) }
+            guard rest.hasPrefix("на "),
+                  let minutes = focusMinutes(String(rest.dropFirst(3))),
+                  (5...240).contains(minutes) else {
+                return .unknown("Фокус: укажи длительность от 5 до 240 минут")
+            }
+            return .action(.focus(.start(profile: nil, minutes: minutes)))
+        }
+        for prefix in ["запусти профиль", "начни профиль", "запусти режим", "включи режим"] {
+            guard let rest = suffix(after: prefix, in: phrase) else { continue }
+            guard !rest.isEmpty else { return .unknown("Назови профиль фокуса") }
+            if let range = rest.range(of: " на ", options: .backwards) {
+                let name = String(rest[..<range.lowerBound])
+                let duration = String(rest[range.upperBound...])
+                guard !name.isEmpty, let minutes = focusMinutes(duration),
+                      (5...240).contains(minutes) else {
+                    return .unknown("Фокус: укажи профиль и длительность от 5 до 240 минут")
+                }
+                return .action(.focus(.start(profile: name, minutes: minutes)))
+            }
+            return .action(.focus(.start(profile: rest, minutes: nil)))
+        }
+        for (prefix, isWebsite) in [
+            ("заблокируй приложение", false), ("заблокируй сайт", true)
+        ] {
+            if let name = suffix(after: prefix, in: phrase) {
+                guard !name.isEmpty else { return .unknown("Назови объект блокировки") }
+                return .action(.focus(isWebsite ? .blockWebsite(name) : .blockApplication(name)))
+            }
+        }
+        if let rest = suffix(after: "разреши сайт", in: phrase) {
+            guard let range = rest.range(of: " на ", options: .backwards) else {
+                return .unknown("Укажи сайт и длительность разрешения")
+            }
+            let name = String(rest[..<range.lowerBound])
+            let duration = String(rest[range.upperBound...])
+            guard !name.isEmpty, let minutes = focusMinutes(duration),
+                  (1...60).contains(minutes) else {
+                return .unknown("Разрешение сайта: от 1 до 60 минут")
+            }
+            return .action(.focus(.allowWebsite(name, minutes: minutes)))
+        }
+        return nil
+    }
+
+    private static func focusMinutes(_ text: String) -> Int? {
+        let words = text.split(separator: " ").map(String.init)
+        if words == ["полчаса"] { return 30 }
+        if words == ["час"] || words == ["часа"] { return 60 }
+        guard let first = words.first, let value = Int(first), value > 0 else { return nil }
+        if words.count == 1 { return value }
+        guard words.count == 2 else { return nil }
+        if words[1].hasPrefix("минут") { return value }
+        if words[1].hasPrefix("час") { return value * 60 }
+        return nil
     }
 
     /// Correct one typo in a multiword built-in phrase, not arbitrary speech.

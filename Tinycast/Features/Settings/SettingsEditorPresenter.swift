@@ -366,7 +366,18 @@ extension View {
         core: AppCore, navigation: SettingsNavigationState,
         editorPresenter: SettingsEditorPresenter
     ) -> some View {
-        environment(\.settingsEditorPresenter, editorPresenter)
+        modifier(SettingsEnvironment(core: core, navigation: navigation, editorPresenter: editorPresenter))
+    }
+}
+
+/// One flat modifier: the constraint chain otherwise grows past what SwiftUI's root-view copy handles.
+private struct SettingsEnvironment: ViewModifier {
+    let core: AppCore
+    let navigation: SettingsNavigationState
+    let editorPresenter: SettingsEditorPresenter
+
+    func body(content: Content) -> some View {
+        content.environment(\.settingsEditorPresenter, editorPresenter)
             .environment(navigation)
             .environment(core)
             .environment(core.settings)
@@ -387,6 +398,7 @@ extension View {
             .environment(core.customWindowSizes)
             .environment(core.customWindowSizeCoordinator)
             .environment(core.calendarStore)
+            .environment(core.focus)
             .environment(core.aiSettings)
             .environment(core.mcpSettings)
             .environment(core.mcpCoordinator)

@@ -1,0 +1,4576 @@
+diff --git a/Scripts/run-tests.sh b/Scripts/run-tests.sh
+index 8d1a1611..df8d9b33 100755
+--- a/Scripts/run-tests.sh
++++ b/Scripts/run-tests.sh
+@@ -177,6 +177,7 @@ run launcher-settings-file-test \
+                            Tinycast/Features/Snippets/Model/Snippet.swift \
+                            Tinycast/Platform/LocalizedResource.swift
+ run apple-shortcut-test    Tinycast/Features/AppleShortcuts/Model/*.swift
++run focus-profile-test     Tinycast/Features/Focus/Model/FocusProfile.swift
+ run voice-command-test     Tinycast/Features/Launcher/Model/SearchRelevance.swift \
+                            Tinycast/Features/Launcher/Model/ScriptRomanization.swift \
+                            Tinycast/Features/VoiceAsk/SpeechVoiceCommandParser.swift \
+diff --git a/Tests/focus-profile-test.swift b/Tests/focus-profile-test.swift
+new file mode 100644
+index 00000000..0ba8eb69
+--- /dev/null
++++ b/Tests/focus-profile-test.swift
+@@ -0,0 +1,23 @@
++import Foundation
++
++@main
++struct FocusProfileTest {
++    static func main() throws {
++        precondition(FocusDomain.normalize("https://www.youtube.com/watch?v=1") == "youtube.com")
++        precondition(FocusDomain.normalize(" reddit.com/r/swift ") == "reddit.com")
++        precondition(FocusDomain.normalize("abc") == nil)
++        precondition(FocusDomain.normalize("something.com; delete") == nil)
++        precondition(FocusDomain.normalize("-invalid.com") == nil)
++        precondition(FocusDomain.matches("m.youtube.com", blocked: "youtube.com"))
++        precondition(!FocusDomain.matches("notyoutube.com", blocked: "youtube.com"))
++        precondition(FocusDomain.shouldBlock(URL(string: "https://reddit.com/r/swift")!, domains: ["reddit.com"]))
++        precondition(!FocusDomain.shouldBlock(URL(string: "https://reddit.com.evil.org")!, domains: ["reddit.com"]))
++        let profile = FocusProfile(name: "Работа", blockedDomains: ["reddit.com"])
++        let session = FocusSession(profileID: profile.id, startedAt: Date(), deadline: Date().addingTimeInterval(600))
++        let saved = FocusSavedState(profiles: [profile], selectedProfileID: profile.id, session: session)
++        let decoded = try JSONDecoder().decode(FocusSavedState.self, from: JSONEncoder().encode(saved))
++        precondition(decoded.profiles == [profile])
++        precondition(decoded.session?.profileID == profile.id)
++        print("Focus models: all assertions passed")
++    }
++}
+diff --git a/Tests/voice-command-test.swift b/Tests/voice-command-test.swift
+index 9e42b4e0..880acd01 100644
+--- a/Tests/voice-command-test.swift
++++ b/Tests/voice-command-test.swift
+@@ -123,6 +123,13 @@ struct VoiceCommandTest {
+             fatalError("Ambiguous target executed instead of offering a choice")
+         }
+         tested += 1
++        expect("Начни фокус на сорок пять минут", .action(.focus(.start(profile: nil, minutes: 45))))
++        expect("Запусти профиль работа на час", .action(.focus(.start(profile: "работа", minutes: 60))))
++        expect("Пауза фокуса на 5 минут", .action(.focus(.pause(minutes: 5))))
++        expect("Продолжи фокус", .action(.focus(.resume)))
++        expect("Заверши фокус", .action(.focus(.stop)))
++        expect("Заблокируй приложение Telegram", .action(.focus(.blockApplication("telegram"))))
++        expect("Разреши сайт youtube.com на 5 минут", .action(.focus(.allowWebsite("youtube com", minutes: 5))))
+         // The catalog's static example phrases must be parsed by the same command grammar.
+         for item in P.builtinCatalog {
+             for phrase in item.phrases {
+diff --git a/Tinycast.xcodeproj/project.pbxproj b/Tinycast.xcodeproj/project.pbxproj
+index 2fa2438e..f127f8f5 100644
+--- a/Tinycast.xcodeproj/project.pbxproj
++++ b/Tinycast.xcodeproj/project.pbxproj
+@@ -314,6 +314,7 @@
+ 		58D369977E702AD66F070913 /* SnippetMarkdownSerializer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE3331A5E8F892CC257AD31B /* SnippetMarkdownSerializer.swift */; };
+ 		5970306ABC24B03028E66D45 /* FileSearchIgnoreList.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBFF39C46E98D0808B188E2E /* FileSearchIgnoreList.swift */; };
+ 		5988C5F5629CE78FB6692BB3 /* SettingsEditorPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 607E7B669817BFC39B12C12D /* SettingsEditorPresenter.swift */; };
++		59A4B20047DB80AB15F24C97 /* FocusSessionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8388D0CEF110E4CE9637E04F /* FocusSessionCoordinator.swift */; };
+ 		59C5304752BB9245F76AADDC /* CodexMCPLaunch.swift in Sources */ = {isa = PBXBuildFile; fileRef = F31FB61E6F6969851D3874FA /* CodexMCPLaunch.swift */; };
+ 		5A91C58340D02ED0939BCAE2 /* CurrencyFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE35B5E7B1CC94F759116097 /* CurrencyFeed.swift */; };
+ 		5B42E560E21E016CEFC33BAF /* ExtensionLaunchError.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB40137D0539CB3BB9A305C8 /* ExtensionLaunchError.swift */; };
+@@ -411,6 +412,7 @@
+ 		78A06F98F84C3B491E9F30A1 /* RoomWindowMatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 123F780230818E83DEEB6988 /* RoomWindowMatcher.swift */; };
+ 		78BA4410EAA35ED76D7CFBE8 /* QuickActionSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98C29DA5656628B41C17D42A /* QuickActionSettingsStore.swift */; };
+ 		791AC049B6CA16C7D86EEBEF /* MeetingLauncher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46C117C966BC2990F19E00AB /* MeetingLauncher.swift */; };
++		79746133DFF7D64D47A95982 /* FocusWebsiteBlocker.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2CD5C84E8C72A13B7E9D0A8 /* FocusWebsiteBlocker.swift */; };
+ 		7A3401FAB95C7E16B62760CA /* WindowSwitchPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = E250BCD1D425BC3C309FF397 /* WindowSwitchPolicy.swift */; };
+ 		7A7D20DFBEB49D7C7D9DDEB5 /* RoomPreviewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 676760D8D30526B99A1F97B7 /* RoomPreviewController.swift */; };
+ 		7AF6E4F92BBF4D41B9B1E700 /* BackupBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 780B32AF98BA3A51D2F0E8B4 /* BackupBundle.swift */; };
+@@ -642,6 +644,7 @@
+ 		C0642512B709EF0517ABF4CB /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C37CCD024267EB21876C7E9 /* AppDelegate.swift */; };
+ 		C0D1D4D7D03F48E8AC7901CF /* MCPOAuthHTTP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10A05EA2484C7E9EC8B05A69 /* MCPOAuthHTTP.swift */; };
+ 		C1236C0EB496068BFC0DB18C /* ClaudeMCPLaunch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 134523530108C7EE37EB5B18 /* ClaudeMCPLaunch.swift */; };
++		C1731656829640A926C24993 /* FocusSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6ED00EB8FF511788A8290CDF /* FocusSettingsView.swift */; };
+ 		C1FC3507BFC408DCD7F142D8 /* ExtensionCommandMetadataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD4C0743DE901F5E248991B4 /* ExtensionCommandMetadataStore.swift */; };
+ 		C215695FE671BC591DC99C2B /* DialogPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDB241B179A08518424F7C1B /* DialogPanel.swift */; };
+ 		C21CAD7076793A5625F6B80C /* ChatHistoryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B715A0256D2D0DDE1D28FC98 /* ChatHistoryStore.swift */; };
+@@ -674,6 +677,7 @@
+ 		CBCE42950D06087AF726AFB2 /* FileSearchScope.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28D1A69B721AA863AFFE176F /* FileSearchScope.swift */; };
+ 		CBE647056A15F49DF0711ECD /* SettingsCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CBD6D8BC6951A482BDF6169 /* SettingsCoordinator.swift */; };
+ 		CC0E3A0A3AE4322320A51D75 /* RoomMinimumSizeStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4568F4465F3556178B98DB6 /* RoomMinimumSizeStore.swift */; };
++		CC7371E4BB39AD556FCC9596 /* FocusHUD.swift in Sources */ = {isa = PBXBuildFile; fileRef = D80353D6C2675FC3871092B1 /* FocusHUD.swift */; };
+ 		CC984C9647779469629461E7 /* LauncherItemsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 121A2ACAEC4D2D25D3112634 /* LauncherItemsSection.swift */; };
+ 		CC9A286B77E32C22B21A22BE /* HotKeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0311153A4A3557C6FFEAAAB /* HotKeyManager.swift */; };
+ 		CD04C9CA00C002C0EC82756A /* AccessibilityText.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABEA89E08994378FB044B4BB /* AccessibilityText.swift */; };
+@@ -732,6 +736,7 @@
+ 		DFB25A4CDD35071B745F2EF9 /* DoubleTapModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72F0F0DDA5FC1F6ED59E73E9 /* DoubleTapModifier.swift */; };
+ 		DFED3F4C7B67FED3DBD016E5 /* FallbackActionsMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9AEDF156B61DD90C5ADA8FA /* FallbackActionsMenu.swift */; };
+ 		E01CA28454F75BE0B3A878E0 /* FormTextArea.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84D93A74803104966F150620 /* FormTextArea.swift */; };
++		E032C6FADED7FCD4D8A13856 /* FocusProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD09F96B8D4AFACDFC8A7DA9 /* FocusProfile.swift */; };
+ 		E06AA23D307A8FBA62C950BA /* MCPOAuthRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19E96BEA3A5436619297675B /* MCPOAuthRequest.swift */; };
+ 		E078243555477EA5F02C9119 /* MenuSearchTarget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DFF1EF5B5DA85F78C040BD1 /* MenuSearchTarget.swift */; };
+ 		E0C0746AD3C7E2FED3C50374 /* WindowActionMemory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1E7B96668721F12170CD72 /* WindowActionMemory.swift */; };
+@@ -1249,6 +1254,7 @@
+ 		6DA4145CFBB855DF1699C744 /* BackupCategory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupCategory.swift; sourceTree = "<group>"; };
+ 		6E06AA30E7BA44BC211B667F /* SnippetsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnippetsScreen.swift; sourceTree = "<group>"; };
+ 		6EBB9959DB6CA493D241080C /* AIAttachmentPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIAttachmentPolicy.swift; sourceTree = "<group>"; };
++		6ED00EB8FF511788A8290CDF /* FocusSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusSettingsView.swift; sourceTree = "<group>"; };
+ 		6F2CBDE3042FDA4FCA561857 /* MCPComposerAddress.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPComposerAddress.swift; sourceTree = "<group>"; };
+ 		6F7D0725CF7068879F86F0AA /* NoteRevealPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteRevealPolicy.swift; sourceTree = "<group>"; };
+ 		6FC1FDF99BFB0FB10FECEDAF /* NoteMarkdown.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteMarkdown.swift; sourceTree = "<group>"; };
+@@ -1313,6 +1319,7 @@
+ 		823F8F6B9EAAD17DD1062137 /* SyntaxStructuredLexers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyntaxStructuredLexers.swift; sourceTree = "<group>"; };
+ 		82B5E917A4EFDC153C6780E8 /* ModifierKeyDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModifierKeyDetector.swift; sourceTree = "<group>"; };
+ 		82DB32B7ACED5BE2BEE7451F /* ClipboardTextHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipboardTextHelper.swift; sourceTree = "<group>"; };
++		8388D0CEF110E4CE9637E04F /* FocusSessionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusSessionCoordinator.swift; sourceTree = "<group>"; };
+ 		83B8A0E68E42CACCB1F38094 /* Room.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Room.swift; sourceTree = "<group>"; };
+ 		83BB8F2CE628925F41B330B5 /* NoteEditPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteEditPlan.swift; sourceTree = "<group>"; };
+ 		83C54F3A609CD1C2CDF304FB /* DoubleTapDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DoubleTapDetector.swift; sourceTree = "<group>"; };
+@@ -1476,6 +1483,7 @@
+ 		B1F749283370AC9B506E6529 /* RoomGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoomGrid.swift; sourceTree = "<group>"; };
+ 		B235DFF451FF4D52A8E44D00 /* ShortcutCaptureSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutCaptureSession.swift; sourceTree = "<group>"; };
+ 		B2771C8776DD3D03C81F4B7A /* ChatToolScope.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatToolScope.swift; sourceTree = "<group>"; };
++		B2CD5C84E8C72A13B7E9D0A8 /* FocusWebsiteBlocker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusWebsiteBlocker.swift; sourceTree = "<group>"; };
+ 		B2F10908DDD321EF695BA31B /* NoteBlockLayoutFragment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteBlockLayoutFragment.swift; sourceTree = "<group>"; };
+ 		B2F8B8787A7197579A6F6ECC /* MCPServerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MCPServerManager.swift; sourceTree = "<group>"; };
+ 		B3085C57A94FFF35FF74EC86 /* BundleLocalization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BundleLocalization.swift; sourceTree = "<group>"; };
+@@ -1510,6 +1518,7 @@
+ 		BC0AA95CA13E86370661D01C /* CalendarSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarSettingsView.swift; sourceTree = "<group>"; };
+ 		BC5A51755634710649DC27B1 /* NoteFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteFormatting.swift; sourceTree = "<group>"; };
+ 		BCF9862B0BB24D73427B676C /* SyntaxHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyntaxHighlighter.swift; sourceTree = "<group>"; };
++		BD09F96B8D4AFACDFC8A7DA9 /* FocusProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusProfile.swift; sourceTree = "<group>"; };
+ 		BD1B32084D6D8F0CB494A65E /* HotKeyActionDefaults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotKeyActionDefaults.swift; sourceTree = "<group>"; };
+ 		BD4B27ECEB1C09B14C403FC8 /* AIModelDiscoveryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AIModelDiscoveryService.swift; sourceTree = "<group>"; };
+ 		BD4C0743DE901F5E248991B4 /* ExtensionCommandMetadataStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionCommandMetadataStore.swift; sourceTree = "<group>"; };
+@@ -1608,6 +1617,7 @@
+ 		D755EEABA1DA9CA4CE2D0B4F /* ExtensionAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionAppearance.swift; sourceTree = "<group>"; };
+ 		D763A801000029271E4CADA4 /* ColorCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorCard.swift; sourceTree = "<group>"; };
+ 		D7FCA9FA81B1CF8B8C37E48A /* BackupApplier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupApplier.swift; sourceTree = "<group>"; };
++		D80353D6C2675FC3871092B1 /* FocusHUD.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusHUD.swift; sourceTree = "<group>"; };
+ 		D817AF0E23DDCC95147B5AFB /* InstalledAIStream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstalledAIStream.swift; sourceTree = "<group>"; };
+ 		D8B10DA3A9B1CBD9A03F3DE5 /* NoteDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteDocument.swift; sourceTree = "<group>"; };
+ 		DA0AD89CB2C805C50D2C80E1 /* AliasStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AliasStore.swift; sourceTree = "<group>"; };
+@@ -2127,6 +2137,14 @@
+ 			path = WindowSwitcher;
+ 			sourceTree = "<group>";
+ 		};
++		31F6B8F556FBFC7C0949616A /* Model */ = {
++			isa = PBXGroup;
++			children = (
++				BD09F96B8D4AFACDFC8A7DA9 /* FocusProfile.swift */,
++			);
++			path = Model;
++			sourceTree = "<group>";
++		};
+ 		356F452DB0F8F9834817455B /* Calculator */ = {
+ 			isa = PBXGroup;
+ 			children = (
+@@ -2644,6 +2662,15 @@
+ 			path = Service;
+ 			sourceTree = "<group>";
+ 		};
++		797B287FD58BA7543C3F677D /* UI */ = {
++			isa = PBXGroup;
++			children = (
++				D80353D6C2675FC3871092B1 /* FocusHUD.swift */,
++				6ED00EB8FF511788A8290CDF /* FocusSettingsView.swift */,
++			);
++			path = UI;
++			sourceTree = "<group>";
++		};
+ 		7ABC8B1EF26E88F63B7DF160 /* UI */ = {
+ 			isa = PBXGroup;
+ 			children = (
+@@ -2686,6 +2713,16 @@
+ 			path = Launcher;
+ 			sourceTree = "<group>";
+ 		};
++		7ECAA6BF767C6CBD11E156C0 /* Focus */ = {
++			isa = PBXGroup;
++			children = (
++				31F6B8F556FBFC7C0949616A /* Model */,
++				BFA86DDD84004E771B924219 /* Service */,
++				797B287FD58BA7543C3F677D /* UI */,
++			);
++			path = Focus;
++			sourceTree = "<group>";
++		};
+ 		7FBB9936A38A366FCAA3F2A8 /* MenuSearch */ = {
+ 			isa = PBXGroup;
+ 			children = (
+@@ -2912,6 +2949,7 @@
+ 				15CFCD6B1429C5F0944CBCC4 /* Emoji */,
+ 				8A16DA3DB6733A27E0DF4059 /* Extensions */,
+ 				C6A3AB65E150BE9AFAF0EC2E /* FileSearch */,
++				7ECAA6BF767C6CBD11E156C0 /* Focus */,
+ 				3B3C887C1093082A211134ED /* HotKeys */,
+ 				7DE06EE636C14E50EE172D9E /* Launcher */,
+ 				2B65B3B92DE2BF61841F46DD /* MCP */,
+@@ -3315,6 +3353,15 @@
+ 			path = Settings;
+ 			sourceTree = "<group>";
+ 		};
++		BFA86DDD84004E771B924219 /* Service */ = {
++			isa = PBXGroup;
++			children = (
++				8388D0CEF110E4CE9637E04F /* FocusSessionCoordinator.swift */,
++				B2CD5C84E8C72A13B7E9D0A8 /* FocusWebsiteBlocker.swift */,
++			);
++			path = Service;
++			sourceTree = "<group>";
++		};
+ 		C672660B1032FDE58BBA07A8 /* Model */ = {
+ 			isa = PBXGroup;
+ 			children = (
+@@ -4261,7 +4308,12 @@
+ 				24EFA87B2617537B6CAAD52B /* FileSearchSettingsView.swift in Sources */,
+ 				0CC2291DE8806FDFB478F8A0 /* FileSearchSurface.swift in Sources */,
+ 				CB35B7D87CB8FCFF26A7BED4 /* FileSystemWatcher.swift in Sources */,
++				CC7371E4BB39AD556FCC9596 /* FocusHUD.swift in Sources */,
++				E032C6FADED7FCD4D8A13856 /* FocusProfile.swift in Sources */,
+ 				303FC5342B61A7862EBC1C32 /* FocusRelease.swift in Sources */,
++				59A4B20047DB80AB15F24C97 /* FocusSessionCoordinator.swift in Sources */,
++				C1731656829640A926C24993 /* FocusSettingsView.swift in Sources */,
++				79746133DFF7D64D47A95982 /* FocusWebsiteBlocker.swift in Sources */,
+ 				6F076223EA47A68C1490F674 /* FolderPicker.swift in Sources */,
+ 				11A0F91815E5DFE1AB08CC20 /* FormFieldChrome.swift in Sources */,
+ 				3A7F96CFC0967AD3988285DA /* FormRow.swift in Sources */,
+diff --git a/Tinycast/App/AppCore.swift b/Tinycast/App/AppCore.swift
+index f06dc136..b2b698e5 100644
+--- a/Tinycast/App/AppCore.swift
++++ b/Tinycast/App/AppCore.swift
+@@ -221,6 +221,8 @@ final class AppCore {
+         chats: aiChats, settings: settings, palette: palette,
+         paletteCoordinator: paletteCoordinator, core: self)
+     @ObservationIgnored private(set) lazy var speechVoice = SpeechRuntimeVoiceAsk(core: self)
++    /// Focus runs without Speech Runtime, but shares the existing voice command router.
++    @ObservationIgnored private(set) lazy var focus = FocusSessionCoordinator(core: self)
+     /// Its own window and lifecycle; the catalog and disambiguation UI share one surface.
+     @ObservationIgnored private(set) lazy var voiceCommandCatalogWindow =
+         SpeechVoiceCommandCatalogWindow(core: self)
+@@ -334,6 +336,7 @@ final class AppCore {
+             }
+             updateCoordinator.applyEnabled()
+             calendarCoordinator.applyEnabled()
++            focus.startMonitoring()
+             Task { await appIndex.refresh() }
+             Task { await emojiIndex.load(languages: SystemLanguages.preferred) }
+             currencyRates.start()
+@@ -573,6 +576,7 @@ final class AppCore {
+         inputSourceSwitcher.endSession()
+         textInjector.prepareForTermination()
+         snippetListener.stop()
++        focus.prepareForTermination()
+         snippetsStore.stop()
+         aiChats.reset()
+         chatGPTSubscription.stop()
+diff --git a/Tinycast/App/MenuBarItem.swift b/Tinycast/App/MenuBarItem.swift
+index 8a958e72..3b71af6d 100644
+--- a/Tinycast/App/MenuBarItem.swift
++++ b/Tinycast/App/MenuBarItem.swift
+@@ -23,6 +23,22 @@ struct MenuBarMenu: View {
+                 AppCore.shared.paletteCoordinator.showPalette(mode: .clipboard)
+             }
+         }
++        Menu("Focus", systemImage: "timer") {
++            if AppCore.shared.focus.isActive {
++                Text(AppCore.shared.focus.clockText)
++                Button(AppCore.shared.focus.isPaused ? "Продолжить" : "Пауза") {
++                    if AppCore.shared.focus.isPaused { AppCore.shared.focus.resume() }
++                    else { AppCore.shared.focus.pause() }
++                }
++                Button("Завершить") { AppCore.shared.focus.finish() }
++            } else {
++                Button("Начать сеанс") { _ = AppCore.shared.focus.start() }
++            }
++            Divider()
++            Button("Настройки фокуса…") {
++                AppCore.shared.settingsCoordinator.showSettings(tab: .focus)
++            }
++        }
+         Divider()
+         Button("Check for Updates…") { AppCore.shared.updateCoordinator.checkForUpdates() }
+         Button("Support \(appName)…") { AppCore.shared.supportCoordinator.showSupport() }
+diff --git a/Tinycast/Features/Focus/Model/FocusProfile.swift b/Tinycast/Features/Focus/Model/FocusProfile.swift
+new file mode 100644
+index 00000000..1089c4a4
+--- /dev/null
++++ b/Tinycast/Features/Focus/Model/FocusProfile.swift
+@@ -0,0 +1,77 @@
++import Foundation
++
++/// A deliberately soft blocker: it hides apps and redirects supported active browser tabs.
++/// It does not require elevated privileges and never modifies /etc/hosts or network settings.
++struct FocusBlockedApplication: Codable, Equatable, Hashable, Identifiable, Sendable {
++    var bundleID: String
++    var name: String
++    var id: String { bundleID }
++}
++
++struct FocusProfile: Codable, Equatable, Identifiable, Sendable {
++    var id: UUID = UUID()
++    var name: String
++    var durationMinutes: Int = 45
++    var blockedApplications: [FocusBlockedApplication] = []
++    var blockedDomains: [String] = []
++    /// Existing Apple Shortcuts may orchestrate app launches, window layouts, and notifications.
++    var startShortcutID: UUID?
++    var endShortcutID: UUID?
++    /// VoiceCast workflows can also be attached directly to a Focus profile.
++    var startWorkflowID: UUID?
++    var endWorkflowID: UUID?
++
++    static let initial: [FocusProfile] = [
++        FocusProfile(name: "Работа", durationMinutes: 50),
++        FocusProfile(name: "Чтение", durationMinutes: 30)
++    ]
++}
++
++struct FocusSession: Codable, Equatable, Sendable {
++    var profileID: UUID
++    var startedAt: Date
++    var deadline: Date
++    /// Nil means running; otherwise the clock is stopped at this many seconds.
++    var pausedSeconds: TimeInterval?
++    /// An optional scheduled end to a break. On wake or relaunch, refresh resumes if elapsed.
++    var resumeAt: Date?
++    var extraBlockedApplications: [FocusBlockedApplication] = []
++    var extraBlockedDomains: [String] = []
++    var allowedDomainsUntil: [String: Date] = [:]
++}
++
++struct FocusSavedState: Codable, Sendable {
++    var profiles: [FocusProfile]
++    var selectedProfileID: UUID
++    var session: FocusSession?
++}
++
++enum FocusDomain {
++    /// Accept bare domains and https:// URLs. Do not store paths, wildcards or arbitrary scripts.
++    static func normalize(_ text: String) -> String? {
++        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
++        guard !trimmed.isEmpty else { return nil }
++        let candidate = trimmed.contains("://") ? trimmed : "https://" + trimmed
++        guard let components = URLComponents(string: candidate),
++              let host = components.host?.trimmingCharacters(in: CharacterSet(charactersIn: ".")),
++              host.contains("."), !host.isEmpty, host.count <= 253
++        else { return nil }
++        let labels = host.split(separator: ".", omittingEmptySubsequences: false)
++        guard labels.allSatisfy({ label in
++            !label.isEmpty && label.count <= 63 &&
++            label.first != "-" && label.last != "-" &&
++            label.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }
++        }) else { return nil }
++        return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
++    }
++
++    static func matches(_ host: String, blocked: String) -> Bool {
++        let host = host.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
++        return host == blocked || host.hasSuffix("." + blocked)
++    }
++
++    static func shouldBlock(_ url: URL, domains: [String]) -> Bool {
++        guard let host = url.host else { return false }
++        return domains.contains { matches(host, blocked: $0) }
++    }
++}
+diff --git a/Tinycast/Features/Focus/Service/FocusSessionCoordinator.swift b/Tinycast/Features/Focus/Service/FocusSessionCoordinator.swift
+new file mode 100644
+index 00000000..1fef628f
+--- /dev/null
++++ b/Tinycast/Features/Focus/Service/FocusSessionCoordinator.swift
+@@ -0,0 +1,394 @@
++import AppKit
++import Foundation
++import Observation
++
++/// Local Focus sessions. Owns deadlines, persistence and the soft-blocking lifecycle.
++/// The Speech Runtime only supplies text; this service runs without a microphone or model.
++@MainActor
++@Observable
++final class FocusSessionCoordinator {
++    private(set) var profiles: [FocusProfile]
++    private(set) var selectedProfileID: UUID
++    private(set) var session: FocusSession?
++    private(set) var remainingSeconds = 0
++    private(set) var lastError: String?
++
++    @ObservationIgnored private weak var core: AppCore?
++    @ObservationIgnored private let fileURL = AppPaths.applicationSupport()
++        .appendingPathComponent("focus-sessions.json")
++    @ObservationIgnored private var timer: Timer?
++    @ObservationIgnored private var appObserver: NSObjectProtocol?
++    @ObservationIgnored private var wakeObserver: NSObjectProtocol?
++    @ObservationIgnored private var websiteTask: Task<Bool, Never>?
++    @ObservationIgnored private var lastWebsitePoll = Date.distantPast
++    @ObservationIgnored private let hud = FocusHUDController()
++
++    private static let protectedBundleIDs: Set<String> = [
++        "com.apple.finder", "com.apple.dock", "com.apple.loginwindow",
++        "com.tinycast.app", "com.tinycast.app.dev"
++    ]
++
++    init(core: AppCore) {
++        self.core = core
++        let defaults = FocusProfile.initial
++        profiles = defaults
++        selectedProfileID = defaults[0].id
++        if let data = try? Data(contentsOf: fileURL),
++           let saved = try? JSONDecoder().decode(FocusSavedState.self, from: data),
++           !saved.profiles.isEmpty {
++            profiles = saved.profiles
++            selectedProfileID = saved.profiles.contains { $0.id == saved.selectedProfileID }
++                ? saved.selectedProfileID : saved.profiles[0].id
++            session = saved.session
++        }
++    }
++
++    var selectedProfile: FocusProfile? { profiles.first { $0.id == selectedProfileID } }
++    var activeProfile: FocusProfile? {
++        guard let session else { return nil }
++        return profiles.first { $0.id == session.profileID }
++    }
++    var isActive: Bool { session != nil }
++    var isPaused: Bool { session?.pausedSeconds != nil }
++    var clockText: String {
++        let seconds = max(0, remainingSeconds)
++        return String(format: "%02d:%02d:%02d", seconds / 3_600, seconds / 60 % 60, seconds % 60)
++    }
++
++    func startMonitoring() {
++        guard timer == nil else { return }
++        let center = NSWorkspace.shared.notificationCenter
++        appObserver = center.addObserver(
++            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
++        ) { [weak self] _ in
++            MainActor.assumeIsolated {
++                if let app = NSWorkspace.shared.frontmostApplication { self?.blockIfNeeded(app) }
++            }
++        }
++        wakeObserver = center.addObserver(
++            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
++        ) { [weak self] _ in
++            MainActor.assumeIsolated { self?.refresh() }
++        }
++        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
++            MainActor.assumeIsolated { self?.refresh() }
++        }
++        RunLoop.main.add(timer, forMode: .common)
++        self.timer = timer
++        refresh()
++        if isActive { hud.show(coordinator: self) }
++    }
++
++    func prepareForTermination() {
++        timer?.invalidate()
++        timer = nil
++        let center = NSWorkspace.shared.notificationCenter
++        if let appObserver { center.removeObserver(appObserver) }
++        if let wakeObserver { center.removeObserver(wakeObserver) }
++        appObserver = nil
++        wakeObserver = nil
++        websiteTask?.cancel()
++        websiteTask = nil
++        hud.hide()
++    }
++
++    @discardableResult
++    func start(profileID: UUID? = nil, minutes: Int? = nil) -> Bool {
++        let id = profileID ?? selectedProfileID
++        guard let profile = profiles.first(where: { $0.id == id }) else { return false }
++        let duration = minutes ?? profile.durationMinutes
++        guard (5...240).contains(duration) else {
++            core?.showMessage("Длительность фокуса: от 5 до 240 минут", tone: .neutral)
++            return false
++        }
++        if session != nil { finish(runEndShortcut: false) }
++        let now = Date()
++        session = FocusSession(
++            profileID: id, startedAt: now, deadline: now.addingTimeInterval(TimeInterval(duration * 60)))
++        selectedProfileID = id
++        persist()
++        refresh()
++        hud.show(coordinator: self)
++        if let activeApp = NSWorkspace.shared.frontmostApplication { blockIfNeeded(activeApp) }
++        if let workflowID = profile.startWorkflowID { runWorkflow(workflowID) }
++        if let shortcutID = profile.startShortcutID { runShortcut(shortcutID) }
++        return true
++    }
++
++    func startSpoken(profileName: String?, minutes: Int?) {
++        guard let profileName, !profileName.isEmpty else {
++            _ = start(minutes: minutes)
++            return
++        }
++        let key = SpeechVoiceCommandParser.normalize(profileName)
++        let found = profiles.filter { SpeechVoiceCommandParser.normalize($0.name) == key }
++        guard found.count == 1, let profile = found.first else {
++            core?.showMessage("Профиль фокуса не найден: \(profileName)", tone: .neutral)
++            return
++        }
++        _ = start(profileID: profile.id, minutes: minutes)
++    }
++
++    func pause(for minutes: Int? = nil) {
++        guard var session, session.pausedSeconds == nil else { return }
++        if let minutes, !(1...60).contains(minutes) {
++            core?.showMessage("Пауза: от 1 до 60 минут", tone: .neutral)
++            return
++        }
++        session.pausedSeconds = max(0, session.deadline.timeIntervalSinceNow)
++        session.resumeAt = minutes.map { Date().addingTimeInterval(Double($0 * 60)) }
++        self.session = session
++        websiteTask?.cancel()
++        persist()
++        refresh()
++    }
++
++    func resume() {
++        guard var session, let paused = session.pausedSeconds else { return }
++        session.deadline = Date().addingTimeInterval(paused)
++        session.pausedSeconds = nil
++        session.resumeAt = nil
++        self.session = session
++        persist()
++        refresh()
++        if let app = NSWorkspace.shared.frontmostApplication { blockIfNeeded(app) }
++    }
++
++    func finish(runEndShortcut: Bool = true) {
++        guard let session else { return }
++        let profile = profiles.first { $0.id == session.profileID }
++        self.session = nil
++        remainingSeconds = 0
++        websiteTask?.cancel()
++        hud.hide()
++        persist()
++        if runEndShortcut {
++            if let workflowID = profile?.endWorkflowID { runWorkflow(workflowID) }
++            if let shortcutID = profile?.endShortcutID { runShortcut(shortcutID) }
++        }
++    }
++
++    func showStatus() {
++        guard let session else {
++            core?.showMessage("Сеанс концентрации не запущен", tone: .neutral)
++            return
++        }
++        let name = profiles.first { $0.id == session.profileID }?.name ?? "Фокус"
++        core?.showMessage("\(name): \(clockText)\(isPaused ? " · пауза" : "")")
++    }
++
++    // MARK: Profiles
++
++    func selectProfile(_ id: UUID) {
++        guard profiles.contains(where: { $0.id == id }) else { return }
++        selectedProfileID = id
++        persist()
++    }
++
++    func addProfile() {
++        let profile = FocusProfile(name: "Новый профиль", durationMinutes: 45)
++        profiles.append(profile)
++        selectedProfileID = profile.id
++        persist()
++    }
++
++    func removeProfile(_ id: UUID) {
++        guard profiles.count > 1, let index = profiles.firstIndex(where: { $0.id == id }) else { return }
++        if session?.profileID == id { finish() }
++        profiles.remove(at: index)
++        if selectedProfileID == id { selectedProfileID = profiles[0].id }
++        persist()
++    }
++
++    func updateProfile(_ id: UUID, _ edit: (inout FocusProfile) -> Void) {
++        guard let index = profiles.firstIndex(where: { $0.id == id }) else { return }
++        edit(&profiles[index])
++        profiles[index].durationMinutes = min(240, max(5, profiles[index].durationMinutes))
++        persist()
++    }
++
++    func addApplication(_ app: FocusBlockedApplication, to profileID: UUID) {
++        guard !Self.protectedBundleIDs.contains(app.bundleID),
++              app.bundleID != Bundle.main.bundleIdentifier else { return }
++        updateProfile(profileID) { profile in
++            if !profile.blockedApplications.contains(where: { $0.bundleID == app.bundleID }) {
++                profile.blockedApplications.append(app)
++                profile.blockedApplications.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
++            }
++        }
++        if let activeApp = NSWorkspace.shared.frontmostApplication { blockIfNeeded(activeApp) }
++    }
++
++    func removeApplication(_ bundleID: String, from profileID: UUID) {
++        updateProfile(profileID) { $0.blockedApplications.removeAll { $0.bundleID == bundleID } }
++    }
++
++    @discardableResult
++    func addDomain(_ input: String, to profileID: UUID) -> Bool {
++        guard let host = FocusDomain.normalize(input) else { return false }
++        updateProfile(profileID) { profile in
++            if !profile.blockedDomains.contains(host) {
++                profile.blockedDomains.append(host)
++                profile.blockedDomains.sort()
++            }
++        }
++        return true
++    }
++
++    func removeDomain(_ domain: String, from profileID: UUID) {
++        updateProfile(profileID) { $0.blockedDomains.removeAll { $0 == domain } }
++    }
++
++    // MARK: One-off spoken restrictions
++
++    func blockApplication(_ app: FocusBlockedApplication) {
++        guard var session else {
++            core?.showMessage("Сначала запусти фокус", tone: .neutral)
++            return
++        }
++        guard !Self.protectedBundleIDs.contains(app.bundleID),
++              app.bundleID != Bundle.main.bundleIdentifier else { return }
++        if !session.extraBlockedApplications.contains(where: { $0.bundleID == app.bundleID }) {
++            session.extraBlockedApplications.append(app)
++            self.session = session
++            persist()
++        }
++        if let running = NSWorkspace.shared.frontmostApplication { blockIfNeeded(running) }
++    }
++
++    func blockWebsite(_ spoken: String) {
++        guard var session else {
++            showStatus()
++            return
++        }
++        guard let domain = Self.spokenDomain(spoken) else {
++            core?.showMessage("Назови домен, например youtube.com", tone: .neutral)
++            return
++        }
++        if !session.extraBlockedDomains.contains(domain) {
++            session.extraBlockedDomains.append(domain)
++            self.session = session
++            persist()
++        }
++        core?.showMessage("Заблокирован сайт: \(domain)")
++    }
++
++    func allowWebsite(_ spoken: String, for minutes: Int) {
++        guard var session, (1...60).contains(minutes),
++              let domain = Self.spokenDomain(spoken) else { return }
++        session.allowedDomainsUntil[domain] = Date().addingTimeInterval(Double(minutes * 60))
++        self.session = session
++        persist()
++        core?.showMessage("\(domain) разрешён на \(minutes) мин")
++    }
++
++    private static func spokenDomain(_ spoken: String) -> String? {
++        var text = spoken.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
++            .replacingOccurrences(of: " точка ", with: ".")
++            .replacingOccurrences(of: " точка", with: ".")
++            .replacingOccurrences(of: "ютьюб", with: "youtube")
++            .replacingOccurrences(of: "ютуб", with: "youtube")
++            .replacingOccurrences(of: "реддит", with: "reddit")
++        for suffix in [" com", " ru", " org", " net", " io", " dev"] where text.hasSuffix(suffix) {
++            text = String(text.dropLast(suffix.count)) + "." + suffix.dropFirst()
++            break
++        }
++        if text == "youtube" { text = "youtube.com" }
++        if text == "reddit" { text = "reddit.com" }
++        return FocusDomain.normalize(text)
++    }
++
++    // MARK: Enforcement and clock
++
++    private func refresh() {
++        guard var session else {
++            remainingSeconds = 0
++            return
++        }
++        if let paused = session.pausedSeconds {
++            if let resumeAt = session.resumeAt, Date() >= resumeAt {
++                resume()
++                return
++            }
++            remainingSeconds = Int(ceil(paused))
++            return
++        }
++        if Date() >= session.deadline {
++            finish()
++            return
++        }
++        remainingSeconds = Int(ceil(session.deadline.timeIntervalSinceNow))
++        let filtered = session.allowedDomainsUntil.filter { $0.value > Date() }
++        if filtered.count != session.allowedDomainsUntil.count {
++            session.allowedDomainsUntil = filtered
++            self.session = session
++            persist()
++        }
++        checkWebsite()
++    }
++
++    private func blockIfNeeded(_ app: NSRunningApplication) {
++        guard let session, session.pausedSeconds == nil,
++              let profile = profiles.first(where: { $0.id == session.profileID }),
++              let bundleID = app.bundleIdentifier,
++              app.processIdentifier != ProcessInfo.processInfo.processIdentifier,
++              !Self.protectedBundleIDs.contains(bundleID),
++              profile.blockedApplications.contains(where: { $0.bundleID == bundleID }) ||
++                session.extraBlockedApplications.contains(where: { $0.bundleID == bundleID })
++        else { return }
++        if app.hide() {
++            core?.showMessage("\(app.localizedName ?? "Приложение") скрыто на время фокуса", tone: .neutral)
++        }
++    }
++
++    private func checkWebsite() {
++        guard websiteTask == nil,
++              Date().timeIntervalSince(lastWebsitePoll) >= 2,
++              let session, session.pausedSeconds == nil,
++              let profile = activeProfile,
++              let id = NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
++              FocusWebsiteBlocker.supports(id)
++        else { return }
++        let all = Set(profile.blockedDomains + session.extraBlockedDomains)
++        let allowed = session.allowedDomainsUntil.filter { $0.value > Date() }.keys
++        let domains = Array(all.subtracting(allowed))
++        guard !domains.isEmpty else { return }
++        lastWebsitePoll = Date()
++        let job = Task.detached(priority: .utility) {
++            FocusWebsiteBlocker.enforce(browserID: id, domains: domains)
++        }
++        websiteTask = job
++        Task { [weak self] in
++            let blocked = await job.value
++            guard let self else { return }
++            if self.websiteTask != nil { self.websiteTask = nil }
++            if blocked, self.session?.pausedSeconds == nil {
++                self.core?.showMessage("Сайт заблокирован до конца сеанса", tone: .neutral)
++            }
++        }
++    }
++
++    private func runShortcut(_ id: UUID) {
++        guard let core, core.settings.appleShortcutsEnabled else { return }
++        core.appleShortcutCoordinator.run(id: id)
++    }
++
++    private func runWorkflow(_ id: UUID) {
++        guard let core, core.settings.workflowsEnabled else { return }
++        core.workflowCoordinator.run(id)
++    }
++
++    private func persist() {
++        let saved = FocusSavedState(
++            profiles: profiles, selectedProfileID: selectedProfileID, session: session)
++        do {
++            try FileManager.default.createDirectory(
++                at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
++            try JSONEncoder().encode(saved).write(to: fileURL, options: .atomic)
++            lastError = nil
++        } catch {
++            lastError = error.localizedDescription
++            core?.showMessage("Не удалось сохранить настройки фокуса", tone: .danger)
++        }
++    }
++}
+diff --git a/Tinycast/Features/Focus/Service/FocusWebsiteBlocker.swift b/Tinycast/Features/Focus/Service/FocusWebsiteBlocker.swift
+new file mode 100644
+index 00000000..b23fc042
+--- /dev/null
++++ b/Tinycast/Features/Focus/Service/FocusWebsiteBlocker.swift
+@@ -0,0 +1,60 @@
++import Foundation
++
++/// Best-effort active-tab blocking for browsers that expose AppleScript tab URLs.
++/// Not a DNS filter: background requests, private windows and Firefox/Zen are not controlled.
++/// One detached worker executes osascript; UI and the voice loop never wait for Apple Events.
++enum FocusWebsiteBlocker {
++    private static let supportedBrowsers: Set<String> = [
++        "com.apple.Safari", "com.google.Chrome", "com.brave.Browser", "com.microsoft.edgemac"
++    ]
++
++    static func supports(_ bundleID: String) -> Bool { supportedBrowsers.contains(bundleID) }
++
++    /// Return true if the active tab was replaced. The caller can show a brief HUD notice.
++    static func enforce(browserID: String, domains: [String]) -> Bool {
++        guard supports(browserID), !domains.isEmpty,
++              !withUnsafeCurrentTask(body: { $0?.isCancelled ?? false }) else { return false }
++        let safari = browserID == "com.apple.Safari"
++        let tab = safari ? "current tab" : "active tab"
++        let target = "\(tab) of front window"
++        let prefix = "tell application id \"\(browserID)\"\n" +
++            "if (count of windows) = 0 then return \"\"\n"
++        guard let output = runAppleScript(prefix + "return URL of \(target)\nend tell"),
++              let url = URL(string: output.trimmingCharacters(in: .whitespacesAndNewlines)),
++              FocusDomain.shouldBlock(url, domains: domains)
++        else { return false }
++
++        guard !withUnsafeCurrentTask(body: { $0?.isCancelled ?? false }) else { return false }
++        // Compare the tab URL again: the user may have switched tabs between the two calls.
++        // Quote and backslash escaping prevent a website URL from becoming AppleScript source.
++        let expectedURL = quote(url.absoluteString)
++        let script = prefix +
++            "if (URL of \(target) as text) is \(expectedURL) then\n" +
++            "set URL of \(target) to \"about:blank\"\n" +
++            "return \"blocked\"\nend if\nreturn \"\"\nend tell"
++        return runAppleScript(script) == "blocked"
++    }
++
++    private static func quote(_ value: String) -> String {
++        let escaped = value.replacingOccurrences(of: "\\", with: "\\\\")
++            .replacingOccurrences(of: "\"", with: "\\\"")
++            .replacingOccurrences(of: "\r", with: "")
++            .replacingOccurrences(of: "\n", with: "")
++        return "\"\(escaped)\""
++    }
++
++    private static func runAppleScript(_ source: String) -> String? {
++        let process = Process()
++        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
++        process.arguments = ["-e", source]
++        let output = Pipe()
++        process.standardOutput = output
++        process.standardError = Pipe()
++        do { try process.run() } catch { return nil }
++        process.waitUntilExit()
++        guard process.terminationStatus == 0 else { return nil }
++        let data = output.fileHandleForReading.readDataToEndOfFile()
++        return String(data: data, encoding: .utf8)?
++            .trimmingCharacters(in: .whitespacesAndNewlines)
++    }
++}
+diff --git a/Tinycast/Features/Focus/UI/FocusHUD.swift b/Tinycast/Features/Focus/UI/FocusHUD.swift
+new file mode 100644
+index 00000000..993240ef
+--- /dev/null
++++ b/Tinycast/Features/Focus/UI/FocusHUD.swift
+@@ -0,0 +1,94 @@
++import AppKit
++import SwiftUI
++
++/// The same small non-activating, draggable glass surface used for Voice Ask.
++@MainActor
++final class FocusHUDController {
++    private var panel: NSPanel?
++
++    func show(coordinator: FocusSessionCoordinator) {
++        if let panel {
++            panel.orderFrontRegardless()
++            return
++        }
++        let width: CGFloat = 304
++        let height: CGFloat = 68
++        let panel = NSPanel(
++            contentRect: NSRect(x: 0, y: 0, width: width, height: height),
++            styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
++        panel.backgroundColor = .clear
++        panel.isOpaque = false
++        panel.hasShadow = true
++        panel.level = .floating
++        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
++        panel.hidesOnDeactivate = false
++        panel.isMovableByWindowBackground = true
++        panel.contentView = NSHostingView(rootView: FocusHUDView(coordinator: coordinator))
++        if let screen = NSScreen.main ?? NSScreen.screens.first {
++            let frame = screen.visibleFrame
++            panel.setFrameOrigin(NSPoint(x: frame.maxX - width - 22,
++                                         y: frame.maxY - height - 22))
++        }
++        self.panel = panel
++        panel.orderFrontRegardless()
++    }
++
++    func hide() {
++        panel?.orderOut(nil)
++        panel?.contentView = nil
++        panel = nil
++    }
++}
++
++private struct FocusHUDView: View {
++    let coordinator: FocusSessionCoordinator
++
++    var body: some View {
++        HStack(spacing: 11) {
++            Image(systemName: "timer")
++                .font(.system(size: 20, weight: .medium))
++                .foregroundStyle(.primary)
++            VStack(alignment: .leading, spacing: 3) {
++                Text(coordinator.activeProfile?.name ?? "Фокус")
++                    .font(.system(size: 12, weight: .semibold))
++                    .lineLimit(1)
++                Text(coordinator.clockText)
++                    .font(.system(size: 13, weight: .medium, design: .monospaced))
++                    .foregroundStyle(coordinator.isPaused ? .secondary : .primary)
++                    .contentTransition(.numericText())
++            }
++            Spacer(minLength: 0)
++            Button {
++                if coordinator.isPaused { coordinator.resume() } else { coordinator.pause() }
++            } label: {
++                Image(systemName: coordinator.isPaused ? "play.fill" : "pause.fill")
++                    .frame(width: 22, height: 24)
++            }
++            .buttonStyle(.plain)
++            .help(coordinator.isPaused ? "Продолжить" : "Пауза")
++            .accessibilityLabel(coordinator.isPaused ? "Продолжить фокус" : "Пауза фокуса")
++            Button { coordinator.finish() } label: {
++                Image(systemName: "stop.fill")
++                    .frame(width: 22, height: 24)
++            }
++            .buttonStyle(.plain)
++            .help("Завершить сеанс")
++            .accessibilityLabel("Завершить фокус")
++        }
++        .padding(.horizontal, 14)
++        .frame(width: 304, height: 66)
++        .modifier(FocusGlass())
++    }
++}
++
++private struct FocusGlass: ViewModifier {
++    @ViewBuilder
++    func body(content: Content) -> some View {
++        if #available(macOS 26.0, *) {
++            content.glassEffect(.regular, in: RoundedRectangle(cornerRadius: Theme.Radius.dialog))
++        } else {
++            content.background(
++                .regularMaterial, in: RoundedRectangle(cornerRadius: Theme.Radius.dialog))
++        }
++    }
++}
+diff --git a/Tinycast/Features/Focus/UI/FocusSettingsView.swift b/Tinycast/Features/Focus/UI/FocusSettingsView.swift
+new file mode 100644
+index 00000000..117ce5a3
+--- /dev/null
++++ b/Tinycast/Features/Focus/UI/FocusSettingsView.swift
+@@ -0,0 +1,322 @@
++import AppKit
++import SwiftUI
++
++/// Native Settings pane, following Tinycast's grouped Form and sidebar conventions.
++struct FocusSettingsView: View {
++    @Environment(AppCore.self) private var core
++    @Environment(FocusSessionCoordinator.self) private var focus
++    @State private var siteInput = ""
++    @State private var showingAppPicker = false
++
++    private var profile: FocusProfile? { focus.selectedProfile }
++
++    var body: some View {
++        Form {
++            sessionSection
++            profileSection
++            if let profile {
++                applicationsSection(profile)
++                websitesSection(profile)
++                automationSection(profile)
++            }
++            Section {
++                Text(
++                    "Приложения скрываются без закрытия. Блокировка сайтов действует только для " +
++                    "активных вкладок Safari, Chrome, Brave и Edge. Firefox и Zen не поддерживаются. " +
++                    "Для браузеров может понадобиться разрешение Automation.")
++                    .font(.caption)
++                    .foregroundStyle(.secondary)
++            } header: {
++                Text("Ограничения")
++            }
++        }
++        .formStyle(.grouped)
++        .settingsScrollTarget(.focus)
++        .releasesFocusOnOutsideClick()
++        .sheet(isPresented: $showingAppPicker) {
++            FocusApplicationPicker(profileID: focus.selectedProfileID)
++        }
++        .onAppear { core.appleShortcutCoordinator.refresh() }
++    }
++
++    private var sessionSection: some View {
++        Section {
++            HStack(spacing: Theme.Spacing.xl) {
++                Image(systemName: "timer")
++                    .font(.system(size: 24, weight: .medium))
++                    .foregroundStyle(.secondary)
++                VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
++                    Text(focus.activeProfile?.name ?? "Сеанс не запущен")
++                        .font(.headline)
++                    if focus.isActive {
++                        Text(focus.clockText + (focus.isPaused ? " · Пауза" : ""))
++                            .font(.system(.body, design: .monospaced))
++                            .foregroundStyle(.secondary)
++                    } else {
++                        Text("Настройте профиль и запустите таймер")
++                            .font(.caption)
++                            .foregroundStyle(.secondary)
++                    }
++                }
++                Spacer(minLength: 8)
++                if focus.isActive {
++                    Button(focus.isPaused ? "Продолжить" : "Пауза") {
++                        if focus.isPaused { focus.resume() } else { focus.pause() }
++                    }
++                    Button("Завершить") { focus.finish() }
++                } else {
++                    Button("Начать") { _ = focus.start() }
++                        .buttonStyle(.borderedProminent)
++                }
++            }
++            .padding(.vertical, Theme.Spacing.sm)
++        } header: {
++            Text("Концентрация")
++        }
++    }
++
++    private var profileSection: some View {
++        Section {
++            HStack(spacing: Theme.Spacing.md) {
++                Picker("Профиль", selection: selectedProfileBinding) {
++                    ForEach(focus.profiles) { profile in
++                        Text(profile.name.isEmpty ? "Без названия" : profile.name)
++                            .tag(profile.id)
++                    }
++                }
++                Button { focus.addProfile() } label: {
++                    Image(systemName: "plus")
++                }
++                .help("Создать профиль")
++                Button {
++                    focus.removeProfile(focus.selectedProfileID)
++                } label: {
++                    Image(systemName: "minus")
++                }
++                .disabled(focus.profiles.count <= 1)
++                .help("Удалить профиль")
++            }
++            if let profile {
++                TextField("Название профиля", text: nameBinding(profile.id))
++                Stepper(value: durationBinding(profile.id), in: 5...240, step: 5) {
++                    Text("Длительность: \(profile.durationMinutes) мин")
++                }
++            }
++        } header: {
++            Text("Профили")
++        }
++    }
++
++    private func applicationsSection(_ profile: FocusProfile) -> some View {
++        Section {
++            ForEach(profile.blockedApplications) { app in
++                HStack(spacing: Theme.Spacing.md) {
++                    Image(systemName: "app.dashed")
++                        .foregroundStyle(.secondary)
++                    Text(app.name)
++                    Spacer()
++                    Button {
++                        focus.removeApplication(app.bundleID, from: profile.id)
++                    } label: {
++                        Image(systemName: "minus.circle")
++                    }
++                    .buttonStyle(.borderless)
++                    .help("Исключить из списка блокировки")
++                }
++            }
++            Button("Добавить приложение…", systemImage: "plus") {
++                showingAppPicker = true
++            }
++        } header: {
++            Text("Блокируемые приложения")
++        }
++    }
++
++    private func websitesSection(_ profile: FocusProfile) -> some View {
++        Section {
++            ForEach(profile.blockedDomains, id: \.self) { domain in
++                HStack {
++                    Image(systemName: "globe")
++                        .foregroundStyle(.secondary)
++                    Text(domain)
++                    Spacer()
++                    Button {
++                        focus.removeDomain(domain, from: profile.id)
++                    } label: {
++                        Image(systemName: "minus.circle")
++                    }
++                    .buttonStyle(.borderless)
++                }
++            }
++            HStack {
++                TextField("youtube.com", text: $siteInput)
++                    .textFieldStyle(.roundedBorder)
++                    .onSubmit { addSite(profile.id) }
++                Button("Добавить") { addSite(profile.id) }
++                    .disabled(siteInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
++            }
++            Text("Поддомены блокируются вместе с основным доменом.")
++                .font(.caption)
++                .foregroundStyle(.secondary)
++        } header: {
++            Text("Блокируемые сайты")
++        }
++    }
++
++    private func automationSection(_ profile: FocusProfile) -> some View {
++        Section {
++            Picker("Сценарий при запуске", selection: workflowBinding(profile.id, start: true)) {
++                workflowOptions
++            }
++            Picker("Сценарий при завершении", selection: workflowBinding(profile.id, start: false)) {
++                workflowOptions
++            }
++            Picker("Apple Shortcut при запуске", selection: shortcutBinding(profile.id, start: true)) {
++                shortcutOptions
++            }
++            Picker("Apple Shortcut при завершении", selection: shortcutBinding(profile.id, start: false)) {
++                shortcutOptions
++            }
++            Text(
++                "Сценарии VoiceCast и Apple Shortcuts выполняются автоматически. Через Shortcuts " +
++                "можно запускать приложения, расставлять окна и включать системное «Не беспокоить».")
++                .font(.caption)
++                .foregroundStyle(.secondary)
++        } header: {
++            Text("Голосовые сценарии и автоматизация")
++        }
++    }
++
++    @ViewBuilder
++    private var workflowOptions: some View {
++        Text("Ничего не выполнять").tag(UUID?.none)
++        ForEach(core.workflows.workflows.filter(\.isEnabled)) { workflow in
++            Text(workflow.name).tag(Optional(workflow.id))
++        }
++    }
++
++    @ViewBuilder
++    private var shortcutOptions: some View {
++        Text("Ничего не выполнять").tag(UUID?.none)
++        ForEach(availableShortcuts) { shortcut in
++            Text(shortcut.name).tag(Optional(shortcut.id))
++        }
++    }
++
++    private var availableShortcuts: [AppleShortcut] {
++        core.appleShortcutCoordinator.entries.compactMap { entry in
++            guard let id = AppleShortcut.id(fromEntryID: entry.id) else { return nil }
++            return AppleShortcut(id: id, name: entry.name)
++        }
++    }
++
++    private var selectedProfileBinding: Binding<UUID> {
++        Binding(get: { focus.selectedProfileID }, set: { focus.selectProfile($0) })
++    }
++
++    private func nameBinding(_ id: UUID) -> Binding<String> {
++        Binding(
++            get: { focus.profiles.first { $0.id == id }?.name ?? "" },
++            set: { value in focus.updateProfile(id) { $0.name = value } })
++    }
++
++    private func durationBinding(_ id: UUID) -> Binding<Int> {
++        Binding(
++            get: { focus.profiles.first { $0.id == id }?.durationMinutes ?? 45 },
++            set: { value in focus.updateProfile(id) { $0.durationMinutes = value } })
++    }
++
++    private func workflowBinding(_ id: UUID, start: Bool) -> Binding<UUID?> {
++        Binding(
++            get: {
++                guard let profile = focus.profiles.first(where: { $0.id == id }) else { return nil }
++                return start ? profile.startWorkflowID : profile.endWorkflowID
++            },
++            set: { value in
++                focus.updateProfile(id) { profile in
++                    if start { profile.startWorkflowID = value } else { profile.endWorkflowID = value }
++                }
++            })
++    }
++
++    private func shortcutBinding(_ id: UUID, start: Bool) -> Binding<UUID?> {
++        Binding(
++            get: {
++                guard let profile = focus.profiles.first(where: { $0.id == id }) else { return nil }
++                return start ? profile.startShortcutID : profile.endShortcutID
++            },
++            set: { value in
++                focus.updateProfile(id) { profile in
++                    if start { profile.startShortcutID = value } else { profile.endShortcutID = value }
++                }
++            })
++    }
++
++    private func addSite(_ profileID: UUID) {
++        guard focus.addDomain(siteInput, to: profileID) else {
++            core.showMessage("Неверное имя домена", tone: .neutral)
++            return
++        }
++        siteInput = ""
++    }
++}
++
++private struct FocusApplicationPicker: View {
++    @Environment(AppCore.self) private var core
++    @Environment(FocusSessionCoordinator.self) private var focus
++    @Environment(\.dismiss) private var dismiss
++    @State private var query = ""
++    let profileID: UUID
++
++    private var apps: [AppEntry] {
++        core.appIndex.apps.filter { app in
++            guard app.kind == .application, app.isPrimaryInstallation,
++                  let bundleID = app.bundleID, !bundleID.isEmpty,
++                  app.name.localizedCaseInsensitiveContains(query),
++                  app.url.isFileURL else { return false }
++            return true
++        }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
++    }
++
++    var body: some View {
++        VStack(alignment: .leading, spacing: Theme.Spacing.xl) {
++            HStack {
++                Text("Блокировать приложение")
++                    .font(.headline)
++                Spacer()
++                Button("Готово") { dismiss() }
++            }
++            TextField("Поиск приложения", text: $query)
++                .textFieldStyle(.roundedBorder)
++            ScrollView {
++                LazyVStack(spacing: Theme.Spacing.xs) {
++                    ForEach(apps, id: \.id) { app in
++                        Button {
++                            guard let bundleID = app.bundleID else { return }
++                            focus.addApplication(
++                                FocusBlockedApplication(bundleID: bundleID, name: app.name),
++                                to: profileID)
++                            dismiss()
++                        } label: {
++                            HStack(spacing: Theme.Spacing.lg) {
++                                Image(nsImage: NSWorkspace.shared.icon(forFile: app.url.path))
++                                    .resizable().frame(width: 24, height: 24)
++                                Text(app.name)
++                                Spacer()
++                                Image(systemName: "plus.circle")
++                                    .foregroundStyle(.secondary)
++                            }
++                            .padding(Theme.Spacing.lg)
++                            .contentShape(Rectangle())
++                        }
++                        .buttonStyle(.plain)
++                        .background(Color.primary.opacity(0.045),
++                                    in: RoundedRectangle(cornerRadius: Theme.Radius.row))
++                    }
++                }
++            }
++        }
++        .padding(Theme.Spacing.xxl)
++        .frame(width: 450, height: 450)
++    }
++}
+diff --git a/Tinycast/Features/Settings/SettingsDetailView.swift b/Tinycast/Features/Settings/SettingsDetailView.swift
+index 9594672a..3a6371b7 100644
+--- a/Tinycast/Features/Settings/SettingsDetailView.swift
++++ b/Tinycast/Features/Settings/SettingsDetailView.swift
+@@ -25,6 +25,7 @@ struct SettingsDetailView: View {
+             case .clipboard: ClipboardSettingsView()
+             case .emoji: EmojiSettingsView()
+             case .calendar: CalendarSettingsView()
++            case .focus: FocusSettingsView()
+             case .extensions: ExtensionsSettingsView()
+             case .permissions: PermissionsSettingsView()
+             case .backup: BackupSettingsView()
+diff --git a/Tinycast/Features/Settings/SettingsEditorPresenter.swift b/Tinycast/Features/Settings/SettingsEditorPresenter.swift
+index 807d0063..3aabb160 100644
+--- a/Tinycast/Features/Settings/SettingsEditorPresenter.swift
++++ b/Tinycast/Features/Settings/SettingsEditorPresenter.swift
+@@ -366,7 +366,18 @@ extension View {
+         core: AppCore, navigation: SettingsNavigationState,
+         editorPresenter: SettingsEditorPresenter
+     ) -> some View {
+-        environment(\.settingsEditorPresenter, editorPresenter)
++        modifier(SettingsEnvironment(core: core, navigation: navigation, editorPresenter: editorPresenter))
++    }
++}
++
++/// One flat modifier: the constraint chain otherwise grows past what SwiftUI's root-view copy handles.
++private struct SettingsEnvironment: ViewModifier {
++    let core: AppCore
++    let navigation: SettingsNavigationState
++    let editorPresenter: SettingsEditorPresenter
++
++    func body(content: Content) -> some View {
++        content.environment(\.settingsEditorPresenter, editorPresenter)
+             .environment(navigation)
+             .environment(core)
+             .environment(core.settings)
+@@ -387,6 +398,7 @@ extension View {
+             .environment(core.customWindowSizes)
+             .environment(core.customWindowSizeCoordinator)
+             .environment(core.calendarStore)
++            .environment(core.focus)
+             .environment(core.aiSettings)
+             .environment(core.mcpSettings)
+             .environment(core.mcpCoordinator)
+diff --git a/Tinycast/Features/Settings/SettingsSearchCatalog.swift b/Tinycast/Features/Settings/SettingsSearchCatalog.swift
+index 2e5cf793..19a4a840 100644
+--- a/Tinycast/Features/Settings/SettingsSearchCatalog.swift
++++ b/Tinycast/Features/Settings/SettingsSearchCatalog.swift
+@@ -108,7 +108,7 @@ enum SettingsSearchCatalog {
+     static let entries: [SettingsSearchEntry] =
+         general + applications + systemSettings + systemActions + commands + quicklinks
+         + appleShortcuts + fallbacks + clipboard + snippets + fileSearch + windowManagement
+-        + navigation + notes + calendar + emoji + ai + quickActions + extensions + permissions
++        + navigation + notes + calendar + focus + emoji + ai + quickActions + extensions + permissions
+         + backup + about
+ 
+     private static let general: [SettingsSearchEntry] = [
+@@ -532,6 +532,13 @@ enum SettingsSearchCatalog {
+             keywords: ["columns", "density", "zoom", "six", "eight", "ten"])
+     ]
+ 
++    private static let focus: [SettingsSearchEntry] = [
++        .init(pane: .focus, keywords: [
++            "concentration", "pomodoro", "timer", "blocking", "focus session",
++            "таймер", "концентрация", "блокировка", "профили"
++        ])
++    ]
++
+     private static let calendar: [SettingsSearchEntry] = [
+         .init(
+             pane: .calendar,
+diff --git a/Tinycast/Features/Settings/SettingsTab.swift b/Tinycast/Features/Settings/SettingsTab.swift
+index e1781c85..e0e68549 100644
+--- a/Tinycast/Features/Settings/SettingsTab.swift
++++ b/Tinycast/Features/Settings/SettingsTab.swift
+@@ -1,6 +1,6 @@
+ enum SettingsTab: CaseIterable, Identifiable {
+     case general, applications, systemSettings, systemActions, commands, quicklinks, appleShortcuts,
+-        fallbacks, clipboard, snippets, fileSearch, windowManagement, navigation, notes, calendar, emoji,
++        fallbacks, clipboard, snippets, fileSearch, windowManagement, navigation, notes, calendar, focus, emoji,
+         ai, quickActions, extensions, permissions, backup, about
+     /// The case, never an index: a selectable `List` flattens section and row IDs together.
+     var id: Self { self }
+@@ -25,6 +25,7 @@ enum SettingsTab: CaseIterable, Identifiable {
+         case .clipboard: return String(localized: "Clipboard")
+         case .emoji: return String(localized: "Emoji & Symbols")
+         case .calendar: return String(localized: "Calendar")
++        case .focus: return String(localized: "Focus")
+         case .extensions: return String(localized: "Extensions")
+         case .permissions: return String(localized: "Permissions")
+         case .backup: return String(localized: "Backup")
+@@ -52,6 +53,7 @@ enum SettingsTab: CaseIterable, Identifiable {
+         case .clipboard: return "doc.on.clipboard"
+         case .emoji: return "face.smiling"
+         case .calendar: return "calendar"
++        case .focus: return "timer"
+         case .extensions: return "puzzlepiece.extension"
+         case .permissions: return "lock.shield"
+         case .backup: return "arrow.up.arrow.down.circle"
+@@ -87,7 +89,7 @@ enum SettingsSection: CaseIterable, Identifiable {
+             // Everyday tools first; AI and extensions are opt-in extras.
+             return [
+                 .clipboard, .snippets, .fileSearch, .windowManagement, .navigation, .notes,
+-                .calendar, .emoji, .ai, .quickActions, .extensions
++                .calendar, .focus, .emoji, .ai, .quickActions, .extensions
+             ]
+         case .advanced: return [.backup, .about]
+         }
+diff --git a/Tinycast/Features/VoiceAsk/SpeechVoiceCommandParser.swift b/Tinycast/Features/VoiceAsk/SpeechVoiceCommandParser.swift
+index a28aaf90..9eb6e699 100644
+--- a/Tinycast/Features/VoiceAsk/SpeechVoiceCommandParser.swift
++++ b/Tinycast/Features/VoiceAsk/SpeechVoiceCommandParser.swift
+@@ -19,6 +19,7 @@ enum SpeechVoiceCommandParser {
+         case brightness(Int)
+         case volume(Int)
+         case builtIn(String, query: String? = nil)
++        case focus(FocusCommand)
+         case target(Target.Kind, String)
+         /// Quits the application resolved by name ("закрой телеграм").
+         case quitApp(String)
+@@ -28,6 +29,17 @@ enum SpeechVoiceCommandParser {
+         case aiPrompt(trigger: String, prompt: String)
+     }
+ 
++    enum FocusCommand: Equatable, Sendable {
++        case start(profile: String?, minutes: Int?)
++        case pause(minutes: Int?)
++        case resume
++        case stop
++        case status
++        case blockApplication(String)
++        case blockWebsite(String)
++        case allowWebsite(String, minutes: Int)
++    }
++
+     enum Resolution: Equatable, Sendable {
+         case notCommand
+         case unknown(String)
+@@ -347,7 +359,20 @@ enum SpeechVoiceCommandParser {
+             ], feature: "files"),
+             .init(section: "Поиск и данные", title: "Поиск заметки по названию", phrases: [
+                 "найди заметку Kubernetes"
+-            ], feature: "notes")
++            ], feature: "notes"),
++            .init(section: "Фокус", title: "Начать фокус", phrases: [
++                "начни фокус", "начни фокус на 45 минут", "запусти профиль работа"
++            ], feature: nil),
++            .init(section: "Фокус", title: "Пауза и продолжение", phrases: [
++                "пауза фокуса", "пауза фокуса на 5 минут", "продолжи фокус"
++            ], feature: nil),
++            .init(section: "Фокус", title: "Завершить или узнать время", phrases: [
++                "заверши фокус", "сколько осталось фокуса"
++            ], feature: nil),
++            .init(section: "Фокус", title: "Блокировка и исключения", phrases: [
++                "заблокируй приложение Telegram", "заблокируй сайт youtube.com",
++                "разреши сайт youtube.com на 5 минут"
++            ], feature: nil)
+         ]
+     }
+ 
+@@ -395,6 +420,7 @@ enum SpeechVoiceCommandParser {
+         if let intent = phraseIndex[phrase] {
+             return .action(intent)
+         }
++        if let focus = parseFocus(phrase) { return focus }
+ 
+         for prefix in ["громкость", "установи громкость", "поставь громкость", "сделай громкость"] {
+             if let value = suffix(after: prefix, in: phrase), !value.isEmpty {
+@@ -478,6 +504,88 @@ enum SpeechVoiceCommandParser {
+         return Array(words.dropFirst().prefix(command.count - 1)) == Array(command.dropFirst())
+     }
+ 
++    /// The Focus grammar is intentionally deterministic; general dictation goes to Quick AI.
++    private static func parseFocus(_ phrase: String) -> Resolution? {
++        if ["поставь фокус на паузу", "пауза фокуса", "приостанови фокус"].contains(phrase) {
++            return .action(.focus(.pause(minutes: nil)))
++        }
++        if ["продолжи фокус", "возобнови фокус", "верни фокус"].contains(phrase) {
++            return .action(.focus(.resume))
++        }
++        if ["заверши фокус", "останови фокус", "закончи фокус"].contains(phrase) {
++            return .action(.focus(.stop))
++        }
++        if ["сколько осталось фокуса", "сколько осталось в фокусе", "покажи время фокуса"].contains(phrase) {
++            return .action(.focus(.status))
++        }
++
++        for prefix in ["пауза фокуса на", "приостанови фокус на"] {
++            if let rest = suffix(after: prefix, in: phrase) {
++                guard let minutes = focusMinutes(rest), (1...60).contains(minutes) else {
++                    return .unknown("Пауза должна быть от 1 до 60 минут")
++                }
++                return .action(.focus(.pause(minutes: minutes)))
++            }
++        }
++        for prefix in ["начни фокус", "запусти фокус", "фокус"] {
++            guard let rest = suffix(after: prefix, in: phrase) else { continue }
++            if rest.isEmpty { return .action(.focus(.start(profile: nil, minutes: nil))) }
++            guard rest.hasPrefix("на "),
++                  let minutes = focusMinutes(String(rest.dropFirst(3))),
++                  (5...240).contains(minutes) else {
++                return .unknown("Фокус: укажи длительность от 5 до 240 минут")
++            }
++            return .action(.focus(.start(profile: nil, minutes: minutes)))
++        }
++        for prefix in ["запусти профиль", "начни профиль", "запусти режим", "включи режим"] {
++            guard let rest = suffix(after: prefix, in: phrase) else { continue }
++            guard !rest.isEmpty else { return .unknown("Назови профиль фокуса") }
++            if let range = rest.range(of: " на ", options: .backwards) {
++                let name = String(rest[..<range.lowerBound])
++                let duration = String(rest[range.upperBound...])
++                guard !name.isEmpty, let minutes = focusMinutes(duration),
++                      (5...240).contains(minutes) else {
++                    return .unknown("Фокус: укажи профиль и длительность от 5 до 240 минут")
++                }
++                return .action(.focus(.start(profile: name, minutes: minutes)))
++            }
++            return .action(.focus(.start(profile: rest, minutes: nil)))
++        }
++        for (prefix, isWebsite) in [
++            ("заблокируй приложение", false), ("заблокируй сайт", true)
++        ] {
++            if let name = suffix(after: prefix, in: phrase) {
++                guard !name.isEmpty else { return .unknown("Назови объект блокировки") }
++                return .action(.focus(isWebsite ? .blockWebsite(name) : .blockApplication(name)))
++            }
++        }
++        if let rest = suffix(after: "разреши сайт", in: phrase) {
++            guard let range = rest.range(of: " на ", options: .backwards) else {
++                return .unknown("Укажи сайт и длительность разрешения")
++            }
++            let name = String(rest[..<range.lowerBound])
++            let duration = String(rest[range.upperBound...])
++            guard !name.isEmpty, let minutes = focusMinutes(duration),
++                  (1...60).contains(minutes) else {
++                return .unknown("Разрешение сайта: от 1 до 60 минут")
++            }
++            return .action(.focus(.allowWebsite(name, minutes: minutes)))
++        }
++        return nil
++    }
++
++    private static func focusMinutes(_ text: String) -> Int? {
++        let words = text.split(separator: " ").map(String.init)
++        if words == ["полчаса"] { return 30 }
++        if words == ["час"] || words == ["часа"] { return 60 }
++        guard let first = words.first, let value = Int(first), value > 0 else { return nil }
++        if words.count == 1 { return value }
++        guard words.count == 2 else { return nil }
++        if words[1].hasPrefix("минут") { return value }
++        if words[1].hasPrefix("час") { return value * 60 }
++        return nil
++    }
++
+     /// Correct one typo in a multiword built-in phrase, not arbitrary speech.
+     /// Different plausible actions deliberately return unknown rather than executing one.
+     private static func fuzzyFixedPattern(_ phrase: String) -> Resolution? {
+diff --git a/Tinycast/Features/VoiceAsk/SpeechVoiceCommandRouter.swift b/Tinycast/Features/VoiceAsk/SpeechVoiceCommandRouter.swift
+index ce873fb8..2e775bee 100644
+--- a/Tinycast/Features/VoiceAsk/SpeechVoiceCommandRouter.swift
++++ b/Tinycast/Features/VoiceAsk/SpeechVoiceCommandRouter.swift
+@@ -158,6 +158,36 @@ enum SpeechVoiceCommandRouter {
+                 core.quickAICoordinator.sendVoicePrompt("Переведи текст:\n\n" + text)
+             default: break
+             }
++        case .focus(let command):
++            switch command {
++            case .start(let profile, let minutes):
++                core.focus.startSpoken(profileName: profile, minutes: minutes)
++            case .pause(let minutes):
++                core.focus.pause(for: minutes)
++            case .resume:
++                core.focus.resume()
++            case .stop:
++                core.focus.finish()
++            case .status:
++                core.focus.showStatus()
++            case .blockWebsite(let domain):
++                core.focus.blockWebsite(domain)
++            case .allowWebsite(let domain, let minutes):
++                core.focus.allowWebsite(domain, for: minutes)
++            case .blockApplication(let name):
++                let resolved = Parser.resolveName(
++                    name, kinds: [.application], targets: availableTargets(core: core))
++                if case .action(.target(.application, let id)) = resolved,
++                   let entry = core.appIndex.apps.first(where: { $0.id == id }),
++                   let bundleID = entry.bundleID {
++                    core.focus.blockApplication(
++                        FocusBlockedApplication(bundleID: bundleID, name: entry.name))
++                } else if case .ambiguous(let choices) = resolved {
++                    core.voiceCommandCatalogWindow.showChoices(choices)
++                } else {
++                    core.showMessage("Приложение не найдено: \(name)", tone: .neutral)
++                }
++            }
+         case .aiPrompt:
+             break // Handled in route(); execute() never sees it.
+         case .quitApp(let id):
+diff --git a/Tinycast/Resources/Localizable.xcstrings b/Tinycast/Resources/Localizable.xcstrings
+index 69def353..4a543e9b 100644
+--- a/Tinycast/Resources/Localizable.xcstrings
++++ b/Tinycast/Resources/Localizable.xcstrings
+@@ -22668,6 +22668,122 @@
+         }
+       }
+     },
++    "Apple Shortcut при завершении" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Apple-Shortcut am Ende"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Apple Shortcut on Finish"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Atajo de Apple al finalizar"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Raccourci Apple à la fin"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "終了時のAppleショートカット"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "종료 시 Apple 단축어"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Atalho da Apple ao encerrar"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Apple Shortcut при завершении"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "结束时运行 Apple 快捷指令"
++          }
++        }
++      }
++    },
++    "Apple Shortcut при запуске" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Apple-Shortcut beim Start"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Apple Shortcut on Start"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Atajo de Apple al iniciar"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Raccourci Apple au démarrage"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "開始時のAppleショートカット"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "시작 시 Apple 단축어"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Atalho da Apple ao iniciar"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Apple Shortcut при запуске"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "启动时运行 Apple 快捷指令"
++          }
++        }
++      }
++    },
+     "Apple Shortcuts" : {
+       "localizations" : {
+         "de" : {
+@@ -140086,6 +140202,64 @@
+         }
+       }
+     },
++    "youtube.com" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "youtube.com"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "youtube.com"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "youtube.com"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "youtube.com"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "youtube.com"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "youtube.com"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "youtube.com"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "youtube.com"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "youtube.com"
++          }
++        }
++      }
++    },
+     "© 2026 Abue Ammar · Released under AGPL-3.0" : {
+       "localizations" : {
+         "de" : {
+@@ -140138,20 +140312,194 @@
+         }
+       }
+     },
+-    "Выполнение голосовых команд отключено" : {
++    "Блокировать приложение" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "App blockieren"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Block Application"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Bloquear aplicación"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Bloquer l’application"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "アプリをブロック"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "앱 차단"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Bloquear aplicativo"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Блокировать приложение"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "阻止应用"
++          }
++        }
++      }
++    },
++    "Блокируемые приложения" : {
+       "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Blockierte Apps"
++          }
++        },
+         "en" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Voice commands are off"
++            "value" : "Blocked Applications"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Aplicaciones bloqueadas"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Applications bloquées"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "ブロックするアプリケーション"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "차단된 응용 프로그램"
+           }
+         },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Aplicativos bloqueados"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Блокируемые приложения"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "已阻止的 App"
++          }
++        }
++      }
++    },
++    "Блокируемые сайты" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Blockierte Websites"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Blocked Websites"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Sitios web bloqueados"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Sites web bloqués"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "ブロックするWebサイト"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "차단된 웹 사이트"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Sites bloqueados"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Блокируемые сайты"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "已阻止的网站"
++          }
++        }
++      }
++    },
++    "Выполнение голосовых команд отключено" : {
++      "localizations" : {
+         "de" : {
+           "stringUnit" : {
+             "state" : "translated",
+             "value" : "Sprachbefehle sind aus"
+           }
+         },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Voice commands are off"
++          }
++        },
+         "es" : {
+           "stringUnit" : {
+             "state" : "translated",
+@@ -140198,596 +140546,1930 @@
+     },
+     "Выполняется только однозначно распознанная команда. Для сценариев, скриптов и ссылок требуется подтверждение." : {
+       "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Nur ein eindeutig erkannter Befehl wird ausgeführt. Für Workflows, Skripte und Links ist eine Bestätigung nötig."
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Only a clearly recognized command runs. Workflows, scripts and links need confirmation."
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Solo se ejecuta un comando reconocido con claridad. Los flujos, scripts y enlaces requieren confirmación."
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Seule une commande clairement reconnue s’exécute. Les workflows, scripts et liens demandent une confirmation."
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "明確に認識されたコマンドだけを実行します。ワークフロー、スクリプト、リンクには確認が必要です。"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "명확하게 인식된 명령만 실행됩니다. 워크플로, 스크립트, 링크는 확인이 필요합니다."
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Apenas um comando claramente reconhecido é executado. Fluxos, scripts e links exigem confirmação."
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Выполняется только однозначно распознанная команда. Для сценариев, скриптов и ссылок требуется подтверждение."
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "仅执行明确识别出的命令。工作流、脚本和链接需要确认。"
++          }
++        }
++      }
++    },
++    "Голосовой ввод отключён в настройках AI" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Spracheingabe ist in den AI-Einstellungen aus"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Voice input is off in AI settings"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "La entrada de voz está desactivada en los ajustes de IA"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "La saisie vocale est désactivée dans les réglages IA"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "AI 設定で音声入力がオフになっています"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "AI 설정에서 음성 입력이 꺼져 있습니다"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "A entrada de voz está desativada nos ajustes de IA"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Голосовой ввод отключён в настройках AI"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "AI 设置中语音输入已关闭"
++          }
++        }
++      }
++    },
++    "Голосовые команды" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Sprachbefehle"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Voice commands"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Comandos de voz"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Commandes vocales"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "音声コマンド"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "음성 명령"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Comandos de voz"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Голосовые команды"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "语音命令"
++          }
++        }
++      }
++    },
++    "Голосовые сценарии и автоматизация" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Sprach-Workflows und Automatisierung"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Voice Workflows and Automation"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Flujos de trabajo por voz y automatización"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Workflows vocaux et automatisation"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "音声ワークフローと自動化"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "음성 워크플로 및 자동화"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Fluxos de trabalho por voz e automação"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Голосовые сценарии и автоматизация"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "语音工作流与自动化"
++          }
++        }
++      }
++    },
++    "Готово" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Fertig"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Done"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Hecho"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Terminé"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "完了"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "완료됨"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Concluído"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Готово"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "完成"
++          }
++        }
++      }
++    },
++    "Длительность: %lld мин" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Dauer: %lld Min."
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Duration: %lld min"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Duración: %lld min"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Durée : %lld min"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "所要時間: %lld分"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "기간: %lld분"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Duração: %lld min"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Длительность: %lld мин"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "时长：%lld 分钟"
++          }
++        }
++      }
++    },
++    "Добавить" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Hinzufügen"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Add"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Añadir"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Ajouter"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "追加"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "추가"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Adicionar"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Добавить"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "添加"
++          }
++        }
++      }
++    },
++    "Добавить приложение…" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "App hinzufügen…"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Add Application…"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Añadir aplicación…"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Ajouter une application…"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "アプリケーションを追加…"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "응용 프로그램 추가…"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Adicionar aplicativo…"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Добавить приложение…"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "添加 App…"
++          }
++        }
++      }
++    },
++    "Завершить" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Beenden"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Finish"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Finalizar"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Terminer"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "終了"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "종료"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Concluir"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Завершить"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "结束"
++          }
++        }
++      }
++    },
++    "Завершить сеанс" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Sitzung beenden"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "End Session"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Finalizar sesión"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Terminer la session"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "セッションを終了"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "세션 종료"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Encerrar sessão"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Завершить сеанс"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "结束会话"
++          }
++        }
++      }
++    },
++    "Завершить фокус" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Fokus beenden"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "End Focus"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Finalizar el enfoque"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Terminer le focus"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "フォーカスを終了"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "집중 종료"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Encerrar o foco"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Завершить фокус"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "结束专注"
++          }
++        }
++      }
++    },
++    "Изменить голосовой псевдоним" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Sprach-Alias ändern"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Change voice alias"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Cambiar alias de voz"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Modifier l’alias vocal"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "音声エイリアスを変更"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "음성 별칭 변경"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Alterar apelido de voz"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Изменить голосовой псевдоним"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "更改语音别名"
++          }
++        }
++      }
++    },
++    "Исключить из списка блокировки" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Aus der Sperrliste entfernen"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Remove from Blocked List"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Quitar de la lista de bloqueo"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Retirer de la liste des blocages"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "ブロックリストから削除"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "차단 목록에서 제거"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Remover da lista de bloqueio"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Исключить из списка блокировки"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "从阻止列表中移除"
++          }
++        }
++      }
++    },
++    "Какую команду выполнить?" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Welcher Befehl soll ausgeführt werden?"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Which command should run?"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "¿Qué comando ejecutar?"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Quelle commande exécuter ?"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "どのコマンドを実行しますか？"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "어떤 명령을 실행할까요?"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Qual comando executar?"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Какую команду выполнить?"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "要运行哪个命令？"
++          }
++        }
++      }
++    },
++    "Концентрация" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Fokus"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Focus"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Enfoque"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Focus"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "フォーカス"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "집중"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Foco"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Концентрация"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "专注"
++          }
++        }
++      }
++    },
++    "Название профиля" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Profilname"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Profile Name"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Nombre del perfil"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Nom du profil"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "プロファイル名"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "프로필 이름"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Nome do perfil"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Название профиля"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "配置文件名称"
++          }
++        }
++      }
++    },
++    "Например: телега; тг; телеграмм" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Zum Beispiel: telegram; tg; telegram"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "For example: telegram; tg; telegram"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Por ejemplo: telegram; tg; telegram"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Par exemple : telegram ; tg ; telegram"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "例: telegram、tg、telegram"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "예: telegram, tg, telegram"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Por exemplo: telegram; tg; telegram"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Например: телега; тг; телеграмм"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "例如：telegram；tg；telegram"
++          }
++        }
++      }
++    },
++    "Настройки фокуса…" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Fokus-Einstellungen…"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Focus Settings…"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Ajustes de enfoque…"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Réglages du focus…"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "フォーカス設定…"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "집중 설정…"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Ajustes do foco…"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Настройки фокуса…"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "专注设置…"
++          }
++        }
++      }
++    },
++    "Настройте профиль и запустите таймер" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Profil einrichten und Timer starten"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Set up a profile and start the timer"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Configura un perfil e inicia el temporizador"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Configurez un profil et lancez le minuteur"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "プロファイルを設定してタイマーを開始"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "프로필을 설정하고 타이머 시작"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Configure um perfil e inicie o cronômetro"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Настройте профиль и запустите таймер"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "配置配置文件并启动计时器"
++          }
++        }
++      }
++    },
++    "Начать" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Starten"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Start"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Iniciar"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Démarrer"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "開始"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "시작"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Iniciar"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Начать"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "开始"
++          }
++        }
++      }
++    },
++    "Начать сеанс" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Sitzung starten"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Start Session"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Iniciar sesión"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Démarrer la session"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "セッションを開始"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "세션 시작"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Iniciar sessão"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Начать сеанс"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "开始会话"
++          }
++        }
++      }
++    },
++    "Ничего не выполнять" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Nichts tun"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Do Nothing"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "No hacer nada"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Ne rien faire"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "何もしない"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "아무것도 하지 않음"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Não fazer nada"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Ничего не выполнять"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "不执行任何操作"
++          }
++        }
++      }
++    },
++    "Ограничения" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Einschränkungen"
++          }
++        },
+         "en" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Only a clearly recognized command runs. Workflows, scripts and links need confirmation."
++            "value" : "Limitations"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Limitaciones"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Limites"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "制限"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "제한 사항"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Limitações"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Ограничения"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "限制"
++          }
++        }
++      }
++    },
++    "Отключено" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Aus"
+           }
+         },
+-        "de" : {
++        "en" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Nur ein eindeutig erkannter Befehl wird ausgeführt. Für Workflows, Skripte und Links ist eine Bestätigung nötig."
++            "value" : "Off"
+           }
+         },
+         "es" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Solo se ejecuta un comando reconocido con claridad. Los flujos, scripts y enlaces requieren confirmación."
++            "value" : "Desactivado"
+           }
+         },
+         "fr" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Seule une commande clairement reconnue s’exécute. Les workflows, scripts et liens demandent une confirmation."
++            "value" : "Désactivé"
+           }
+         },
+         "ja" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "明確に認識されたコマンドだけを実行します。ワークフロー、スクリプト、リンクには確認が必要です。"
++            "value" : "オフ"
+           }
+         },
+         "ko" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "명확하게 인식된 명령만 실행됩니다. 워크플로, 스크립트, 링크는 확인이 필요합니다."
++            "value" : "꺼짐"
+           }
+         },
+         "pt" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Apenas um comando claramente reconhecido é executado. Fluxos, scripts e links exigem confirmação."
++            "value" : "Desativado"
+           }
+         },
+         "ru" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Выполняется только однозначно распознанная команда. Для сценариев, скриптов и ссылок требуется подтверждение."
++            "value" : "Отключено"
+           }
+         },
+         "zh-Hans" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "仅执行明确识别出的命令。工作流、脚本和链接需要确认。"
++            "value" : "关闭"
+           }
+         }
+       }
+     },
+-    "Голосовой ввод отключён в настройках AI" : {
++    "Отмена" : {
+       "localizations" : {
+-        "en" : {
++        "de" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Voice input is off in AI settings"
++            "value" : "Abbrechen"
+           }
+         },
+-        "de" : {
++        "en" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Spracheingabe ist in den AI-Einstellungen aus"
++            "value" : "Cancel"
+           }
+         },
+         "es" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "La entrada de voz está desactivada en los ajustes de IA"
++            "value" : "Cancelar"
+           }
+         },
+         "fr" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "La saisie vocale est désactivée dans les réglages IA"
++            "value" : "Annuler"
+           }
+         },
+         "ja" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "AI 設定で音声入力がオフになっています"
++            "value" : "キャンセル"
+           }
+         },
+         "ko" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "AI 설정에서 음성 입력이 꺼져 있습니다"
++            "value" : "취소"
+           }
+         },
+         "pt" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "A entrada de voz está desativada nos ajustes de IA"
++            "value" : "Cancelar"
+           }
+         },
+         "ru" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Голосовой ввод отключён в настройках AI"
++            "value" : "Отмена"
+           }
+         },
+         "zh-Hans" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "AI 设置中语音输入已关闭"
++            "value" : "取消"
+           }
+         }
+       }
+     },
+-    "Голосовые команды" : {
++    "Пауза" : {
+       "localizations" : {
+-        "en" : {
++        "de" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Voice commands"
++            "value" : "Pausieren"
+           }
+         },
+-        "de" : {
++        "en" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Sprachbefehle"
++            "value" : "Pause"
+           }
+         },
+         "es" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Comandos de voz"
++            "value" : "Pausar"
+           }
+         },
+         "fr" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Commandes vocales"
++            "value" : "Mettre en pause"
+           }
+         },
+         "ja" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "音声コマンド"
++            "value" : "一時停止"
+           }
+         },
+         "ko" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "음성 명령"
++            "value" : "일시 정지"
+           }
+         },
+         "pt" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Comandos de voz"
++            "value" : "Pausar"
+           }
+         },
+         "ru" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Голосовые команды"
++            "value" : "Пауза"
+           }
+         },
+         "zh-Hans" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "语音命令"
++            "value" : "暂停"
+           }
+         }
+       }
+     },
+-    "Изменить голосовой псевдоним" : {
++    "Пауза фокуса" : {
+       "localizations" : {
+-        "en" : {
++        "de" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Change voice alias"
++            "value" : "Fokus pausieren"
+           }
+         },
+-        "de" : {
++        "en" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Sprach-Alias ändern"
++            "value" : "Pause Focus"
+           }
+         },
+         "es" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Cambiar alias de voz"
++            "value" : "Pausar el enfoque"
+           }
+         },
+         "fr" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Modifier l’alias vocal"
++            "value" : "Mettre le focus en pause"
+           }
+         },
+         "ja" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "音声エイリアスを変更"
++            "value" : "フォーカスを一時停止"
+           }
+         },
+         "ko" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "음성 별칭 변경"
++            "value" : "집중 일시 정지"
+           }
+         },
+         "pt" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Alterar apelido de voz"
++            "value" : "Pausar o foco"
+           }
+         },
+         "ru" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Изменить голосовой псевдоним"
++            "value" : "Пауза фокуса"
+           }
+         },
+         "zh-Hans" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "更改语音别名"
++            "value" : "暂停专注"
+           }
+         }
+       }
+     },
+-    "Какую команду выполнить?" : {
++    "Поддомены блокируются вместе с основным доменом." : {
+       "localizations" : {
+-        "en" : {
++        "de" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Which command should run?"
++            "value" : "Subdomains werden mit der Hauptdomain blockiert."
+           }
+         },
+-        "de" : {
++        "en" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Welcher Befehl soll ausgeführt werden?"
++            "value" : "Subdomains are blocked along with the main domain."
+           }
+         },
+         "es" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "¿Qué comando ejecutar?"
++            "value" : "Los subdominios se bloquean junto con el dominio principal."
+           }
+         },
+         "fr" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Quelle commande exécuter ?"
++            "value" : "Les sous-domaines sont bloqués avec le domaine principal."
+           }
+         },
+         "ja" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "どのコマンドを実行しますか？"
++            "value" : "サブドメインもメインドメインと一緒にブロックされます。"
+           }
+         },
+         "ko" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "어떤 명령을 실행할까요?"
++            "value" : "하위 도메인은 기본 도메인과 함께 차단됩니다."
+           }
+         },
+         "pt" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Qual comando executar?"
++            "value" : "Subdomínios são bloqueados junto com o domínio principal."
+           }
+         },
+         "ru" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Какую команду выполнить?"
++            "value" : "Поддомены блокируются вместе с основным доменом."
+           }
+         },
+         "zh-Hans" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "要运行哪个命令？"
++            "value" : "子域名会随主域名一起被阻止。"
+           }
+         }
+       }
+     },
+-    "Например: телега; тг; телеграмм" : {
++    "Поиск команды, приложения или фразы" : {
+       "localizations" : {
+-        "en" : {
++        "de" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "For example: telegram; tg; telegram"
++            "value" : "Befehl, App oder Phrase suchen"
+           }
+         },
+-        "de" : {
++        "en" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Zum Beispiel: telegram; tg; telegram"
++            "value" : "Search a command, app or phrase"
+           }
+         },
+         "es" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Por ejemplo: telegram; tg; telegram"
++            "value" : "Buscar un comando, una app o una frase"
+           }
+         },
+         "fr" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Par exemple : telegram ; tg ; telegram"
++            "value" : "Rechercher une commande, une app ou une phrase"
+           }
+         },
+         "ja" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "例: telegram、tg、telegram"
++            "value" : "コマンド、アプリ、フレーズを検索"
+           }
+         },
+         "ko" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "예: telegram, tg, telegram"
++            "value" : "명령, 앱 또는 구문 검색"
+           }
+         },
+         "pt" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Por exemplo: telegram; tg; telegram"
++            "value" : "Pesquisar um comando, app ou frase"
+           }
+         },
+         "ru" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Например: телега; тг; телеграмм"
++            "value" : "Поиск команды, приложения или фразы"
+           }
+         },
+         "zh-Hans" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "例如：telegram；tg；telegram"
++            "value" : "搜索命令、应用或短语"
+           }
+         }
+       }
+     },
+-    "Отключено" : {
++    "Поиск приложения" : {
+       "localizations" : {
+-        "en" : {
++        "de" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Off"
++            "value" : "Apps suchen"
+           }
+         },
+-        "de" : {
++        "en" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Aus"
++            "value" : "Search Applications"
+           }
+         },
+         "es" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Desactivado"
++            "value" : "Buscar aplicaciones"
+           }
+         },
+         "fr" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Désactivé"
++            "value" : "Rechercher des applications"
+           }
+         },
+         "ja" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "オフ"
++            "value" : "アプリケーションを検索"
+           }
+         },
+         "ko" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "꺼짐"
++            "value" : "응용 프로그램 검색"
+           }
+         },
+         "pt" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Desativado"
++            "value" : "Buscar aplicativos"
+           }
+         },
+         "ru" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Отключено"
++            "value" : "Поиск приложения"
+           }
+         },
+         "zh-Hans" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "关闭"
++            "value" : "搜索 App"
+           }
+         }
+       }
+     },
+-    "Отмена" : {
++    "Показать все голосовые команды" : {
+       "localizations" : {
+-        "en" : {
++        "de" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Cancel"
++            "value" : "Alle Sprachbefehle anzeigen"
+           }
+         },
+-        "de" : {
++        "en" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Abbrechen"
++            "value" : "Show all voice commands"
+           }
+         },
+         "es" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Cancelar"
++            "value" : "Mostrar todos los comandos de voz"
+           }
+         },
+         "fr" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Annuler"
++            "value" : "Afficher toutes les commandes vocales"
+           }
+         },
+         "ja" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "キャンセル"
++            "value" : "すべての音声コマンドを表示"
+           }
+         },
+         "ko" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "취소"
++            "value" : "모든 음성 명령 표시"
+           }
+         },
+         "pt" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Cancelar"
++            "value" : "Mostrar todos os comandos de voz"
+           }
+         },
+         "ru" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Отмена"
++            "value" : "Показать все голосовые команды"
+           }
+         },
+         "zh-Hans" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "取消"
++            "value" : "显示所有语音命令"
+           }
+         }
+       }
+     },
+-    "Поиск команды, приложения или фразы" : {
++    "Продолжить" : {
+       "localizations" : {
+-        "en" : {
++        "de" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Search a command, app or phrase"
++            "value" : "Fortsetzen"
+           }
+         },
+-        "de" : {
++        "en" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Befehl, App oder Phrase suchen"
++            "value" : "Resume"
+           }
+         },
+         "es" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Buscar un comando, una app o una frase"
++            "value" : "Reanudar"
+           }
+         },
+         "fr" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Rechercher une commande, une app ou une phrase"
++            "value" : "Reprendre"
+           }
+         },
+         "ja" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "コマンド、アプリ、フレーズを検索"
++            "value" : "再開"
+           }
+         },
+         "ko" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "명령, 앱 또는 구문 검색"
++            "value" : "재개"
+           }
+         },
+         "pt" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Pesquisar um comando, app ou frase"
++            "value" : "Retomar"
+           }
+         },
+         "ru" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Поиск команды, приложения или фразы"
++            "value" : "Продолжить"
+           }
+         },
+         "zh-Hans" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "搜索命令、应用或短语"
++            "value" : "继续"
+           }
+         }
+       }
+     },
+-    "Показать все голосовые команды" : {
++    "Продолжить фокус" : {
+       "localizations" : {
+-        "en" : {
++        "de" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Show all voice commands"
++            "value" : "Fokus fortsetzen"
+           }
+         },
+-        "de" : {
++        "en" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Alle Sprachbefehle anzeigen"
++            "value" : "Resume Focus"
+           }
+         },
+         "es" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Mostrar todos los comandos de voz"
++            "value" : "Reanudar el enfoque"
+           }
+         },
+         "fr" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Afficher toutes les commandes vocales"
++            "value" : "Reprendre le focus"
+           }
+         },
+         "ja" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "すべての音声コマンドを表示"
++            "value" : "フォーカスを再開"
+           }
+         },
+         "ko" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "모든 음성 명령 표시"
++            "value" : "집중 재개"
+           }
+         },
+         "pt" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Mostrar todos os comandos de voz"
++            "value" : "Retomar o foco"
+           }
+         },
+         "ru" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Показать все голосовые команды"
++            "value" : "Продолжить фокус"
+           }
+         },
+         "zh-Hans" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "显示所有语音命令"
++            "value" : "继续专注"
+           }
+         }
+       }
+     },
+     "Произносите команду, удерживая Hyper. Названия допускают небольшие ошибки распознавания." : {
+       "localizations" : {
+-        "en" : {
++        "de" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Say the command while holding Hyper. Names tolerate small recognition errors."
++            "value" : "Sprich den Befehl, während du Hyper hältst. Kleine Erkennungsfehler bei Namen sind erlaubt."
+           }
+         },
+-        "de" : {
++        "en" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Sprich den Befehl, während du Hyper hältst. Kleine Erkennungsfehler bei Namen sind erlaubt."
++            "value" : "Say the command while holding Hyper. Names tolerate small recognition errors."
+           }
+         },
+         "es" : {
+@@ -140834,20 +142516,136 @@
+         }
+       }
+     },
+-    "Псевдонимы: %@" : {
++    "Профили" : {
+       "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Profile"
++          }
++        },
+         "en" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Aliases: %@"
++            "value" : "Profiles"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Perfiles"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Profils"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "プロファイル"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "프로필"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Perfis"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Профили"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "配置文件"
++          }
++        }
++      }
++    },
++    "Профиль" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Profil"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Profile"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Perfil"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Profil"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "プロファイル"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "프로필"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Perfil"
+           }
+         },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Профиль"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "配置文件"
++          }
++        }
++      }
++    },
++    "Псевдонимы: %@" : {
++      "localizations" : {
+         "de" : {
+           "stringUnit" : {
+             "state" : "translated",
+             "value" : "Aliasse: %@"
+           }
+         },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Aliases: %@"
++          }
++        },
+         "es" : {
+           "stringUnit" : {
+             "state" : "translated",
+@@ -140894,16 +142692,16 @@
+     },
+     "Разделяйте точкой с запятой (до 8 названий). Все работают и в поиске Tinycast. Пустое поле удаляет псевдонимы." : {
+       "localizations" : {
+-        "en" : {
++        "de" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Separate with semicolons (up to 8 names). All work in Tinycast search too. An empty field removes the aliases."
++            "value" : "Mit Semikolon trennen (bis zu 8 Namen). Alle funktionieren auch in der Tinycast-Suche. Ein leeres Feld entfernt die Aliasse."
+           }
+         },
+-        "de" : {
++        "en" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Mit Semikolon trennen (bis zu 8 Namen). Alle funktionieren auch in der Tinycast-Suche. Ein leeres Feld entfernt die Aliasse."
++            "value" : "Separate with semicolons (up to 8 names). All work in Tinycast search too. An empty field removes the aliases."
+           }
+         },
+         "es" : {
+@@ -140952,16 +142750,16 @@
+     },
+     "Распознанное название подходит нескольким объектам. Ничего не запускается без выбора." : {
+       "localizations" : {
+-        "en" : {
++        "de" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "The recognized name matches several items. Nothing launches without a choice."
++            "value" : "Der erkannte Name passt auf mehrere Objekte. Ohne Auswahl wird nichts gestartet."
+           }
+         },
+-        "de" : {
++        "en" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Der erkannte Name passt auf mehrere Objekte. Ohne Auswahl wird nichts gestartet."
++            "value" : "The recognized name matches several items. Nothing launches without a choice."
+           }
+         },
+         "es" : {
+@@ -141010,16 +142808,16 @@
+     },
+     "Совпадений нет" : {
+       "localizations" : {
+-        "en" : {
++        "de" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "No matches"
++            "value" : "Keine Treffer"
+           }
+         },
+-        "de" : {
++        "en" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Keine Treffer"
++            "value" : "No matches"
+           }
+         },
+         "es" : {
+@@ -141066,20 +142864,78 @@
+         }
+       }
+     },
+-    "Сохранить" : {
++    "Создать профиль" : {
+       "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Profil erstellen"
++          }
++        },
+         "en" : {
+           "stringUnit" : {
+             "state" : "translated",
+-            "value" : "Save"
++            "value" : "Create Profile"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Crear perfil"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Créer un profil"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "プロファイルを作成"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "프로필 생성"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Criar perfil"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Создать профиль"
+           }
+         },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "创建配置文件"
++          }
++        }
++      }
++    },
++    "Сохранить" : {
++      "localizations" : {
+         "de" : {
+           "stringUnit" : {
+             "state" : "translated",
+             "value" : "Sichern"
+           }
+         },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Save"
++          }
++        },
+         "es" : {
+           "stringUnit" : {
+             "state" : "translated",
+@@ -141124,6 +142980,180 @@
+         }
+       }
+     },
++    "Сценарий при завершении" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Workflow am Ende"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Workflow on Finish"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Flujo de trabajo al finalizar"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Workflow à la fin"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "終了時のワークフロー"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "종료 시 워크플로"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Fluxo de trabalho ao encerrar"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Сценарий при завершении"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "结束时运行工作流"
++          }
++        }
++      }
++    },
++    "Сценарий при запуске" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Workflow beim Start"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Workflow on Start"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Flujo de trabajo al iniciar"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Workflow au démarrage"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "開始時のワークフロー"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "시작 시 워크플로"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Fluxo de trabalho ao iniciar"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Сценарий при запуске"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "启动时运行工作流"
++          }
++        }
++      }
++    },
++    "Удалить профиль" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Profil löschen"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Delete Profile"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Eliminar perfil"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Supprimer le profil"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "プロファイルを削除"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "프로필 삭제"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Excluir perfil"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Удалить профиль"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "删除配置文件"
++          }
++        }
++      }
++    },
+     "“%@/%@” is unavailable in the Raycast Store." : {
+       "localizations" : {
+         "de" : {
+@@ -141919,4 +143949,4 @@
+     }
+   },
+   "version" : "1.0"
+-}
++}
+\ No newline at end of file
+diff --git a/docs/README.md b/docs/README.md
+index f035da6b..ea678cf9 100644
+--- a/docs/README.md
++++ b/docs/README.md
+@@ -29,6 +29,7 @@ open with an `## Invariants` section; read it before changing anything in that a
+ [clipboard](features/clipboard.md) ·
+ [calculator](features/calculator.md) ·
+ [calendar](features/calendar.md) ·
++[focus](features/focus.md) ·
+ [camera](features/camera.md) ·
+ [emoji](features/emoji.md) ·
+ [dictionary](features/dictionary.md) ·
+diff --git a/docs/features/focus.md b/docs/features/focus.md
+new file mode 100644
+index 00000000..274b1af6
+--- /dev/null
++++ b/docs/features/focus.md
+@@ -0,0 +1,86 @@
++# Focus sessions
++
++A local, deliberately soft concentration timer: profiles hide configured applications and redirect
++blocked tabs in supported browsers, with an optional VoiceCast Workflow or Apple Shortcut at start
++and end. It runs without the Speech Runtime, a microphone, an AI model, a Python process or elevated
++privileges.
++
++## Invariants
++
++- **The model is pure Foundation.** `Features/Focus/Model/FocusProfile.swift` imports only
++  Foundation and holds every value type — profile, session, saved state, domain matching. The
++  `focus-profile-test` harness compiles that file alone, so an AppKit or SwiftUI import breaks the
++  build rather than a test case.
++- **Blocking is soft and reversible.** Applications are hidden with `NSRunningApplication.hide()`,
++  never force-quit, so unsaved work survives. A blocked browser tab is replaced with `about:blank`;
++  background requests, private windows, Firefox/Zen and anything outside the four supported browsers
++  are explicitly out of scope. No `/etc/hosts`, firewall or Network Extension is touched.
++- **System surfaces are never blocked.** `protectedBundleIDs` covers Finder, Dock, loginwindow and
++  both VoiceCast bundle IDs; `addApplication`, `blockApplication` and `blockIfNeeded` all enforce it.
++- **The session is owned by one file.** `Application Support/<bundle id>/focus-sessions.json` is the
++  only state; the coordinator, owned lazily by `AppCore`, is the only writer, and observers installed
++  in `startMonitoring()` are removed in `prepareForTermination()`. A relaunch restores the session and
++  closes an already expired one at the next refresh.
++- **Pause freezes the budget.** `pausedSeconds` stores the remaining time and `resumeAt` an optional
++  automatic break end; `refresh()` resumes from either a timer tick, a wake notification or the next
++  launch. Enforcement stops while paused.
++- **The voice grammar is deterministic.** `parseFocus` matches fixed phrase lists and explicit
++  prefixes — no edit distance, so general dictation still falls through to Quick AI. Durations are
++  validated in the grammar and again in the coordinator (5–240 minutes to start, 1–60 for a pause or
++  a website exception).
++- **AppleScript never interpolates untrusted text.** Domains are normalized to a host-name-only
++  grammar before storage, and the tab URL is quoted and backslash-escaped before the compare-and-set
++  script. `osascript` runs on a detached utility task, so the palette and the voice loop never wait on
++  an Apple Event; the result is applied only if the session is still running and unpaused.
++
++## Settings and UI
++
++Open **Settings → Focus**. Create a profile, set a duration (5–240 minutes), choose apps and domains,
++and optionally select existing VoiceCast Workflows and Apple Shortcuts for start/finish actions.
++Shortcuts can open an IDE, arrange windows, or change macOS's Do Not Disturb mode. The session timer
++is displayed in a small nonactivating, draggable Liquid Glass panel. Start, pause and finish are also
++in the menu bar.
++
++## Voice commands
++
++Existing **Voice Ask → Run VoiceCast commands** must be enabled. Examples:
++
++- `Начни фокус на 45 минут`
++- `Запусти профиль Работа на час`
++- `Пауза фокуса на 5 минут` (automatically resumes after the break)
++- `Продолжи фокус`, `Заверши фокус`, `Сколько осталось фокуса`
++- `Заблокируй приложение Telegram` (only for the active session)
++- `Заблокируй сайт youtube.com` (only for the active session)
++- `Разреши сайт youtube.com на 5 минут`
++
++The existing `Включи фокус` system action still toggles **macOS Do Not Disturb** and is deliberately
++distinct from starting a timed VoiceCast Focus session.
++
++## Scope and limitations
++
++- **Apps**: `NSWorkspace.didActivateApplicationNotification` hides configured applications when they
++  activate. They are **not force-quit**, so unsaved work is preserved. This is a soft restriction, not
++  a security or parental-control mechanism.
++- **Websites**: while Safari, Google Chrome, Brave or Edge is frontmost, VoiceCast checks the active
++  tab every ~2 seconds using AppleScript and redirects a blocked URL to `about:blank`. macOS might
++  request Automation consent. Background tabs, private windows, Firefox/Zen and network requests
++  outside those tabs are **not** blocked. Existing URLs are not automatically restored at session
++  end.
++- **Network-wide filtering** would require a separately signed and provisioned Network Extension
++  (and user approval); it is **not** included.
++- **System Focus** is not modified by undocumented macOS file writes. If needed, use a configured
++  Apple Shortcut as the profile's start/end action.
++
++## Build and verification
++
++The feature ships in the fork's normal tree and patch queue, so no separate patch needs applying:
++
++```bash
++xcodegen generate
++./Scripts/run-tests.sh focus-profile-test
++./Scripts/run-tests.sh voice-command-test
++```
++
++`project.yml` discovers the entire `Tinycast/` source tree, so running XcodeGen is required after
++adding the `Focus` sources. `.1tuz/patches/0022-focus-sessions.patch` carries the feature through the
++daily upstream sync, and `.1tuz/gate.sh` runs `focus-profile-test` and requires the source layout.

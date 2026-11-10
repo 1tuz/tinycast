@@ -123,6 +123,13 @@ struct VoiceCommandTest {
             fatalError("Ambiguous target executed instead of offering a choice")
         }
         tested += 1
+        expect("Начни фокус на сорок пять минут", .action(.focus(.start(profile: nil, minutes: 45))))
+        expect("Запусти профиль работа на час", .action(.focus(.start(profile: "работа", minutes: 60))))
+        expect("Пауза фокуса на 5 минут", .action(.focus(.pause(minutes: 5))))
+        expect("Продолжи фокус", .action(.focus(.resume)))
+        expect("Заверши фокус", .action(.focus(.stop)))
+        expect("Заблокируй приложение Telegram", .action(.focus(.blockApplication("telegram"))))
+        expect("Разреши сайт youtube.com на 5 минут", .action(.focus(.allowWebsite("youtube com", minutes: 5))))
         // The catalog's static example phrases must be parsed by the same command grammar.
         for item in P.builtinCatalog {
             for phrase in item.phrases {

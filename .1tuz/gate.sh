@@ -13,6 +13,13 @@ test -f Tinycast/Features/VoiceAsk/SpeechRuntimeVoiceAsk.swift || { echo "::erro
 test -f Tinycast/Features/VoiceAsk/SpeechVoiceCommandRouter.swift || { echo "::error::Voice command router missing"; exit 1; }
 test -f Tinycast/Features/VoiceAsk/SpeechVoiceCommandParser.swift || { echo "::error::Voice command parser missing"; exit 1; }
 test -f Tinycast/Features/VoiceAsk/SpeechVoiceCommandCatalog.swift || { echo "::error::Voice command catalog missing"; exit 1; }
+test -f Tinycast/Features/Focus/Model/FocusProfile.swift || { echo "::error::Focus model missing"; exit 1; }
+test -f Tinycast/Features/Focus/Service/FocusSessionCoordinator.swift || { echo "::error::Focus coordinator missing"; exit 1; }
+test -f docs/features/focus.md || { echo "::error::Focus feature doc missing"; exit 1; }
+grep -qF 'FocusSessionCoordinator' Tinycast/App/AppCore.swift \
+  || { echo "::error::Focus coordinator is no longer owned by AppCore"; exit 1; }
+! grep -qE '^import (AppKit|SwiftUI|Cocoa)' Tinycast/Features/Focus/Model/*.swift \
+  || { echo "::error::Focus model must stay Foundation-only"; exit 1; }
 if grep -RniE 'CodexRealtime|thread/realtime' Tinycast/Features/VoiceAsk; then
   echo "::error::obsolete cloud audio path detected"
   exit 1
@@ -61,6 +68,10 @@ grep -qF 'stapler validate' Scripts/install.sh \
   || { echo "::error::quarantine-removal bypass reappeared in the release path"; exit 1; }
 grep -qF 'quarantine is cleared for the installed copy' Scripts/install.sh \
   || { echo "::error::installer lost the guarded non-notarized quarantine fallback"; exit 1; }
+grep -qF 'VOICECAST_STRIP_QUARANTINE=1 /bin/bash' Scripts/release-notes.sh \
+  || { echo "::error::published install command lost the quarantine fallback"; exit 1; }
+grep -qF 'VOICECAST_STRIP_QUARANTINE' Scripts/install.sh \
+  || { echo "::error::installer no longer honours VOICECAST_STRIP_QUARANTINE"; exit 1; }
 grep -qF 'Gatekeeper rejected the app' Scripts/install.sh \
   || { echo "::error::installer no longer enforces Gatekeeper on Developer ID builds"; exit 1; }
 grep -qF 'The app is not notarized' Scripts/install.sh \
@@ -116,7 +127,7 @@ for t in hotkey-test ai-provider-test updates-test ranking-test developer-utilit
   calendar-test window-layout-test window-switch-test compact-bar-test \
   clipboard-search-test clipboard-thumbnail-test fallback-test launcher-settings-file-test \
   settings-backup-test hotkey-dispatch-test workflow-test voice-command-test \
-  voice-alias-test installer-fallback-test; do
+  voice-alias-test focus-profile-test installer-fallback-test; do
   echo "▸ $t"
   if ! ./Scripts/run-tests.sh "$t" > "$TMP/gate-$t.log" 2>&1; then
     echo "::error::harness failed: $t"

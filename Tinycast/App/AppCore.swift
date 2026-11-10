@@ -221,6 +221,8 @@ final class AppCore {
         chats: aiChats, settings: settings, palette: palette,
         paletteCoordinator: paletteCoordinator, core: self)
     @ObservationIgnored private(set) lazy var speechVoice = SpeechRuntimeVoiceAsk(core: self)
+    /// Focus runs without Speech Runtime, but shares the existing voice command router.
+    @ObservationIgnored private(set) lazy var focus = FocusSessionCoordinator(core: self)
     /// Its own window and lifecycle; the catalog and disambiguation UI share one surface.
     @ObservationIgnored private(set) lazy var voiceCommandCatalogWindow =
         SpeechVoiceCommandCatalogWindow(core: self)
@@ -334,6 +336,7 @@ final class AppCore {
             }
             updateCoordinator.applyEnabled()
             calendarCoordinator.applyEnabled()
+            focus.startMonitoring()
             Task { await appIndex.refresh() }
             Task { await emojiIndex.load(languages: SystemLanguages.preferred) }
             currencyRates.start()
@@ -573,6 +576,7 @@ final class AppCore {
         inputSourceSwitcher.endSession()
         textInjector.prepareForTermination()
         snippetListener.stop()
+        focus.prepareForTermination()
         snippetsStore.stop()
         aiChats.reset()
         chatGPTSubscription.stop()

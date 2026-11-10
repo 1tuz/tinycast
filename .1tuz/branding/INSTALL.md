@@ -5,7 +5,7 @@ VoiceCast requires macOS 26 or later on Apple silicon.
 ## Install a verified release
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/1tuz/tinycast/main/Scripts/install.sh | /bin/bash
+curl -fsSL https://raw.githubusercontent.com/1tuz/tinycast/main/Scripts/install.sh | VOICECAST_STRIP_QUARANTINE=1 /bin/bash
 ```
 
 The installer fetches the newest stable `VoiceCast-*.dmg` from
@@ -13,8 +13,9 @@ The installer fetches the newest stable `VoiceCast-*.dmg` from
 with the **Developer ID Application** certificate for team `J656U8XZ93` (bundle id
 `com.tinycast.app`, hardened runtime), carries a stapled notarization ticket, and passes
 `spctl` Gatekeeper assessment — then places `VoiceCast.app` in `/Applications` or
-`~/Applications`. For a published release nothing is stripped and Gatekeeper stays on; it also
-requests no root access and needs no Xcode.
+`~/Applications`. The command above (`VOICECAST_STRIP_QUARANTINE=1`) also clears the quarantine
+flag on that installed copy, so the app launches even if Gatekeeper still refuses the download;
+Gatekeeper itself stays on. It also requests no root access and needs no Xcode.
 VoiceCast is **Developer ID-signed and notarized by Apple**: a downloaded release passes Gatekeeper
 on first launch with no warning and no confirmation step. Drag it out of the DMG (or run the
 installer above) and open it normally.

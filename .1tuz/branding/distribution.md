@@ -11,12 +11,14 @@ with the hardened runtime and a secure timestamp, notarized by Apple, and
 verified by `Scripts/verify-release.sh`. A downloaded release passes Gatekeeper on first launch:
 no warning and no confirmation step.
 
-The public installer never works around a published release: a Developer ID
-app that fails the team check, the stapled ticket or `spctl` aborts the
-install, and Gatekeeper itself stays enabled system-wide.
-`spctl --master-disable` never appears anywhere in the repository, and the
-release pipeline (`release.yml`, `build-dmg.sh`, `release-notes.sh`) never
-strips a quarantine attribute.
+The public installer always verifies before copying: a Developer ID app that
+fails the team check, the stapled ticket or `spctl` aborts the install, and
+Gatekeeper itself stays enabled system-wide. The published one-liner passes
+`VOICECAST_STRIP_QUARANTINE=1`, which clears the quarantine flag on the copy it
+has just installed after that verification — a fallback so a blocked download
+still launches. `spctl --master-disable` never appears anywhere in the
+repository, and the release pipeline (`release.yml`, `build-dmg.sh`,
+`release-notes.sh`) never strips a quarantine attribute.
 
 A local, self-signed DMG (see [signing.md](signing.md)) can never satisfy
 Gatekeeper. For that build only, `Scripts/install.sh` prints a warning and
@@ -116,8 +118,9 @@ Do this on a Mac with no prior Tinycast/VoiceCast install:
 `Scripts/install.sh` is the same path scripted: download, verify, install.
 Disabling Gatekeeper globally — `spctl --master-disable` — must never happen
 and must never be recommended. Deleting quarantine attributes by hand is
-never needed for a published release or for the installer; the installer
-handles local self-signed builds on its own, as described above.
+never needed: the published command clears the flag on the installed copy as
+part of the install, and the installer handles local self-signed builds on its
+own, as described above.
 
 ## Updating from an old pre-switch Tinycast
 
