@@ -86,12 +86,21 @@ else
         releases="$(curl --retry 3 -fsSL --connect-timeout 15 \
             "https://api.github.com/repos/$repo/releases?per_page=30")" \
             || fail "No VoiceCast DMG found and cannot list pre-releases."
-        line="$(printf '%s\n' "$releases" \
-            | grep -n '"browser_download_url".*\/VoiceCast-[^"]*\.dmg"' | head -1 | cut -d: -f1)"
-        [ -n "$line" ] || fail "No VoiceCast DMG found. Release signing may not be set up yet."
-        asset="$(printf '%s\n' "$releases" | sed -n "${line}s/.*\"browser_download_url\": \"\([^\"]*\)\".*/\1/p")"
-        version="$(printf '%s\n' "$releases" | head -n "$line" \
-            | sed -n 's/^[[:space:]]*"tag_name": "\([^"]*\)".*/\1/p' | tail -1)"
+        pair="$(printf '%s\n' "$releases" | awk '
+            /"tag_name"/ && !found {
+                tag = $0
+                sub(/^.*"tag_name": "/, "", tag); sub(/".*$/, "", tag)
+            }
+            /"browser_download_url"/ && /VoiceCast-[^"]*\.dmg/ && !found {
+                asset = $0
+                sub(/^.*"browser_download_url": "/, "", asset); sub(/".*$/, "", asset)
+                found = 1
+            }
+            END { if (found) printf "%s\t%s\n", tag, asset }
+        ')"
+        [ -n "$pair" ] || fail "No VoiceCast DMG found. Release signing may not be set up yet."
+        version="${pair%%$'\t'*}"
+        asset="${pair#*$'\t'}"
         printf '  %sNo stable VoiceCast release yet; using pre-release %s%s\n' \
             "$bold" "${version:-latest}" "$reset" >&2
     fi
