@@ -17,7 +17,7 @@ final class SnippetsStore {
     private(set) var operationError: String?
 
     private(set) var snippetsDirectory: URL
-    let ephemeral = EphemeralSnippetStore()
+    let ephemeral: EphemeralSnippetStore
     var onSnapshot: ((SnippetRepository.Snapshot) -> Void)?
 
     private var repository: SnippetRepository
@@ -29,8 +29,12 @@ final class SnippetsStore {
     private var watcherGeneration = 0
     private var isStarted = false
 
-    init(repository: SnippetRepository = SnippetRepository()) {
+    init(
+        repository: SnippetRepository = SnippetRepository(),
+        ephemeral: EphemeralSnippetStore = EphemeralSnippetStore()
+    ) {
         self.repository = repository
+        self.ephemeral = ephemeral
         snippetsDirectory = repository.snippetsDirectory
     }
 
@@ -132,6 +136,30 @@ final class SnippetsStore {
 
     func record(id: StoredSnippet.ID) -> StoredSnippet? {
         snippets.first(where: { $0.id == id })
+    }
+
+    /// A disabled snippet is off everywhere, so the browser lists exactly what the launcher does;
+    /// pinned snippets come first.
+    func browserRows(matching query: String) -> [StoredSnippet] {
+        let query = query.trimmingCharacters(in: .whitespaces)
+        let matches = snippets.filter { record in
+            record.snippet.isEnabled
+                && (query.isEmpty
+                    || record.snippet.name.localizedCaseInsensitiveContains(query)
+                    || record.snippet.keyword?.localizedCaseInsensitiveContains(query) == true)
+        }
+        return matches.filter(\.snippet.isPinned) + matches.filter { !$0.snippet.isPinned }
+    }
+
+    /// How many live AI responses the browser shows ahead of its snippets, so an index into
+    /// `browserRows` can be corrected to an index into the screen's combined rows.
+    func liveResponseCount(matching query: String, includeResponses: Bool) -> Int {
+        guard includeResponses else { return 0 }
+        let query = query.trimmingCharacters(in: .whitespaces)
+        return ephemeral.items.filter {
+            $0.expiresAt > Date()
+                && (query.isEmpty || $0.text.localizedCaseInsensitiveContains(query))
+        }.count
     }
 
     private enum RepositoryResult<Value: Sendable>: Sendable {

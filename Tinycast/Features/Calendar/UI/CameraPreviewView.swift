@@ -16,6 +16,7 @@ struct CameraPreviewView: View {
             footer
         }
         .frame(width: Theme.Size.cameraPreview.width)
+        .background(Theme.Colors.panelScrim)
         .background(GlassEffectView())
         .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.dialog, style: .continuous))
     }
@@ -34,7 +35,9 @@ struct CameraPreviewView: View {
             CameraButton(
                 title: String(localized: "Cancel"), keyCaps: ["esc"], emphasis: .secondary,
                 onActivate: onCancel)
-            CameraButton(title: String(localized: "Join"), keyCaps: ["↵"], onActivate: onJoin)
+            CameraButton(
+                title: meeting.link?.actionTitle ?? String(localized: "Join"),
+                keyCaps: ["↵"], onActivate: onJoin)
         }
         .padding(Theme.Spacing.xl)
     }

@@ -173,6 +173,27 @@ final class ClipboardManager {
                 guard let png else { return }
                 await store.addImage(png, sourceBundleID: sourceBundleID)
             }
+            return
         }
+
+        // A copy with no file URL, plain text or image, such as a web page's HTML-only
+        // Clipboard API write, reads as its text through NSAttributedString, RTF before HTML.
+        guard let text = Self.plainText(fromRichTextOn: pb),
+            !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+            text.count <= ClipboardStore.maxTextLength
+        else { return }
+        store.addText(text, sourceBundleID: sourceBundleID)
+    }
+
+    /// The HTML importer runs WebKit on the main actor, so oversized fragments are skipped.
+    private static let maxImportedHTMLBytes = 256 * 1024
+
+    static func plainText(fromRichTextOn pasteboard: NSPasteboard) -> String? {
+        if let rtf = pasteboard.data(forType: .rtf) {
+            return NSAttributedString(rtf: rtf, documentAttributes: nil)?.string
+        }
+        guard let html = pasteboard.data(forType: .html), html.count <= maxImportedHTMLBytes
+        else { return nil }
+        return NSAttributedString(html: html, documentAttributes: nil)?.string
     }
 }

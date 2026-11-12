@@ -522,6 +522,9 @@ private struct ChatDocumentChip: View {
         .padding(.horizontal, metrics.spacing.sm)
         .padding(.vertical, metrics.spacing.xxs)
         .background(Capsule().fill(Theme.Colors.controlSurface))
+        // One element: the filename Text inside the selection is an AppKit element whose
+        // description called itself until the stack overflowed, so any AX client crashed the app.
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("Attached file \(document.name)")
     }
 }

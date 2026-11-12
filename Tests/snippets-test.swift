@@ -15,6 +15,9 @@ struct SnippetsTests {
         testEditorSession()
         testRaycastImport()
         try testMarkdownCodec()
+        try testPinnedCodec()
+        testPinnedOrderingAndDefaultAction()
+        try await testPinnedSelectionAccountsForLiveResponses()
         try testRepositoryStorage()
         try await testRepositoryConcurrency()
         try await testDeliveryQueueAndPasteboard()
@@ -248,6 +251,93 @@ struct SnippetsTests {
             fileURL: fileURL)
         expectParseError(
             "the renamed show_hud key is rejected", content: "---\nshow_hud: true\n---\n", fileURL: fileURL)
+    }
+
+    private static func testPinnedCodec() throws {
+        let fileURL = URL(fileURLWithPath: "/tmp/pinned-codec.md")
+
+        // Unpinned by default, and its file stays byte-identical to the old format.
+        let plain = Snippet(name: "Plain", text: "Body")
+        let plainSource = SnippetMarkdownSerializer.serialize(plain)
+        check(
+            "an unpinned snippet serializes without a pinned key",
+            !plainSource.contains("pinned"))
+        let parsedPlain = try SnippetMarkdownSerializer.parse(content: plainSource, fileURL: fileURL)
+        check("an unpinned snippet round-trips as unpinned", parsedPlain == plain)
+
+        let pinned = Snippet(name: "Kept", text: "Top", isPinned: true)
+        let pinnedSource = SnippetMarkdownSerializer.serialize(pinned)
+        check(
+            "a pinned snippet emits the pinned key",
+            pinnedSource.contains("show_confirmation: false\npinned: true\n---\n"))
+        let parsedPinned = try SnippetMarkdownSerializer.parse(content: pinnedSource, fileURL: fileURL)
+        check("a pinned snippet round-trips as pinned", parsedPinned == pinned)
+    }
+
+    /// Pinning moves a snippet within the browser's snippet rows; live AI responses sit ahead of
+    /// them, so the coordinator must correct the index it writes into the palette's selection.
+    private static func testPinnedSelectionAccountsForLiveResponses() async throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent(
+            "tinycast-snippets-pinsel-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+
+        let repository = SnippetRepository(
+            bundleIdentifier: "com.example.pinsel",
+            applicationSupportRoot: root)
+        let store = SnippetsStore(
+            repository: repository,
+            ephemeral: EphemeralSnippetStore(fileURL: root.appendingPathComponent("responses.json")))
+        await store.start()
+        defer { store.stop() }
+        _ = try await store.create(Snippet(name: "Alpha", text: "A"))
+        let beta = try await store.create(Snippet(name: "Beta", text: "B"))
+        _ = try await store.create(Snippet(name: "Gamma", text: "G"))
+
+        // A live response ahead of the snippet rows; capture() prunes expired ones itself.
+        try store.ephemeral.capture(id: UUID(), text: "reply one")
+        check(
+            "the captured response is counted ahead of the snippet rows",
+            store.liveResponseCount(matching: "", includeResponses: true) == 1)
+        check(
+            "responses excluded by settings add no offset",
+            store.liveResponseCount(matching: "", includeResponses: false) == 0)
+        check(
+            "a query matching no response text counts none",
+            store.liveResponseCount(matching: "zzz", includeResponses: true) == 0)
+
+        // Pinning Beta reorders it ahead of Alpha and Gamma; with one live row ahead of the
+        // snippet rows, its combined-row index is snippet index + response count.
+        var pinned = beta
+        pinned.snippet.isPinned = true
+        let saved = try await store.save(pinned)
+        check("saving carries the pinned flag through the repository", saved.snippet.isPinned)
+        let rows = store.browserRows(matching: "")
+        let snippetIndex = rows.firstIndex { $0.id == saved.id }
+        check("the pinned snippet leads the browser rows", snippetIndex == 0)
+        let selectedIndex = snippetIndex.map {
+            $0 + store.liveResponseCount(matching: "", includeResponses: true)
+        }
+        check(
+            "the palette selection lands on the pinned row, not a live response",
+            selectedIndex == 1)
+    }
+
+    private static func testPinnedOrderingAndDefaultAction() {
+        check(
+            "the default action is paste",
+            SnippetDefaultAction(rawValue: "paste") == .paste)
+        check(
+            "the raw value round-trips for the settings file",
+            SnippetDefaultAction.allCases.map(\.rawValue) == ["paste", "copy"])
+        check(
+            "each action's alternate is the other",
+            SnippetDefaultAction.paste.alternate == .copy
+                && SnippetDefaultAction.copy.alternate == .paste)
+        check(
+            "an unknown raw value is rejected, so a settings file can't invent one",
+            SnippetDefaultAction(rawValue: "cut") == nil)
     }
 
     private static func testRepositoryStorage() throws {

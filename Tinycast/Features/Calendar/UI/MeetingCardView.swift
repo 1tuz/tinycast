@@ -83,7 +83,7 @@ enum MeetingActionsMenu {
         if meeting.link != nil {
             items.append(
                 PopoverMenuItem(
-                    title: String(localized: "Join Meeting"), systemImage: "video.fill", shortcut: "↵"
+                    title: meeting.link!.actionTitle, systemImage: meeting.link!.provider.sfSymbol, shortcut: "↵"
                 ) {
                     core.calendarCoordinator.join(meeting)
                 })

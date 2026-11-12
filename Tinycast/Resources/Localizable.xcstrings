@@ -143947,6 +143947,181 @@
         }
       }
     }
+,
+    "Copy Snippet" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copy Snippet"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy Snippet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copy Snippet"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copy Snippet"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copy Snippet"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copy Snippet"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copy Snippet"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copy Snippet"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copy Snippet"
+          }
+        }
+      }
+    },
+    "Pin Snippet" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Pin Snippet"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pin Snippet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Pin Snippet"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Pin Snippet"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Pin Snippet"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Pin Snippet"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Pin Snippet"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Pin Snippet"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Pin Snippet"
+          }
+        }
+      }
+    },
+    "Unpin Snippet" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Unpin Snippet"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unpin Snippet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Unpin Snippet"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Unpin Snippet"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Unpin Snippet"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Unpin Snippet"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Unpin Snippet"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Unpin Snippet"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Unpin Snippet"
+          }
+        }
+      }
+    }
   },
   "version" : "1.0"
 }

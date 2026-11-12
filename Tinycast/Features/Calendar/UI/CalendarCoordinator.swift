@@ -379,16 +379,17 @@ final class CalendarCoordinator {
     private func joinAfterGate(
         _ meeting: MeetingEvent, link: MeetingLink, uninvited: Bool
     ) async {
-        // The preview is itself a confirmation, so it stands in for one when both are on.
-        if settings.cameraPreview {
+        // The preview is a join aid: a conversation link has no camera to check, and
+        // a camera-then-Open flow would only delay the chat.
+        if settings.cameraPreview, !link.isConversation {
             guard await cameraPreview.present(meeting: meeting, now: Date()) else { return }
         } else if uninvited, settings.autoJoinConfirms {
             NSApp.activate(ignoringOtherApps: true)
             guard
                 await core.confirm(
-                    title: String(localized: "Join \(meeting.title)?"),
+                    title: String(localized: "\(link.actionTitle) \(meeting.title)?"),
                     message: UpcomingWindow.countdown(to: meeting.start, now: Date(), locale: .current),
-                    symbol: link.provider.sfSymbol, confirmTitle: String(localized: "Join"),
+                    symbol: link.provider.sfSymbol, confirmTitle: link.actionTitle,
                     tone: .neutral, confirmRole: .standard,
                     dismissTitle: String(localized: "Not Now"))
             else { return }

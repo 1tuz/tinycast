@@ -213,6 +213,28 @@ final class SnippetCoordinator {
         AppLauncher.showInFinder(record.fileURL)
     }
 
+    func toggleSnippetPinned(id: StoredSnippet.ID) async {
+        guard settings.snippetsEnabled, var record = store.record(id: id) else { return }
+        record.snippet.isPinned.toggle()
+        do {
+            try await store.save(record)
+        } catch {
+            await core.showNotice(
+                title: String(localized: "Couldn’t Save the Change"),
+                message: error.localizedDescription, symbol: "pin", tone: .danger)
+            return
+        }
+        // The browser shows live AI responses ahead of its snippets, so the snippet index
+        // alone would land on the wrong row and ↵ would paste the wrong response.
+        guard palette.mode == .snippets,
+            let index = store.browserRows(matching: palette.query).firstIndex(where: { $0.id == id })
+        else { return }
+        palette.selection =
+            index
+            + store.liveResponseCount(
+                matching: palette.query, includeResponses: settings.ephemeralSnippetsEnabled)
+    }
+
     func deleteSnippet(id: StoredSnippet.ID) async {
         guard settings.snippetsEnabled, let record = store.record(id: id) else { return }
         guard
@@ -272,6 +294,45 @@ final class SnippetCoordinator {
         // One of our own editors is only reachable again once the palette hands key back to it.
         paletteCoordinator.hidePalette(restoreFocus: target?.ownEditor != nil)
         expandSnippet(id: id, target: target)
+    }
+
+    func performFromPalette(_ action: SnippetDefaultAction, id: StoredSnippet.ID) {
+        switch action {
+        case .paste: expandSnippetFromPalette(id: id)
+        case .copy: copySnippetFromPalette(id: id)
+        }
+    }
+
+    /// Unmarked, so the expansion enters clipboard history like any other copy.
+    func copySnippetFromPalette(id: StoredSnippet.ID) {
+        let target = windowController.previousTarget
+        paletteCoordinator.hidePalette()
+        let records = store.snippets
+        guard let record = records.first(where: { $0.id == id }) else { return }
+        let context = injector.captureExpansionContext(
+            target: target,
+            clipboardHistory: clipboardHistoryForExpansion())
+        let result = SnippetTemplateEngine.expand(record, snippets: records, context: context)
+        guard result.missingArguments.isEmpty else {
+            promptSnippetArguments(
+                record: record,
+                records: records,
+                context: context,
+                missingArgs: result.missingArguments,
+                onCancel: { target?.restoreFocus() },
+                onExpanded: { [weak self] result in
+                    self?.copy(result, of: record)
+                    target?.restoreFocus()
+                })
+            return
+        }
+        copy(result, of: record)
+    }
+
+    private func copy(_ result: SnippetTemplateEngine.ExpansionResult, of record: StoredSnippet) {
+        Paster.copyPlainText(result.text)
+        guard record.snippet.showsConfirmation else { return }
+        showMessage(String(localized: "Copied \(record.snippet.name)"), .success)
     }
 
     /// A shortcut lands where the caret is; over the palette, that's what the palette covered.
@@ -366,11 +427,20 @@ final class SnippetCoordinator {
                 records: records,
                 context: context,
                 missingArgs: result.missingArguments,
-                target: target,
-                expectedKeyword: expectedKeyword,
-                keywordLength: keywordLength,
-                automaticGeneration: automaticGeneration,
-                confirmation: confirmation)
+                onCancel: { [weak self] in
+                    self?.injector.cancelArgumentPrompt(
+                        automaticGeneration: automaticGeneration,
+                        target: target)
+                },
+                onExpanded: { [weak self] result in
+                    self?.completeSnippetExpansion(
+                        result,
+                        target: target,
+                        expectedKeyword: expectedKeyword,
+                        keywordLength: keywordLength,
+                        automaticGeneration: automaticGeneration,
+                        confirmation: confirmation)
+                })
             return
         }
         completeSnippetExpansion(
@@ -387,44 +457,25 @@ final class SnippetCoordinator {
         records: [StoredSnippet],
         context: SnippetTemplateEngine.ExpansionContext,
         missingArgs: [SnippetTemplateEngine.MissingArgument],
-        target: InjectionTarget?,
-        expectedKeyword: String?,
-        keywordLength: Int,
-        automaticGeneration: UInt?,
-        confirmation: String?
+        onCancel: @escaping @MainActor () -> Void,
+        onExpanded: @escaping @MainActor (SnippetTemplateEngine.ExpansionResult) -> Void
     ) {
         // The open dialog would refuse this prompt, and its end must not clear the flag under it.
-        guard !core.isShowingDialog else {
-            injector.cancelArgumentPrompt(
-                automaticGeneration: automaticGeneration,
-                target: target)
-            return
-        }
+        guard !core.isShowingDialog else { return onCancel() }
         listener.isPromptingForArguments = true
         Task {
             let arguments = await core.fillSnippetArguments(
                 snippetName: record.snippet.name,
                 arguments: missingArgs)
             listener.isPromptingForArguments = false
-            guard let arguments else {
-                injector.cancelArgumentPrompt(
-                    automaticGeneration: automaticGeneration,
-                    target: target)
-                return
-            }
+            guard let arguments else { return onCancel() }
 
-            let result = SnippetTemplateEngine.expand(
-                record,
-                snippets: records,
-                context: context,
-                userArguments: arguments)
-            completeSnippetExpansion(
-                result,
-                target: target,
-                expectedKeyword: expectedKeyword,
-                keywordLength: keywordLength,
-                automaticGeneration: automaticGeneration,
-                confirmation: confirmation)
+            onExpanded(
+                SnippetTemplateEngine.expand(
+                    record,
+                    snippets: records,
+                    context: context,
+                    userArguments: arguments))
         }
     }
 

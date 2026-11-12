@@ -23,6 +23,13 @@ enum SnippetBrowserRow: Identifiable, Equatable {
         return false
     }
 
+    var snippet: StoredSnippet? {
+        if case .snippet(let record) = self { return record }
+        return nil
+    }
+
+    var isPinned: Bool { snippet?.snippet.isPinned == true }
+
     var trailingLabel: String? {
         switch self {
         case .snippet(let record): return record.snippet.keyword
@@ -52,8 +59,13 @@ struct SnippetsList: View {
                     ForEach(results) { record in
                         if record.isResponse, record.id == results.first?.id {
                             SectionHeader(title: "Recent AI Responses", isFirst: true)
-                        } else if !record.isResponse, results.first?.isResponse == true,
-                            record.id == results.first(where: { !$0.isResponse })?.id
+                        } else if record.isPinned,
+                            record.id == results.first(where: { $0.isPinned && !$0.isResponse })?.id
+                        {
+                            SectionHeader(title: "Pinned")
+                        } else if !record.isResponse, !record.isPinned,
+                            record.id
+                                == results.first(where: { !$0.isResponse && !$0.isPinned })?.id
                         {
                             SectionHeader(title: "Snippets")
                         }

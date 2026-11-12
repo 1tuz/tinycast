@@ -11,8 +11,13 @@ struct AutoJoinPolicy: Sendable {
         joined: Set<MeetingEvent.ID>
     ) -> MeetingEvent? {
         // Filtered before the pick, so a skipped link cannot shadow a call starting beside it.
-        let candidates =
-            namedProvidersOnly ? events.filter { $0.link?.provider != .generic } : events
+        // A conversation link never opens itself: joining a meeting is one gesture, and
+        // dropping someone into a group chat they were invited to is another.
+        let candidates = events.filter { event in
+            guard let link = event.link else { return true }
+            if link.isConversation { return false }
+            return !namedProvidersOnly || link.provider != .generic
+        }
         guard let carded = window.carded(from: candidates, now: now) else { return nil }
         // Never early, never a meeting that was already under way, never the same one twice.
         guard carded.start >= armedAt, now >= carded.start, !joined.contains(carded.id) else {

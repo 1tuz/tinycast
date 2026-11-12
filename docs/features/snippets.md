@@ -225,20 +225,28 @@ cycle and exits with Escape or a bare backspace, and like the clipboard it split
 preview.
 
 The list is every **enabled** snippet — a disabled one is absent here exactly as it is absent from the
-launcher — filtered by name *or* keyword. Substring matching, not the launcher's fuzzy scorer: this is
-a library being browsed rather than a query racing apps and commands for a rank.
+launcher — filtered by name *or* keyword, with **pinned** snippets leading under their own header.
+Substring matching, not the launcher's fuzzy scorer: this is
+a library being browsed rather than a query racing apps and commands for a rank. Pinning is a
+frontmatter key (`pinned: true`, written only when set), toggled from the menu or ⌘., and it
+survives edits because the editor carries the flag through.
 
 The preview shows the **raw template**, never an expansion. Expanding per selection would capture the
 clipboard, read the target's selected text and burn a `{uuid}` on every arrow key, and a snippet
 carrying `{argument}` would raise its prompt just to draw a pane. Beside it sits the name, keyword,
 shortcut, file name and character count.
 
-↵ and the ⌘K menu's **Paste Snippet** both go through `SnippetCoordinator.expandSnippetFromPalette`,
+↵ performs the **default action** chosen in **Settings → Snippets → Default action** — Paste, the
+original behavior, or Copy to Clipboard, which expands the template and copies it unmarked so it
+enters clipboard history like any other copy. ⌘↵ performs the other one, so both are always one
+keystroke away. Paste goes through `SnippetCoordinator.expandSnippetFromPalette`,
 which reads `previousApp` before hiding the panel and then calls the same `expandSnippet` funnel a
 launcher row does — so template expansion, cursor placement, the Accessibility prompt, the
 confirmation HUD and the pasteboard lease are the ones described below, not a second copy of them.
+Copy shares that funnel up to delivery, substituting a plain copy and its own confirmation.
 The rest of the menu is **Edit Snippet** (⌘E) and **Create Snippet** (⌘N), which open the launcher
-editor, **Show in Finder** (⌘↵), and **Delete Snippet** (⌃X), separated at the bottom in red. Deletion
+editor, **Pin/Unpin Snippet** (⌘.), **Show in Finder** (⌘F), and **Delete Snippet** (⌃X), separated
+at the bottom in red. Deletion
 always confirms before removing the snippet file and reports a failure without losing the record.
 These shortcuts also work with the menu closed; ⌘N works even when the browser has no rows.
 

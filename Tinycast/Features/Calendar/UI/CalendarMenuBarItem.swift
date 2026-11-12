@@ -52,7 +52,7 @@ struct CalendarMenuBarMenu: View {
             if let meeting = coordinator.menuBarEvent {
                 Section {
                     if let link = meeting.link {
-                        Button("Join \(meeting.title)", systemImage: link.provider.sfSymbol) {
+                        Button("\(link.actionTitle) \(meeting.title)", systemImage: link.provider.sfSymbol) {
                             coordinator.join(meeting)
                         }
                     }

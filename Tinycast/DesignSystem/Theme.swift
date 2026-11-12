@@ -413,6 +413,10 @@ enum Theme {
 
         static let dialogDimming = adaptive(
             dark: .srgbInk(0, alpha: 0.34), light: .srgbInk(0, alpha: 0.34))
+        /// The panel scrim: black over the dark surface, white over the light one — the ramp's
+        /// inverse, so it is an `adaptive` pair. It dims the glass it covers, rim included.
+        static let panelScrim = adaptive(
+            dark: .srgbInk(0, alpha: 0.40), light: .srgbInk(1, alpha: 0.55))
         /// Find's marks, the Mac's own yellow: every match faint, the current one solid.
         static let findMatch = adaptive(
             dark: NSColor.systemYellow.withAlphaComponent(0.32),

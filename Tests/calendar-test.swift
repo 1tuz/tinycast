@@ -17,6 +17,9 @@ struct CalendarTests {
 
     static func main() {
         providerDetection()
+        messengerNegativeShapes()
+        conversationSemantics()
+        autoJoinSkipsConversations()
         rejectsNonMeetingPages()
         fieldPrecedence()
         linkScanning()
@@ -73,10 +76,123 @@ struct CalendarTests {
         expect(
             provider("https://example.com/rooms/standup") == .generic,
             "an unknown host is still a joinable link")
-        expect(MeetingLink.detect(in: "no links here at all") == nil, "plain prose has no link")
+        // The messenger and regional call providers: documented forms only.
+        expect(provider("https://telemost.yandex.ru/j/12345678") == .telemost, "a Telemost room is Telemost")
+        expect(provider("https://t.me/+AbCdEf123") == .telegram, "a Telegram +hash invite is Telegram")
+        expect(provider("https://t.me/joinchat/AbCdEf123") == .telegram, "a joinchat invite is Telegram")
+        expect(provider("https://t.me/somechat") == .telegram, "a public Telegram chat is Telegram")
+        expect(provider("https://t.me/somechat/42") == .telegram, "a message link into a chat is Telegram")
+        expect(provider("https://chat.whatsapp.com/AbCdEf123456") == .whatsapp, "a WhatsApp group invite is WhatsApp")
+        expect(provider("https://wa.me/79001234567") == .whatsapp, "a wa.me number is WhatsApp")
+        expect(provider("https://signal.link/#key=A1B2C3D4") == .signal, "a Signal call link is Signal")
+        expect(provider("https://signal.group/#Cj8K") == .signal, "a Signal group invite is Signal")
+        expect(provider("https://signal.me/#p/+79001234567") == .signal, "a Signal person link is Signal")
+        expect(provider("https://discord.gg/abc123") == .discord, "a discord.gg invite is Discord")
+        expect(provider("https://discord.com/invite/abc123") == .discord, "a discord.com invite is Discord")
+        expect(provider("https://discord.com/channels/123/456") == .discord, "a Discord channel deep link is Discord")
+        expect(provider("https://invite.viber.com/AbCdEf") == .viber, "a Viber invite is Viber")
+        expect(provider("https://m.me/username") == .messenger, "an m.me link is Messenger")
+        expect(provider("https://line.me/R/g/AbCdEf") == .line, "a LINE group share is LINE")
+        expect(provider("https://line.me/ti/g/AbCdEf") == .line, "a LINE group invite is LINE")
+        expect(provider("https://chat.weixin.qq.com/AbCdEf123") == .wechat, "a WeChat group invite is WeChat")
+        expect(provider("https://open.kakao.com/o/somecode") == .kakaotalk, "an open KakaoTalk chat is KakaoTalk")
+    }
+
+    static func messengerNegativeShapes() {
+        // A known host with the wrong shape is rejected outright, not demoted to generic.
+        expect(provider("https://t.me/share/xyz") == nil, "the Telegram share widget is not a chat")
+        expect(provider("https://t.me/apps") == nil, "Telegram's app store page is not a chat")
+        expect(provider("https://t.me/faq") == nil, "Telegram's FAQ page is not a chat")
+        expect(provider("https://t.me/joinchat") == nil, "joinchat with no hash is not an invite")
+        expect(provider("https://chat.whatsapp.com/") == nil, "an empty WhatsApp invite is nothing")
+        expect(provider("https://wa.me/hello") == nil, "wa.me with a non-number is not a chat")
+        expect(provider("https://signal.me") == nil, "the Signal homepage is not a link")
+        expect(provider("https://signal.link/about") == nil, "a Signal page path is not a call link")
+        expect(provider("https://discord.com/downloads") == nil, "Discord's download page is not an invite")
+        expect(provider("https://discord.gg") == nil, "discord.gg with no code is not an invite")
+        expect(provider("https://m.me") == nil, "m.me with no username is nobody")
+        expect(provider("https://line.me/R") == nil, "a bare LINE /R is not a share target")
+        expect(provider("https://line.me/ti/p") == nil, "a bare LINE /ti/p is not an invite")
+        expect(provider("https://line.me/somecode") == nil, "an undifferentiated LINE path is not distinguished")
+        expect(provider("https://open.kakao.com/o") == nil, "KakaoTalk open chat with no code is not one")
+        expect(provider("https://telemost.yandex.ru/j") == nil, "a Telemost room with no id is not a room")
+        expect(provider("https://signal.link/#not-a-key") == nil, "a Signal call link needs key=")
+        expect(provider("https://signal.link/#key=") == nil, "an empty key is no call")
+        expect(provider("https://signal.me/#bogus") == nil, "a Signal contact needs #p/ or #eu/")
+        expect(provider("https://signal.me/#p/") == nil, "an empty contact is nobody")
+        expect(provider("https://t.me/+") == nil, "a Telegram plus with no hash is not an invite")
+        expect(provider("https://t.me/foo/notanumber") == nil, "a non-numeric message id is not a message link")
+        expect(provider("https://line.me/ti/g") == nil, "a bare LINE ti/g with no token is not an invite")
+        expect(provider("https://wa.me/١٢٣") == nil, "Unicode numerals are not a phone number")
+        expect(provider("https://evil.t.me/somechat") == .generic, "a subdomain of an exact host is not the provider")
+        expect(provider("https://zoom.us.zoom.example.com/j/1") == .generic, "suffix spoofing is generic, not the provider")
+
+        // Spoofing shapes: a look-alike must not become a named provider.
+        expect(provider("https://t.me.example.com/joinchat/x") == .generic, "a suffix-spoofed host is generic")
+        expect(provider("https://wa.me:8443/12345") == nil, "a non-default port is rejected outright")
+        expect(provider("https://user@t.me/somechat") == nil, "userinfo in the URL is rejected outright")
+        expect(provider("http://t.me/somechat") == .telegram, "http is still the same provider")
         expect(
-            MeetingLink.detect(in: "mailto:someone@example.com") == nil,
-            "a mailto address is not a join link")
+            MeetingLink.detect(in: "https://zoom.us/j/42 or https://t.me/+AbC")?.provider == .zoom,
+            "an earlier meeting link outranks a messenger link found later")
+        expect(
+            MeetingLink.detect(in: "https://t.me/+AbC or https://zoom.us/j/42")?.provider
+                == .telegram,
+            "the first named provider wins, messenger or meeting alike")
+        expect(
+            MeetingLink.detect(in: "https://t.me/+AbC or https://example.com/x")?.provider
+                == .telegram,
+            "a messenger link outranks a bare link found later")
+    }
+
+    static func conversationSemantics() {
+        expect(link("https://t.me/somechat")?.isConversation == true, "a Telegram chat is a conversation")
+        expect(
+            link("https://signal.me/#p/+79001234567")?.isConversation == true,
+            "a Signal person link is a conversation")
+        expect(
+            link("https://signal.link/#key=A1B2C3D4")?.isConversation == false,
+            "a Signal call link is a call, not a conversation")
+        expect(
+            link("https://signal.group/#Cj8K")?.isConversation == true,
+            "a Signal group invite is a conversation")
+        expect(link("https://zoom.us/j/8901234567")?.isConversation == false, "a Zoom meeting is a call")
+        expect(link("https://telemost.yandex.ru/j/1")?.isConversation == false, "a Telemost room is a call")
+        expect(
+            link("https://chat.whatsapp.com/AbCdEf123456?text=hi")?.url.absoluteString
+                == "https://chat.whatsapp.com/AbCdEf123456?text=hi",
+            "a messenger link keeps its query")
+        expect(
+            link("Join at https://t.me/+AbCdEf123.")?.url.absoluteString
+                == "https://t.me/+AbCdEf123",
+            "trailing punctuation is trimmed from a messenger invite too")
+        expect(link("https://wa.me/79001234567")?.appURL == nil, "a messenger link has no app rewrite")
+        expect(link("https://t.me/somechat")?.appURL == nil, "Telegram opens the web link as written")
+    }
+
+    static func autoJoinSkipsConversations() {
+        let window = UpcomingWindow(leadMinutes: 5)
+        let start = at(60)
+        let chat = event(
+            id: "chat", start: 60, link: link("https://chat.whatsapp.com/AbCdEf123456"))
+        let policy = AutoJoinPolicy(armedAt: at(0), namedProvidersOnly: false)
+        expect(
+            policy.meeting(from: [chat], now: start, window: window, joined: []) == nil,
+            "a conversation link never auto joins, even with named providers off")
+        let call = event(id: "call", start: 62)
+        expect(
+            policy.meeting(from: [chat, call], now: at(62), window: window, joined: [])?.id == "call",
+            "a conversation link does not shadow the call starting beside it")
+        let namedOnly = AutoJoinPolicy(armedAt: at(0), namedProvidersOnly: true)
+        let signalCall = event(id: "signalCall", start: 60, link: link("https://signal.link/#key=A1B2"))
+        expect(
+            namedOnly.meeting(from: [signalCall], now: start, window: window, joined: [])?.id
+                == "signalCall",
+            "a Signal call link auto joins under named providers only")
+        let signalChat = event(id: "signalChat", start: 60, link: link("https://signal.me/#p/+790"))
+        expect(
+            namedOnly.meeting(from: [signalChat], now: start, window: window, joined: []) == nil,
+            "but a Signal person link never does")
     }
 
     static func rejectsNonMeetingPages() {

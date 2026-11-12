@@ -65,6 +65,7 @@ struct CompactBar: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+        .overlay { scrim(geometry: geometry, revealed: revealed) }
         // Above the glass rather than inside it, where a morph would smear them.
         .overlay(alignment: .topLeading) {
             ForEach(Array(commands.enumerated()), id: \.element) { index, command in
@@ -72,6 +73,32 @@ struct CompactBar: View {
             }
         }
         .task(id: palette.isVisible) { await followVisibility() }
+    }
+
+    /// The scrim follows the reveal: masked to the animated capsule and buttons, with the
+    /// selected button left out so its tint reads undimmed.
+    private func scrim(geometry: CompactBarGeometry, revealed: Bool) -> some View {
+        Theme.Colors.panelScrim
+            .mask {
+                ZStack(alignment: .topLeading) {
+                    Capsule().fill(.white)
+                        .frame(width: geometry.capsuleWidth(revealed: revealed))
+                        .frame(maxHeight: .infinity)
+                        .animation(
+                            reduceMotion ? nil : BarMotion.capsule.delay(BarMotion.revealDelay),
+                            value: revealed)
+                    ForEach(Array(commands.enumerated()), id: \.element) { index, command in
+                        Circle().fill(.white)
+                            .frame(width: geometry.diameter, height: geometry.diameter)
+                            .opacity(revealed && selection != command ? 1 : 0)
+                            .scaleEffect(revealed ? 1 : BarMotion.parkedScale)
+                            .position(revealed ? geometry.center(of: index) : geometry.parked)
+                            .animation(travel(index), value: revealed)
+                    }
+                }
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 
     private func button(

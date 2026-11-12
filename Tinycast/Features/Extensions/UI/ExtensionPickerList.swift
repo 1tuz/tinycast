@@ -39,6 +39,7 @@ struct ExtensionPickerList: View {
         .glassEffect(
             .regular, in: RoundedRectangle(cornerRadius: metrics.radius.menuPanel, style: .continuous)
         )
+        .clipShape(RoundedRectangle(cornerRadius: metrics.radius.menuPanel, style: .continuous))
     }
 
     @ViewBuilder

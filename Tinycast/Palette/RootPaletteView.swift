@@ -343,7 +343,10 @@ struct RootPaletteView: View {
                 )
                 // The window's frame is the size source, so the glass and clip stay matched.
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                // Hidden rather than unmounted, so expanding never shows a frame without glass.
+                // The scrim sits closest to the content, the glass behind it: the glass is a
+                // backdrop material, so a scrim under it would be hidden rather than dimming it.
+                // Cleared rather than removed while compact, so the tree never rebuilds.
+                .background(isCollapsed ? .clear : Theme.Colors.panelScrim)
                 .background(
                     GlassEffectView(style: .clear, cornerRadius: metrics.radius.panel)
                         .opacity(isCollapsed ? 0 : 1)
@@ -1234,11 +1237,9 @@ struct RootPaletteView: View {
         if presenting, let hostWindow {
             menuPanel.show(
                 view, corner: corner, parent: hostWindow, core: core,
-                clipPath: content.clipPath,
                 onKeyDown: handleMenuPanelKey, onDismiss: closeMenus)
         } else {
-            menuPanel.update(
-                view, corner: corner, core: core, clipPath: content.clipPath)
+            menuPanel.update(view, corner: corner, core: core)
         }
     }
 

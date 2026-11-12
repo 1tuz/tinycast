@@ -1,0 +1,2335 @@
+diff --git a/Tests/appearance-test.swift b/Tests/appearance-test.swift
+index 63914360551b28166fe371793d712aa5ea0e9744..25c60055efd228be2da8ac01022400f8267494e3 100644
+--- a/Tests/appearance-test.swift
++++ b/Tests/appearance-test.swift
+@@ -45,6 +45,7 @@ struct AppearanceTests {
+         let c = Theme.Colors.self
+ 
+         print("# dark branches are the shipped literals")
++        dark("panelScrim", c.panelScrim, is: Color.black.opacity(0.4))
+         dark("dialogDimming", c.dialogDimming, is: Color.black.opacity(0.34))
+         dark("tooltipShadow", c.tooltipShadow, is: Color.black.opacity(0.18))
+         dark("selection", c.selection, is: Color.white.opacity(0.10))
+@@ -70,7 +71,7 @@ struct AppearanceTests {
+ 
+         print("# every surface token resolves per appearance")
+         for (label, token) in [
+-            ("selection", c.selection), ("rowHover", c.rowHover),
++            ("panelScrim", c.panelScrim), ("selection", c.selection), ("rowHover", c.rowHover),
+             ("menuHover", c.menuHover), ("separator", c.separator),
+             ("controlSurface", c.controlSurface), ("border", c.border),
+             ("textPrimary", c.textPrimary), ("textSecondary", c.textSecondary),
+@@ -81,6 +82,10 @@ struct AppearanceTests {
+             adapts(label, token)
+         }
+ 
++        print("# the scrim inverts rather than ramping: it lightens the light surface")
++        check("light scrim is white", components(c.panelScrim, .aqua)[0] == 255)
++        check("dark scrim is black", components(c.panelScrim, .darkAqua)[0] == 0)
++
+         print("# .system hands the choice back to AppKit")
+         check("system is nil", AppAppearance.system.nsAppearance == nil)
+         check("light is aqua", AppAppearance.light.nsAppearance?.isDark == false)
+diff --git a/Tests/calendar-test.swift b/Tests/calendar-test.swift
+index 20ed5c1bbdd3265d2d02c33c1d86df9fde97cf90..58bc0abcb83907e27b11b9b94b7835f7e65acad2 100644
+--- a/Tests/calendar-test.swift
++++ b/Tests/calendar-test.swift
+@@ -17,6 +17,9 @@ struct CalendarTests {
+ 
+     static func main() {
+         providerDetection()
++        messengerNegativeShapes()
++        conversationSemantics()
++        autoJoinSkipsConversations()
+         rejectsNonMeetingPages()
+         fieldPrecedence()
+         linkScanning()
+@@ -73,10 +76,123 @@ struct CalendarTests {
+         expect(
+             provider("https://example.com/rooms/standup") == .generic,
+             "an unknown host is still a joinable link")
+-        expect(MeetingLink.detect(in: "no links here at all") == nil, "plain prose has no link")
++        // The messenger and regional call providers: documented forms only.
++        expect(provider("https://telemost.yandex.ru/j/12345678") == .telemost, "a Telemost room is Telemost")
++        expect(provider("https://t.me/+AbCdEf123") == .telegram, "a Telegram +hash invite is Telegram")
++        expect(provider("https://t.me/joinchat/AbCdEf123") == .telegram, "a joinchat invite is Telegram")
++        expect(provider("https://t.me/somechat") == .telegram, "a public Telegram chat is Telegram")
++        expect(provider("https://t.me/somechat/42") == .telegram, "a message link into a chat is Telegram")
++        expect(provider("https://chat.whatsapp.com/AbCdEf123456") == .whatsapp, "a WhatsApp group invite is WhatsApp")
++        expect(provider("https://wa.me/79001234567") == .whatsapp, "a wa.me number is WhatsApp")
++        expect(provider("https://signal.link/#key=A1B2C3D4") == .signal, "a Signal call link is Signal")
++        expect(provider("https://signal.group/#Cj8K") == .signal, "a Signal group invite is Signal")
++        expect(provider("https://signal.me/#p/+79001234567") == .signal, "a Signal person link is Signal")
++        expect(provider("https://discord.gg/abc123") == .discord, "a discord.gg invite is Discord")
++        expect(provider("https://discord.com/invite/abc123") == .discord, "a discord.com invite is Discord")
++        expect(provider("https://discord.com/channels/123/456") == .discord, "a Discord channel deep link is Discord")
++        expect(provider("https://invite.viber.com/AbCdEf") == .viber, "a Viber invite is Viber")
++        expect(provider("https://m.me/username") == .messenger, "an m.me link is Messenger")
++        expect(provider("https://line.me/R/g/AbCdEf") == .line, "a LINE group share is LINE")
++        expect(provider("https://line.me/ti/g/AbCdEf") == .line, "a LINE group invite is LINE")
++        expect(provider("https://chat.weixin.qq.com/AbCdEf123") == .wechat, "a WeChat group invite is WeChat")
++        expect(provider("https://open.kakao.com/o/somecode") == .kakaotalk, "an open KakaoTalk chat is KakaoTalk")
++    }
++
++    static func messengerNegativeShapes() {
++        // A known host with the wrong shape is rejected outright, not demoted to generic.
++        expect(provider("https://t.me/share/xyz") == nil, "the Telegram share widget is not a chat")
++        expect(provider("https://t.me/apps") == nil, "Telegram's app store page is not a chat")
++        expect(provider("https://t.me/faq") == nil, "Telegram's FAQ page is not a chat")
++        expect(provider("https://t.me/joinchat") == nil, "joinchat with no hash is not an invite")
++        expect(provider("https://chat.whatsapp.com/") == nil, "an empty WhatsApp invite is nothing")
++        expect(provider("https://wa.me/hello") == nil, "wa.me with a non-number is not a chat")
++        expect(provider("https://signal.me") == nil, "the Signal homepage is not a link")
++        expect(provider("https://signal.link/about") == nil, "a Signal page path is not a call link")
++        expect(provider("https://discord.com/downloads") == nil, "Discord's download page is not an invite")
++        expect(provider("https://discord.gg") == nil, "discord.gg with no code is not an invite")
++        expect(provider("https://m.me") == nil, "m.me with no username is nobody")
++        expect(provider("https://line.me/R") == nil, "a bare LINE /R is not a share target")
++        expect(provider("https://line.me/ti/p") == nil, "a bare LINE /ti/p is not an invite")
++        expect(provider("https://line.me/somecode") == nil, "an undifferentiated LINE path is not distinguished")
++        expect(provider("https://open.kakao.com/o") == nil, "KakaoTalk open chat with no code is not one")
++        expect(provider("https://telemost.yandex.ru/j") == nil, "a Telemost room with no id is not a room")
++        expect(provider("https://signal.link/#not-a-key") == nil, "a Signal call link needs key=")
++        expect(provider("https://signal.link/#key=") == nil, "an empty key is no call")
++        expect(provider("https://signal.me/#bogus") == nil, "a Signal contact needs #p/ or #eu/")
++        expect(provider("https://signal.me/#p/") == nil, "an empty contact is nobody")
++        expect(provider("https://t.me/+") == nil, "a Telegram plus with no hash is not an invite")
++        expect(provider("https://t.me/foo/notanumber") == nil, "a non-numeric message id is not a message link")
++        expect(provider("https://line.me/ti/g") == nil, "a bare LINE ti/g with no token is not an invite")
++        expect(provider("https://wa.me/١٢٣") == nil, "Unicode numerals are not a phone number")
++        expect(provider("https://evil.t.me/somechat") == .generic, "a subdomain of an exact host is not the provider")
++        expect(provider("https://zoom.us.zoom.example.com/j/1") == .generic, "suffix spoofing is generic, not the provider")
++
++        // Spoofing shapes: a look-alike must not become a named provider.
++        expect(provider("https://t.me.example.com/joinchat/x") == .generic, "a suffix-spoofed host is generic")
++        expect(provider("https://wa.me:8443/12345") == nil, "a non-default port is rejected outright")
++        expect(provider("https://user@t.me/somechat") == nil, "userinfo in the URL is rejected outright")
++        expect(provider("http://t.me/somechat") == .telegram, "http is still the same provider")
++        expect(
++            MeetingLink.detect(in: "https://zoom.us/j/42 or https://t.me/+AbC")?.provider == .zoom,
++            "an earlier meeting link outranks a messenger link found later")
++        expect(
++            MeetingLink.detect(in: "https://t.me/+AbC or https://zoom.us/j/42")?.provider
++                == .telegram,
++            "the first named provider wins, messenger or meeting alike")
++        expect(
++            MeetingLink.detect(in: "https://t.me/+AbC or https://example.com/x")?.provider
++                == .telegram,
++            "a messenger link outranks a bare link found later")
++    }
++
++    static func conversationSemantics() {
++        expect(link("https://t.me/somechat")?.isConversation == true, "a Telegram chat is a conversation")
++        expect(
++            link("https://signal.me/#p/+79001234567")?.isConversation == true,
++            "a Signal person link is a conversation")
++        expect(
++            link("https://signal.link/#key=A1B2C3D4")?.isConversation == false,
++            "a Signal call link is a call, not a conversation")
++        expect(
++            link("https://signal.group/#Cj8K")?.isConversation == true,
++            "a Signal group invite is a conversation")
++        expect(link("https://zoom.us/j/8901234567")?.isConversation == false, "a Zoom meeting is a call")
++        expect(link("https://telemost.yandex.ru/j/1")?.isConversation == false, "a Telemost room is a call")
++        expect(
++            link("https://chat.whatsapp.com/AbCdEf123456?text=hi")?.url.absoluteString
++                == "https://chat.whatsapp.com/AbCdEf123456?text=hi",
++            "a messenger link keeps its query")
++        expect(
++            link("Join at https://t.me/+AbCdEf123.")?.url.absoluteString
++                == "https://t.me/+AbCdEf123",
++            "trailing punctuation is trimmed from a messenger invite too")
++        expect(link("https://wa.me/79001234567")?.appURL == nil, "a messenger link has no app rewrite")
++        expect(link("https://t.me/somechat")?.appURL == nil, "Telegram opens the web link as written")
++    }
++
++    static func autoJoinSkipsConversations() {
++        let window = UpcomingWindow(leadMinutes: 5)
++        let start = at(60)
++        let chat = event(
++            id: "chat", start: 60, link: link("https://chat.whatsapp.com/AbCdEf123456"))
++        let policy = AutoJoinPolicy(armedAt: at(0), namedProvidersOnly: false)
++        expect(
++            policy.meeting(from: [chat], now: start, window: window, joined: []) == nil,
++            "a conversation link never auto joins, even with named providers off")
++        let call = event(id: "call", start: 62)
++        expect(
++            policy.meeting(from: [chat, call], now: at(62), window: window, joined: [])?.id == "call",
++            "a conversation link does not shadow the call starting beside it")
++        let namedOnly = AutoJoinPolicy(armedAt: at(0), namedProvidersOnly: true)
++        let signalCall = event(id: "signalCall", start: 60, link: link("https://signal.link/#key=A1B2"))
++        expect(
++            namedOnly.meeting(from: [signalCall], now: start, window: window, joined: [])?.id
++                == "signalCall",
++            "a Signal call link auto joins under named providers only")
++        let signalChat = event(id: "signalChat", start: 60, link: link("https://signal.me/#p/+790"))
+         expect(
+-            MeetingLink.detect(in: "mailto:someone@example.com") == nil,
+-            "a mailto address is not a join link")
++            namedOnly.meeting(from: [signalChat], now: start, window: window, joined: []) == nil,
++            "but a Signal person link never does")
+     }
+ 
+     static func rejectsNonMeetingPages() {
+diff --git a/Tests/pasteboard-test.swift b/Tests/pasteboard-test.swift
+index b77a00a84aeb03fa40c477b35ce70a269de3f7da..c57fae46d664c76e644a5049a4e9059d56fafd52 100644
+--- a/Tests/pasteboard-test.swift
++++ b/Tests/pasteboard-test.swift
+@@ -20,6 +20,7 @@ struct PasteboardTests {
+         rejectedFilesDoNotCountTowardTheCap()
+         theBoundedReaderStopsAtItsLimit()
+         aModernFileURLSuppressesTheLegacyFallback()
++        richTextWithoutPlainTextReadsAsText()
+         fileEntriesWriteBackAsFiles()
+         aVanishedFileWritesNothing()
+         imageEntriesWriteBackWithTheirFile()
+@@ -261,6 +262,31 @@ struct PasteboardTests {
+         }
+     }
+ 
++    static func richTextWithoutPlainTextReadsAsText() {
++        let html = board()
++        html.declareTypes([.html], owner: nil)
++        html.setString(
++            "<style>p{}</style><p>brew update</p><div>ls &amp;&amp; pwd</div>", forType: .html)
++        expect(
++            ClipboardManager.plainText(fromRichTextOn: html) == "brew update\nls && pwd\n",
++            "HTML reads as its text, without its style")
++
++        let source = NSAttributedString(string: "from rtf")
++        let rtf = board()
++        rtf.declareTypes([.rtf], owner: nil)
++        rtf.setData(
++            source.rtf(from: NSRange(location: 0, length: source.length), documentAttributes: [:]),
++            forType: .rtf)
++        expect(ClipboardManager.plainText(fromRichTextOn: rtf) == "from rtf", "RTF reads as its text")
++
++        let huge = board()
++        huge.declareTypes([.html], owner: nil)
++        huge.setString(String(repeating: "<p>x</p>", count: 40_000), forType: .html)
++        expect(ClipboardManager.plainText(fromRichTextOn: huge) == nil, "oversized HTML is skipped")
++
++        expect(ClipboardManager.plainText(fromRichTextOn: board()) == nil, "an empty board is nil")
++    }
++
+     static func fileBoard(_ urls: [URL], legacy: Bool) -> NSPasteboard {
+         let pb = board()
+         if legacy {
+diff --git a/Tests/snippets-test.swift b/Tests/snippets-test.swift
+index cb49436ab4a8b747dc9e2f9bd99df8865c1b5e46..dfc2a84bec3b564c70f7ed140dce4374d072fdbd 100644
+--- a/Tests/snippets-test.swift
++++ b/Tests/snippets-test.swift
+@@ -15,6 +15,9 @@ struct SnippetsTests {
+         testEditorSession()
+         testRaycastImport()
+         try testMarkdownCodec()
++        try testPinnedCodec()
++        testPinnedOrderingAndDefaultAction()
++        try await testPinnedSelectionAccountsForLiveResponses()
+         try testRepositoryStorage()
+         try await testRepositoryConcurrency()
+         try await testDeliveryQueueAndPasteboard()
+@@ -250,6 +253,93 @@ struct SnippetsTests {
+             "the renamed show_hud key is rejected", content: "---\nshow_hud: true\n---\n", fileURL: fileURL)
+     }
+ 
++    private static func testPinnedCodec() throws {
++        let fileURL = URL(fileURLWithPath: "/tmp/pinned-codec.md")
++
++        // Unpinned by default, and its file stays byte-identical to the old format.
++        let plain = Snippet(name: "Plain", text: "Body")
++        let plainSource = SnippetMarkdownSerializer.serialize(plain)
++        check(
++            "an unpinned snippet serializes without a pinned key",
++            !plainSource.contains("pinned"))
++        let parsedPlain = try SnippetMarkdownSerializer.parse(content: plainSource, fileURL: fileURL)
++        check("an unpinned snippet round-trips as unpinned", parsedPlain == plain)
++
++        let pinned = Snippet(name: "Kept", text: "Top", isPinned: true)
++        let pinnedSource = SnippetMarkdownSerializer.serialize(pinned)
++        check(
++            "a pinned snippet emits the pinned key",
++            pinnedSource.contains("show_confirmation: false\npinned: true\n---\n"))
++        let parsedPinned = try SnippetMarkdownSerializer.parse(content: pinnedSource, fileURL: fileURL)
++        check("a pinned snippet round-trips as pinned", parsedPinned == pinned)
++    }
++
++    /// Pinning moves a snippet within the browser's snippet rows; live AI responses sit ahead of
++    /// them, so the coordinator must correct the index it writes into the palette's selection.
++    private static func testPinnedSelectionAccountsForLiveResponses() async throws {
++        let fm = FileManager.default
++        let root = fm.temporaryDirectory.appendingPathComponent(
++            "tinycast-snippets-pinsel-\(UUID().uuidString)", isDirectory: true)
++        try fm.createDirectory(at: root, withIntermediateDirectories: true)
++        defer { try? fm.removeItem(at: root) }
++
++        let repository = SnippetRepository(
++            bundleIdentifier: "com.example.pinsel",
++            applicationSupportRoot: root)
++        let store = SnippetsStore(
++            repository: repository,
++            ephemeral: EphemeralSnippetStore(fileURL: root.appendingPathComponent("responses.json")))
++        await store.start()
++        defer { store.stop() }
++        _ = try await store.create(Snippet(name: "Alpha", text: "A"))
++        let beta = try await store.create(Snippet(name: "Beta", text: "B"))
++        _ = try await store.create(Snippet(name: "Gamma", text: "G"))
++
++        // A live response ahead of the snippet rows; capture() prunes expired ones itself.
++        try store.ephemeral.capture(id: UUID(), text: "reply one")
++        check(
++            "the captured response is counted ahead of the snippet rows",
++            store.liveResponseCount(matching: "", includeResponses: true) == 1)
++        check(
++            "responses excluded by settings add no offset",
++            store.liveResponseCount(matching: "", includeResponses: false) == 0)
++        check(
++            "a query matching no response text counts none",
++            store.liveResponseCount(matching: "zzz", includeResponses: true) == 0)
++
++        // Pinning Beta reorders it ahead of Alpha and Gamma; with one live row ahead of the
++        // snippet rows, its combined-row index is snippet index + response count.
++        var pinned = beta
++        pinned.snippet.isPinned = true
++        let saved = try await store.save(pinned)
++        check("saving carries the pinned flag through the repository", saved.snippet.isPinned)
++        let rows = store.browserRows(matching: "")
++        let snippetIndex = rows.firstIndex { $0.id == saved.id }
++        check("the pinned snippet leads the browser rows", snippetIndex == 0)
++        let selectedIndex = snippetIndex.map {
++            $0 + store.liveResponseCount(matching: "", includeResponses: true)
++        }
++        check(
++            "the palette selection lands on the pinned row, not a live response",
++            selectedIndex == 1)
++    }
++
++    private static func testPinnedOrderingAndDefaultAction() {
++        check(
++            "the default action is paste",
++            SnippetDefaultAction(rawValue: "paste") == .paste)
++        check(
++            "the raw value round-trips for the settings file",
++            SnippetDefaultAction.allCases.map(\.rawValue) == ["paste", "copy"])
++        check(
++            "each action's alternate is the other",
++            SnippetDefaultAction.paste.alternate == .copy
++                && SnippetDefaultAction.copy.alternate == .paste)
++        check(
++            "an unknown raw value is rejected, so a settings file can't invent one",
++            SnippetDefaultAction(rawValue: "cut") == nil)
++    }
++
+     private static func testRepositoryStorage() throws {
+         let fm = FileManager.default
+         let root = fm.temporaryDirectory.appendingPathComponent(
+diff --git a/Tinycast/DesignSystem/FormTextArea.swift b/Tinycast/DesignSystem/FormTextArea.swift
+index 9c80e21f48126a79b7336ffeb2491b22d359637d..40b67136404d7cb739dbb65f6c33a829520572d8 100644
+--- a/Tinycast/DesignSystem/FormTextArea.swift
++++ b/Tinycast/DesignSystem/FormTextArea.swift
+@@ -87,6 +87,10 @@ struct FormTextArea: NSViewRepresentable {
+ 
+     func sizeThatFits(_ proposal: ProposedViewSize, nsView view: InputView, context: Context) -> CGSize? {
+         guard let width = proposal.width, width > 0 else { return nil }
++        // SwiftUI probes with an unbounded width; laying the view out at infinity throws.
++        guard width.isFinite else {
++            return CGSize(width: width, height: max(minimumHeight, view.frame.height))
++        }
+         view.setFrameSize(NSSize(width: width, height: max(view.frame.height, minimumHeight)))
+         var height = view.font.map { $0.ascender - $0.descender + $0.leading } ?? 0
+         if let layout = view.textLayoutManager {
+diff --git a/Tinycast/DesignSystem/PopoverMenu.swift b/Tinycast/DesignSystem/PopoverMenu.swift
+index d9866b7772c709f19af3dd73baae06e313cebf2d..199d67399f26e0715ad27d2901a859d031fa4da4 100644
+--- a/Tinycast/DesignSystem/PopoverMenu.swift
++++ b/Tinycast/DesignSystem/PopoverMenu.swift
+@@ -129,6 +129,7 @@ struct PopoverMenu: View {
+         surfaceContent
+             .frame(width: width ?? metrics.size.actionMenuWidth)
+             .glassEffect(.regular, in: shape)
++            .clipShape(shape)
+     }
+ 
+     private var surfaceContent: some View {
+diff --git a/Tinycast/DesignSystem/SettingsComponents.swift b/Tinycast/DesignSystem/SettingsComponents.swift
+index 94d0105278faf34666c50e0fc015af942d4be5f2..0278375e0399c60f995a5d078dfcde4eb98feddd 100644
+--- a/Tinycast/DesignSystem/SettingsComponents.swift
++++ b/Tinycast/DesignSystem/SettingsComponents.swift
+@@ -286,11 +286,12 @@ private struct SettingsEditorPanelSurface: ViewModifier {
+         let draggable = content.background(WindowDragBackground())
+         if controlsOnGlass {
+             draggable
++                .background(Theme.Colors.panelScrim, in: shape)
+                 .glassEffect(.regular, in: shape)
+         } else {
+-            draggable.background {
+-                shape.fill(.clear).glassEffect(.regular, in: shape)
+-            }
++            draggable
++                .background(Theme.Colors.panelScrim, in: shape)
++                .background { shape.fill(.clear).glassEffect(.regular, in: shape) }
+         }
+     }
+ }
+diff --git a/Tinycast/DesignSystem/Theme.swift b/Tinycast/DesignSystem/Theme.swift
+index b67c7a27ccb464da79b047ae0e3bbdab1f5c0ebf..aa31f0da6bd874e3e4bdac77d07c03608d5df3bd 100644
+--- a/Tinycast/DesignSystem/Theme.swift
++++ b/Tinycast/DesignSystem/Theme.swift
+@@ -413,6 +413,10 @@ enum Theme {
+ 
+         static let dialogDimming = adaptive(
+             dark: .srgbInk(0, alpha: 0.34), light: .srgbInk(0, alpha: 0.34))
++        /// The panel scrim: black over the dark surface, white over the light one — the ramp's
++        /// inverse, so it is an `adaptive` pair. It dims the glass it covers, rim included.
++        static let panelScrim = adaptive(
++            dark: .srgbInk(0, alpha: 0.40), light: .srgbInk(1, alpha: 0.55))
+         /// Find's marks, the Mac's own yellow: every match faint, the current one solid.
+         static let findMatch = adaptive(
+             dark: NSColor.systemYellow.withAlphaComponent(0.32),
+diff --git a/Tinycast/Features/AI/UI/ChatTranscriptView.swift b/Tinycast/Features/AI/UI/ChatTranscriptView.swift
+index f4acea7cd4a8940745f799c34531140d293bd93a..23787abb3115a5aac2d0c1935d4462c075cb9833 100644
+--- a/Tinycast/Features/AI/UI/ChatTranscriptView.swift
++++ b/Tinycast/Features/AI/UI/ChatTranscriptView.swift
+@@ -522,6 +522,9 @@ private struct ChatDocumentChip: View {
+         .padding(.horizontal, metrics.spacing.sm)
+         .padding(.vertical, metrics.spacing.xxs)
+         .background(Capsule().fill(Theme.Colors.controlSurface))
++        // One element: the filename Text inside the selection is an AppKit element whose
++        // description called itself until the stack overflowed, so any AX client crashed the app.
++        .accessibilityElement(children: .ignore)
+         .accessibilityLabel("Attached file \(document.name)")
+     }
+ }
+diff --git a/Tinycast/Features/Backup/Model/SettingsBackup.swift b/Tinycast/Features/Backup/Model/SettingsBackup.swift
+index c3e1d6415d8fde05879836533f61087fd96c971a..a19ba6406221372cf51043607c51217ef2f6ef3b 100644
+--- a/Tinycast/Features/Backup/Model/SettingsBackup.swift
++++ b/Tinycast/Features/Backup/Model/SettingsBackup.swift
+@@ -61,6 +61,7 @@ struct SettingsBackup: Codable {
+         var customCommandsEnabled: Bool?
+         var customCommandsShowInLauncher: Bool?
+         var snippetsShowInLauncher: Bool?
++        var snippetDefaultAction: String?
+         // Safe to carry: it grants no permission class paste doesn't already prompt for.
+         var navigationEnabled: Bool?
+         var menuSearchDisabledApps: [String]?
+@@ -175,6 +176,7 @@ extension SettingsBackup {
+             customCommandsEnabled: s.customCommandsEnabled,
+             customCommandsShowInLauncher: s.customCommandsShowInLauncher,
+             snippetsShowInLauncher: s.snippetsShowInLauncher,
++            snippetDefaultAction: s.snippetDefaultAction.rawValue,
+             navigationEnabled: s.navigationEnabled,
+             menuSearchDisabledApps: s.menuSearchDisabledApps,
+             menuSearchShowsAppleMenu: s.menuSearchShowsAppleMenu,
+@@ -470,6 +472,10 @@ extension SettingsBackup {
+             settings.snippetsShowInLauncher = flag
+             count += 1
+         }
++        if let raw = s.snippetDefaultAction, let action = SnippetDefaultAction(rawValue: raw) {
++            settings.snippetDefaultAction = action
++            count += 1
++        }
+         if let flag = s.navigationEnabled {
+             settings.navigationEnabled = flag
+             count += 1
+diff --git a/Tinycast/Features/Backup/Model/SettingsBackupCoverage.swift b/Tinycast/Features/Backup/Model/SettingsBackupCoverage.swift
+index 4457b6ff004b879debf164816d126e6f0354df34..830b221c562d737ae3930a5c272dbaac145035d7 100644
+--- a/Tinycast/Features/Backup/Model/SettingsBackupCoverage.swift
++++ b/Tinycast/Features/Backup/Model/SettingsBackupCoverage.swift
+@@ -41,6 +41,7 @@ enum SettingsBackupCoverage {
+         "customCommandsEnabled": .customCommandsEnabled,
+         "customCommandsShowInLauncher": .customCommandsShowInLauncher,
+         "snippetsShowInLauncher": .snippetsShowInLauncher,
++        "snippetDefaultAction": .snippetDefaultAction,
+         "navigationEnabled": .navigationEnabled,
+         "menuSearchDisabledApps": .menuSearchDisabledApps,
+         "menuSearchShowsAppleMenu": .menuSearchShowsAppleMenu,
+diff --git a/Tinycast/Features/Calendar/Model/AutoJoinPolicy.swift b/Tinycast/Features/Calendar/Model/AutoJoinPolicy.swift
+index cb723449bdce223eed33622114691ffbb26f6375..2e8b34569cdd74e8f51f86a862c947f15c8d16d8 100644
+--- a/Tinycast/Features/Calendar/Model/AutoJoinPolicy.swift
++++ b/Tinycast/Features/Calendar/Model/AutoJoinPolicy.swift
+@@ -11,8 +11,13 @@ struct AutoJoinPolicy: Sendable {
+         joined: Set<MeetingEvent.ID>
+     ) -> MeetingEvent? {
+         // Filtered before the pick, so a skipped link cannot shadow a call starting beside it.
+-        let candidates =
+-            namedProvidersOnly ? events.filter { $0.link?.provider != .generic } : events
++        // A conversation link never opens itself: joining a meeting is one gesture, and
++        // dropping someone into a group chat they were invited to is another.
++        let candidates = events.filter { event in
++            guard let link = event.link else { return true }
++            if link.isConversation { return false }
++            return !namedProvidersOnly || link.provider != .generic
++        }
+         guard let carded = window.carded(from: candidates, now: now) else { return nil }
+         // Never early, never a meeting that was already under way, never the same one twice.
+         guard carded.start >= armedAt, now >= carded.start, !joined.contains(carded.id) else {
+diff --git a/Tinycast/Features/Calendar/Model/MeetingLink.swift b/Tinycast/Features/Calendar/Model/MeetingLink.swift
+index cf906cc340523402812a18f08a751ec3c74bda22..1e783326b70fe7e59fe5fa85f15ed989e76123ce 100644
+--- a/Tinycast/Features/Calendar/Model/MeetingLink.swift
++++ b/Tinycast/Features/Calendar/Model/MeetingLink.swift
+@@ -12,6 +12,13 @@ struct MeetingLink: Hashable, Sendable {
+     /// The link as written, naming the account where the provider takes one.
+     var webURL: URL { provider.accountURL(for: url, account: account) ?? url }
+ 
++    /// Whether opening this link joins a call rather than opening a conversation.
++    /// Auto join only ever fires for a call; a conversation link is a manual gesture.
++    var isConversation: Bool { provider.isConversation(url: url) }
++
++    /// The verb a surface offers for this link: calls are joined, conversations opened.
++    var actionTitle: String { provider.actionTitle(url: url) }
++
+     /// Fields in precedence order; a named provider anywhere beats a bare link found earlier.
+     static func detect(fields: [String?], account: String? = nil) -> MeetingLink? {
+         var fallback: MeetingLink?
+@@ -45,12 +52,15 @@ struct MeetingLink: Hashable, Sendable {
+     }
+ 
+     /// A known host failing its path rule is rejected, never demoted to `.generic`.
++    /// So is a link carrying credentials or an explicit port: no real invite has either,
++    /// and both are classic look-alike tricks. An unknown host stays a `.generic` link.
+     private static func classify(_ url: URL) -> Provider? {
+         guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
+-            let host = url.host()?.lowercased()
++            let host = url.host()?.lowercased(),
++            url.user() == nil, url.password() == nil, url.port == nil
+         else { return nil }
+         guard let provider = Provider(host: host) else { return .generic }
+-        return provider.admits(path: url.path()) ? provider : nil
++        return provider.admits(url: url) ? provider : nil
+     }
+ 
+     private static let terminators: Set<Character> = [
+@@ -95,6 +105,16 @@ extension MeetingLink {
+         case gotoMeeting
+         case blueJeans
+         case skype
++        case telemost
++        case telegram
++        case whatsapp
++        case signal
++        case discord
++        case viber
++        case messenger
++        case line
++        case wechat
++        case kakaotalk
+         /// Any other http(s) link the event carries — joinable, just not identifiable.
+         case generic
+ 
+@@ -110,38 +130,113 @@ extension MeetingLink {
+             case .gotoMeeting: return "GoTo Meeting"
+             case .blueJeans: return "BlueJeans"
+             case .skype: return "Skype"
++            case .telemost: return "Yandex Telemost"
++            case .telegram: return "Telegram"
++            case .whatsapp: return "WhatsApp"
++            case .signal: return "Signal"
++            case .discord: return "Discord"
++            case .viber: return "Viber"
++            case .messenger: return "Messenger"
++            case .line: return "LINE"
++            case .wechat: return "WeChat"
++            case .kakaotalk: return "KakaoTalk"
+             case .generic: return String(localized: "Meeting Link")
+             }
+         }
+ 
+         /// No brand artwork ships, so the glyph says only what kind of thing this is.
+-        var sfSymbol: String { self == .generic ? "link" : "video.fill" }
+-
+-        /// Host suffixes, matched whole or as a subdomain. Disjoint by construction.
+-        private static let hostSuffixes: [Provider: [String]] = [
+-            .zoom: ["zoom.us", "zoom.com", "zoomgov.com"],
+-            .googleMeet: ["meet.google.com"],
+-            .teams: ["teams.microsoft.com", "teams.microsoft.us", "teams.live.com"],
+-            .webex: ["webex.com", "webex.com.cn"],
+-            .jitsi: ["meet.jit.si", "8x8.vc"],
+-            .whereby: ["whereby.com"],
+-            .chime: ["chime.aws"],
+-            .gotoMeeting: ["gotomeeting.com", "gotomeet.me", "app.goto.com"],
+-            .blueJeans: ["bluejeans.com"],
+-            .skype: ["join.skype.com"]
++        var sfSymbol: String {
++            switch self {
++            case .zoom, .googleMeet, .teams, .webex, .jitsi, .whereby, .chime, .gotoMeeting,
++                .blueJeans, .skype, .telemost, .signal:
++                return "video.fill"
++            case .telegram, .whatsapp, .discord, .viber, .messenger, .line, .wechat, .kakaotalk:
++                return "bubble.left.and.bubble.right.fill"
++            case .generic: return "link"
++            }
++        }
++
++        /// Whether opening this link is a conversation action rather than joining a call.
++        /// Per-URL, because Signal mixes both: `signal.link/#key=…` is a call, while
++        /// `signal.me/#p/…` and `signal.group/…` open a chat. Everything else is one or
++        /// the other for the provider as a whole. Conversation links never auto join.
++        func isConversation(url: URL) -> Bool {
++            switch self {
++            case .telegram, .whatsapp, .discord, .viber, .messenger, .line, .wechat, .kakaotalk:
++                return true
++            case .signal:
++                return url.host()?.lowercased() != "signal.link"
++            case .zoom, .googleMeet, .teams, .webex, .jitsi, .whereby, .chime, .gotoMeeting,
++                .blueJeans, .skype, .telemost, .generic:
++                return false
++            }
++        }
++
++        /// The verb a surface offers for this link: calls are joined, conversations opened.
++        func actionTitle(url: URL) -> String {
++            isConversation(url: url) ? String(localized: "Open") : String(localized: "Join")
++        }
++
++        /// Two matchers: the classic meeting services match whole host or any subdomain
++        /// of it, because enterprises put their own rooms on `acme.zoom.us`. The
++        /// conversation providers match the host exactly — their documented invite
++        /// forms all live on one fixed host, and `evil.t.me` is not Telegram.
++        private static let subdomainProviders: [(Provider, [String])] = [
++            (.zoom, ["zoom.us", "zoom.com", "zoomgov.com"]),
++            (.googleMeet, ["meet.google.com"]),
++            (.teams, ["teams.microsoft.com", "teams.microsoft.us", "teams.live.com"]),
++            (.webex, ["webex.com", "webex.com.cn"]),
++            (.jitsi, ["meet.jit.si", "8x8.vc"]),
++            (.whereby, ["whereby.com"]),
++            (.chime, ["chime.aws"]),
++            (.gotoMeeting, ["gotomeeting.com", "gotomeet.me", "app.goto.com"]),
++            (.blueJeans, ["bluejeans.com"]),
++            (.skype, ["join.skype.com"]),
++            (.telemost, ["telemost.yandex.ru", "telemost.yandex.com", "telemost.360.yandex.ru"]),
+         ]
+ 
+-        init?(host: String) {
+-            let match = Self.hostSuffixes.first { _, suffixes in
+-                suffixes.contains { host == $0 || host.hasSuffix("." + $0) }
++        private static let exactHosts: [String: Provider] = [
++            "t.me": .telegram,
++            "chat.whatsapp.com": .whatsapp,
++            "wa.me": .whatsapp,
++            "signal.me": .signal,
++            "signal.link": .signal,
++            "signal.group": .signal,
++            "discord.gg": .discord,
++            "discord.com": .discord,
++            "invite.viber.com": .viber,
++            "chat.viber.com": .viber,
++            "m.me": .messenger,
++            "line.me": .line,
++            "chat.weixin.qq.com": .wechat,
++            "open.kakao.com": .kakaotalk,
++            "pf.kakao.com": .kakaotalk,
++        ]
++
++        /// Flattened and ordered longest-first, so `meet.jit.si` can never be
++        /// mistaken for a shorter suffix it ends with.
++        private static let suffixLookup: [(suffix: String, provider: Provider)] =
++            subdomainProviders.flatMap { provider, suffixes in
++                suffixes.map { (suffix: $0, provider: provider) }
+             }
+-            guard let match else { return nil }
+-            self = match.key
++            .sorted { $0.suffix.count > $1.suffix.count }
++
++        init?(host: String) {
++            if let exact = Self.exactHosts[host] { self = exact; return }
++            guard let match = Self.suffixLookup.first(where: { suffix, _ in
++                host == suffix || host.hasSuffix("." + suffix)
++            }) else { return nil }
++            self = match.provider
+         }
+ 
+-        /// Whether the path shape is a meeting rather than a download page or a dial-in helper.
+-        func admits(path: String) -> Bool {
+-            let segments = path.split(separator: "/").map { $0.lowercased() }
++        /// Whether the URL's shape is the provider's documented meeting or conversation
++        /// entry point, rather than a download page, a profile, or one of the site's
++        /// other pages. Takes the whole URL because some providers keep the interesting
++        /// part in the fragment, and some admit different paths per host.
++        func admits(url: URL) -> Bool {
++            let segments = url.path().split(separator: "/").map { $0.lowercased() }
++            let host = url.host()?.lowercased() ?? ""
++            let fragment = url.fragment() ?? ""
+             switch self {
+             case .zoom:
+                 return segments.contains { ["j", "w", "s", "my"].contains($0) }
+@@ -149,11 +244,117 @@ extension MeetingLink {
+                 return segments.count == 1 && segments[0] != "tel"
+             case .teams:
+                 return segments.contains("meetup-join") || segments.contains("meet")
++            // Telemost: telemost.yandex.ru/j/<id>, and the room id never has a slash.
++            case .telemost:
++                return segments.first == "j" && segments.count == 2
++            // Telegram (core.telegram.org/api/links): t.me/+<hash> and
++            // t.me/joinchat/<hash> private invites, t.me/addlist/<hash> folder invites,
++            // and t.me/<username> or t.me/<username>/<message id> for a public chat.
++            // The site's own pages — share, apps, faq, login, and the rest — are not.
++            case .telegram:
++                guard let first = segments.first else { return false }
++                if first == "joinchat" || first == "addlist" {
++                    return segments.count == 2 && Self.tokenish(segments[1])
++                }
++                if first.hasPrefix("+") {
++                    return segments.count == 1 && first.count > 1
++                }
++                guard segments.count <= 2, !first.isEmpty,
++                    !Self.telegramReserved.contains(first)
++                else { return false }
++                // The second segment, when present, is a message id: digits only.
++                guard segments.count == 2 else { return true }
++                return segments[1].allSatisfy(\.isNumber)
++            // WhatsApp (faq.whatsapp.com): chat.whatsapp.com/<invite code> and
++            // wa.me/<phone number, digits only> are the documented entry points.
++            case .whatsapp:
++                if host == "wa.me" {
++                    return segments.count == 1 && Self.asciiDigits(segments[0])
++                }
++                return segments.count == 1 && Self.tokenish(segments[0])
++            // Signal (signal.org): call links live at signal.link/#key=<hex>; group
++            // invites at signal.group/#<hash> or signal.group/join/<hash>; person
++            // links at signal.me/#p/<phone or username> or #eu/<username>. Anything
++            // else on these hosts is the site, not a link.
++            case .signal:
++                if host == "signal.group" {
++                    if segments.isEmpty { return Self.tokenish(fragment) }
++                    return segments.first == "join" && segments.count == 2
++                        && Self.tokenish(segments[1])
++                }
++                if segments.isEmpty {
++                    if host == "signal.link" {
++                        return fragment.hasPrefix("key=") && fragment.count > "key=".count
++                    }
++                    if host == "signal.me" {
++                        let lowered = fragment.lowercased()
++                        if lowered.hasPrefix("p/") { return fragment.count > "p/".count }
++                        if lowered.hasPrefix("eu/") { return fragment.count > "eu/".count }
++                    }
++                }
++                return false
++            // Discord (support.discord.com): discord.gg/<code> and
++            // discord.com/invite/<code> are invites; discord.com/channels/… deep-links
++            // a server the user already belongs to. Everything else on discord.com is
++            // the site: login, downloads, apps.
++            case .discord:
++                if host == "discord.gg" { return segments.count == 1 }
++                if segments.first == "invite" { return segments.count == 2 }
++                return segments.first == "channels" && segments.count >= 3
++            // Viber (support.viber.com): invite.viber.com/<id> and chat.viber.com/<id>.
++            case .viber:
++                return segments.count == 1 && Self.tokenish(segments[0])
++            // Messenger: m.me/<username> opens the chat; the share widget does not.
++            case .messenger:
++                return segments.count == 1 && !Self.messengerReserved.contains(segments[0])
++            // LINE (developers.line.biz): line.me/R/<type>/… share targets and
++            // line.me/ti/g…/ group invitations. A bare /R or /ti is not a link.
++            case .line:
++                if segments.first == "r" { return segments.count >= 3 }
++                if segments.first == "ti" {
++                    return segments.count >= 3 && segments[1].hasPrefix("g")
++                }
++                return false
++            // WeChat: chat.weixin.qq.com/<id> is the group-invite form.
++            case .wechat:
++                return segments.count == 1 && Self.tokenish(segments[0])
++            // KakaoTalk: open.kakao.com/o/<code> open chats; pf.kakao.com/_xChat… is
++            // the open-chat landing on a channel page.
++            case .kakaotalk:
++                if host == "open.kakao.com" { return segments.first == "o" && segments.count == 2 }
++                return segments.first?.hasPrefix("_xchat") == true
++            // Meeting services whose whole host is meeting-shaped: any non-empty path
++            // is a room the event named.
+             case .webex, .jitsi, .whereby, .chime, .gotoMeeting, .blueJeans, .skype, .generic:
+                 return !segments.isEmpty
+             }
+         }
+ 
++        /// The words that occupy t.me's namespace without naming a chat.
++        private static let telegramReserved: Set<String> = [
++            "share", "apps", "faq", "login", "blog", "about", "privacy", "tos", "premium",
++            "telegram", "download", "jobs", "moderation", "terms",
++        ]
++
++        /// m.me's own words: its share widget and its redirect helpers.
++        private static let messengerReserved: Set<String> = ["share", "login", "help"]
++
++        /// An invite token: ASCII letters, digits, hyphen, underscore — with at least one
++        /// alphanumeric, so a bare `-`, `___`, or a Unicode homoglyph run is not one.
++        private static func tokenish(_ segment: String) -> Bool {
++            !segment.isEmpty
++                && segment.allSatisfy { Self.tokenCharacters.contains($0) }
++                && segment.contains(where: { $0.isLetter || $0.isNumber })
++        }
++
++        private static let tokenCharacters =
++            Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
++
++        /// ASCII digits only: a phone number cannot carry Unicode numerals.
++        private static func asciiDigits(_ segment: String) -> Bool {
++            !segment.isEmpty && segment.allSatisfy { $0.isASCII && $0.isNumber }
++        }
++
+         private static let accountQuery = "authuser"
+         /// Meet's own links keep `@` readable; `+` cannot stay, as a server may read it as a space.
+         private static let accountAllowed = CharacterSet.urlQueryAllowed.subtracting(
+@@ -173,7 +374,9 @@ extension MeetingLink {
+             return components.url
+         }
+ 
+-        /// Only the two rewrites Apple's handlers make unambiguous; anything else opens the web.
++        /// Only the two rewrites Apple's handlers make unambiguous; anything else opens
++        /// the web. The messenger links are no exception: none has a documented
++        /// universal native conversion, so the https link as written is the way in.
+         func appURL(for url: URL) -> URL? {
+             switch self {
+             case .zoom: return zoomAppURL(for: url)
+diff --git a/Tinycast/Features/Calendar/UI/CalendarCoordinator.swift b/Tinycast/Features/Calendar/UI/CalendarCoordinator.swift
+index 1ff2061b6eb8b76e993e710a31e2e5bce865598f..bbefb824afa40e298701ffb78c6826d1bc6c8064 100644
+--- a/Tinycast/Features/Calendar/UI/CalendarCoordinator.swift
++++ b/Tinycast/Features/Calendar/UI/CalendarCoordinator.swift
+@@ -379,16 +379,17 @@ final class CalendarCoordinator {
+     private func joinAfterGate(
+         _ meeting: MeetingEvent, link: MeetingLink, uninvited: Bool
+     ) async {
+-        // The preview is itself a confirmation, so it stands in for one when both are on.
+-        if settings.cameraPreview {
++        // The preview is a join aid: a conversation link has no camera to check, and
++        // a camera-then-Open flow would only delay the chat.
++        if settings.cameraPreview, !link.isConversation {
+             guard await cameraPreview.present(meeting: meeting, now: Date()) else { return }
+         } else if uninvited, settings.autoJoinConfirms {
+             NSApp.activate(ignoringOtherApps: true)
+             guard
+                 await core.confirm(
+-                    title: String(localized: "Join \(meeting.title)?"),
++                    title: String(localized: "\(link.actionTitle) \(meeting.title)?"),
+                     message: UpcomingWindow.countdown(to: meeting.start, now: Date(), locale: .current),
+-                    symbol: link.provider.sfSymbol, confirmTitle: String(localized: "Join"),
++                    symbol: link.provider.sfSymbol, confirmTitle: link.actionTitle,
+                     tone: .neutral, confirmRole: .standard,
+                     dismissTitle: String(localized: "Not Now"))
+             else { return }
+diff --git a/Tinycast/Features/Calendar/UI/CalendarMenuBarItem.swift b/Tinycast/Features/Calendar/UI/CalendarMenuBarItem.swift
+index 4723777de7c99b829379a00893ed5ba553e8bea7..e705def2b47c2172c703ca3213fc4fb2a0178006 100644
+--- a/Tinycast/Features/Calendar/UI/CalendarMenuBarItem.swift
++++ b/Tinycast/Features/Calendar/UI/CalendarMenuBarItem.swift
+@@ -52,7 +52,7 @@ struct CalendarMenuBarMenu: View {
+             if let meeting = coordinator.menuBarEvent {
+                 Section {
+                     if let link = meeting.link {
+-                        Button("Join \(meeting.title)", systemImage: link.provider.sfSymbol) {
++                        Button("\(link.actionTitle) \(meeting.title)", systemImage: link.provider.sfSymbol) {
+                             coordinator.join(meeting)
+                         }
+                     }
+diff --git a/Tinycast/Features/Calendar/UI/CameraPreviewView.swift b/Tinycast/Features/Calendar/UI/CameraPreviewView.swift
+index 656669a35e6513287f03b4774ea7c26b1c1f981f..e4bbcd058b08d20e90b7d65da56f8e370117b54a 100644
+--- a/Tinycast/Features/Calendar/UI/CameraPreviewView.swift
++++ b/Tinycast/Features/Calendar/UI/CameraPreviewView.swift
+@@ -16,6 +16,7 @@ struct CameraPreviewView: View {
+             footer
+         }
+         .frame(width: Theme.Size.cameraPreview.width)
++        .background(Theme.Colors.panelScrim)
+         .background(GlassEffectView())
+         .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.dialog, style: .continuous))
+     }
+@@ -34,7 +35,9 @@ struct CameraPreviewView: View {
+             CameraButton(
+                 title: String(localized: "Cancel"), keyCaps: ["esc"], emphasis: .secondary,
+                 onActivate: onCancel)
+-            CameraButton(title: String(localized: "Join"), keyCaps: ["↵"], onActivate: onJoin)
++            CameraButton(
++                title: meeting.link?.actionTitle ?? String(localized: "Join"),
++                keyCaps: ["↵"], onActivate: onJoin)
+         }
+         .padding(Theme.Spacing.xl)
+     }
+diff --git a/Tinycast/Features/Calendar/UI/MeetingCardView.swift b/Tinycast/Features/Calendar/UI/MeetingCardView.swift
+index 068d09c28629ca7fa151ed12413f9d4beef497d6..4ef12c0f4ab8fa53b3da888da678915d5f565d28 100644
+--- a/Tinycast/Features/Calendar/UI/MeetingCardView.swift
++++ b/Tinycast/Features/Calendar/UI/MeetingCardView.swift
+@@ -83,7 +83,7 @@ enum MeetingActionsMenu {
+         if meeting.link != nil {
+             items.append(
+                 PopoverMenuItem(
+-                    title: String(localized: "Join Meeting"), systemImage: "video.fill", shortcut: "↵"
++                    title: meeting.link!.actionTitle, systemImage: meeting.link!.provider.sfSymbol, shortcut: "↵"
+                 ) {
+                     core.calendarCoordinator.join(meeting)
+                 })
+diff --git a/Tinycast/Features/Calendar/UI/MeetingDetailsScreen.swift b/Tinycast/Features/Calendar/UI/MeetingDetailsScreen.swift
+index 419eb77da11e1c5db292f1e6f60f7f2bace2808a..7bb40b1aeca8dd35c45c56bb8a4c277cefe879b2 100644
+--- a/Tinycast/Features/Calendar/UI/MeetingDetailsScreen.swift
++++ b/Tinycast/Features/Calendar/UI/MeetingDetailsScreen.swift
+@@ -12,7 +12,7 @@ struct MeetingDetailsScreen: PaletteScreen {
+     var rows: [MeetingEvent] { meeting.map { [$0] } ?? [] }
+ 
+     var primaryActionTitle: String {
+-        meeting?.link == nil ? String(localized: "Open in Calendar") : String(localized: "Join Meeting")
++        meeting?.link.map { $0.actionTitle } ?? String(localized: "Open in Calendar")
+     }
+ 
+     func actions(at selection: Int) -> PopoverMenuContent? {
+diff --git a/Tinycast/Features/Calendar/UI/ScheduleScreen.swift b/Tinycast/Features/Calendar/UI/ScheduleScreen.swift
+index 4ad2622d542ff76efd7cb754e53749f14f54b3df..3cee421f2ecfc0339dd7b0f1afae61a99854e5a1 100644
+--- a/Tinycast/Features/Calendar/UI/ScheduleScreen.swift
++++ b/Tinycast/Features/Calendar/UI/ScheduleScreen.swift
+@@ -19,8 +19,8 @@ struct ScheduleScreen: PaletteScreen {
+ 
+     /// A meeting with no link has nowhere to join, so the pill offers what it can instead.
+     var primaryActionTitle: String {
+-        meeting(at: vm.selection)?.link == nil
+-            ? String(localized: "Open in Calendar") : String(localized: "Join Meeting")
++        meeting(at: vm.selection)?.link.map { $0.actionTitle }
++            ?? String(localized: "Open in Calendar")
+     }
+ 
+     private func meeting(at selection: Int) -> MeetingEvent? {
+diff --git a/Tinycast/Features/Camera/UI/CameraView.swift b/Tinycast/Features/Camera/UI/CameraView.swift
+index 7fba95bf6f8f576730450f464ce42e5f669f537c..7b4dad007ef6dbd0dbae46be8af0d9cfb4652b67 100644
+--- a/Tinycast/Features/Camera/UI/CameraView.swift
++++ b/Tinycast/Features/Camera/UI/CameraView.swift
+@@ -12,6 +12,7 @@ struct CameraView: View {
+             footer
+         }
+         .frame(width: Theme.Size.cameraStage.width)
++        .background(Theme.Colors.panelScrim)
+         .background(GlassEffectView())
+         .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.dialog, style: .continuous))
+     }
+diff --git a/Tinycast/Features/Clipboard/Service/ClipboardManager.swift b/Tinycast/Features/Clipboard/Service/ClipboardManager.swift
+index 03505dc48c1b282187ba0ad23b9eb9a0071d56e3..0c5af7aec448126335c8364322f2488bcd739144 100644
+--- a/Tinycast/Features/Clipboard/Service/ClipboardManager.swift
++++ b/Tinycast/Features/Clipboard/Service/ClipboardManager.swift
+@@ -173,6 +173,27 @@ final class ClipboardManager {
+                 guard let png else { return }
+                 await store.addImage(png, sourceBundleID: sourceBundleID)
+             }
++            return
++        }
++
++        // A copy with no file URL, plain text or image, such as a web page's HTML-only
++        // Clipboard API write, reads as its text through NSAttributedString, RTF before HTML.
++        guard let text = Self.plainText(fromRichTextOn: pb),
++            !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
++            text.count <= ClipboardStore.maxTextLength
++        else { return }
++        store.addText(text, sourceBundleID: sourceBundleID)
++    }
++
++    /// The HTML importer runs WebKit on the main actor, so oversized fragments are skipped.
++    private static let maxImportedHTMLBytes = 256 * 1024
++
++    static func plainText(fromRichTextOn pasteboard: NSPasteboard) -> String? {
++        if let rtf = pasteboard.data(forType: .rtf) {
++            return NSAttributedString(rtf: rtf, documentAttributes: nil)?.string
+         }
++        guard let html = pasteboard.data(forType: .html), html.count <= maxImportedHTMLBytes
++        else { return nil }
++        return NSAttributedString(html: html, documentAttributes: nil)?.string
+     }
+ }
+diff --git a/Tinycast/Features/Extensions/Settings/ExtensionSettingsEditor.swift b/Tinycast/Features/Extensions/Settings/ExtensionSettingsEditor.swift
+index fd916a23597902d79d6634dad7f2ceb20cec9322..c6fc5327b366e0ffa8f58924cca1cde8c7120d7d 100644
+--- a/Tinycast/Features/Extensions/Settings/ExtensionSettingsEditor.swift
++++ b/Tinycast/Features/Extensions/Settings/ExtensionSettingsEditor.swift
+@@ -20,6 +20,7 @@ private struct ExtensionSettingsEditorPanelSurface: ViewModifier {
+     func body(content: Content) -> some View {
+         let shape = RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
+         content
++            .background(Theme.Colors.panelScrim, in: shape)
+             .glassEffect(.regular, in: shape)
+     }
+ }
+diff --git a/Tinycast/Features/Extensions/UI/ExtensionActionsPanel.swift b/Tinycast/Features/Extensions/UI/ExtensionActionsPanel.swift
+index 0880193ecca5e083231ef50bcec28f062379b040..d9e96d7a9f5cd8d5babe8368b32a87a340cd8999 100644
+--- a/Tinycast/Features/Extensions/UI/ExtensionActionsPanel.swift
++++ b/Tinycast/Features/Extensions/UI/ExtensionActionsPanel.swift
+@@ -91,6 +91,7 @@ struct ExtensionActionsPanel: View {
+         }
+         .frame(width: panel.width)
+         .glassEffect(.regular, in: shape)
++        .clipShape(shape)
+     }
+ 
+     @ViewBuilder
+diff --git a/Tinycast/Features/Extensions/UI/ExtensionCommandScreen.swift b/Tinycast/Features/Extensions/UI/ExtensionCommandScreen.swift
+index 4b4e40790863ac11ef690696746b26045327d4ad..5cfd1a54e20d839854f4c8779fb4fa48dccccdfc 100644
+--- a/Tinycast/Features/Extensions/UI/ExtensionCommandScreen.swift
++++ b/Tinycast/Features/Extensions/UI/ExtensionCommandScreen.swift
+@@ -117,15 +117,6 @@ struct ExtensionCommandScreen: PaletteScreen {
+             activate: { index in
+                 guard let handler = filteredActions[index].handler else { return }
+                 extensions.dispatch(handler: handler)
+-            },
+-            clipPath: { bounds, metrics, _ in
+-                UnevenRoundedRectangle(
+-                    topLeadingRadius: metrics.radius.menuPanel,
+-                    bottomLeadingRadius: metrics.radius.menuPanel,
+-                    bottomTrailingRadius: metrics.size.menuButton / 2,
+-                    topTrailingRadius: metrics.radius.menuPanel,
+-                    style: .continuous
+-                ).path(in: bounds).cgPath
+             })
+     }
+ 
+@@ -191,10 +182,6 @@ struct ExtensionCommandScreen: PaletteScreen {
+             },
+             activate: { index in
+                 extensions.chooseAccessorySelection(accessory, value: items[index].value)
+-            },
+-            clipPath: { bounds, metrics, _ in
+-                RoundedRectangle(cornerRadius: metrics.radius.menuPanel, style: .continuous)
+-                    .path(in: bounds).cgPath
+             })
+     }
+ 
+diff --git a/Tinycast/Features/Extensions/UI/ExtensionPickerList.swift b/Tinycast/Features/Extensions/UI/ExtensionPickerList.swift
+index 7d16de5bae65a0a1b76d12bc5e0cf39ed3367a0c..d678dbc01b9767dd7d867152350aac3be48b7471 100644
+--- a/Tinycast/Features/Extensions/UI/ExtensionPickerList.swift
++++ b/Tinycast/Features/Extensions/UI/ExtensionPickerList.swift
+@@ -39,6 +39,7 @@ struct ExtensionPickerList: View {
+         .glassEffect(
+             .regular, in: RoundedRectangle(cornerRadius: metrics.radius.menuPanel, style: .continuous)
+         )
++        .clipShape(RoundedRectangle(cornerRadius: metrics.radius.menuPanel, style: .continuous))
+     }
+ 
+     @ViewBuilder
+diff --git a/Tinycast/Features/Launcher/UI/CompactBar.swift b/Tinycast/Features/Launcher/UI/CompactBar.swift
+index f0d858faf31b5486ae493b6be55e17af0ab643df..32aabc1e2c5a5360689c8d5361248913c59242e6 100644
+--- a/Tinycast/Features/Launcher/UI/CompactBar.swift
++++ b/Tinycast/Features/Launcher/UI/CompactBar.swift
+@@ -65,6 +65,7 @@ struct CompactBar: View {
+             }
+             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+         }
++        .overlay { scrim(geometry: geometry, revealed: revealed) }
+         // Above the glass rather than inside it, where a morph would smear them.
+         .overlay(alignment: .topLeading) {
+             ForEach(Array(commands.enumerated()), id: \.element) { index, command in
+@@ -74,6 +75,32 @@ struct CompactBar: View {
+         .task(id: palette.isVisible) { await followVisibility() }
+     }
+ 
++    /// The scrim follows the reveal: masked to the animated capsule and buttons, with the
++    /// selected button left out so its tint reads undimmed.
++    private func scrim(geometry: CompactBarGeometry, revealed: Bool) -> some View {
++        Theme.Colors.panelScrim
++            .mask {
++                ZStack(alignment: .topLeading) {
++                    Capsule().fill(.white)
++                        .frame(width: geometry.capsuleWidth(revealed: revealed))
++                        .frame(maxHeight: .infinity)
++                        .animation(
++                            reduceMotion ? nil : BarMotion.capsule.delay(BarMotion.revealDelay),
++                            value: revealed)
++                    ForEach(Array(commands.enumerated()), id: \.element) { index, command in
++                        Circle().fill(.white)
++                            .frame(width: geometry.diameter, height: geometry.diameter)
++                            .opacity(revealed && selection != command ? 1 : 0)
++                            .scaleEffect(revealed ? 1 : BarMotion.parkedScale)
++                            .position(revealed ? geometry.center(of: index) : geometry.parked)
++                            .animation(travel(index), value: revealed)
++                    }
++                }
++            }
++            .allowsHitTesting(false)
++            .accessibilityHidden(true)
++    }
++
+     private func button(
+         _ command: CommandID, at index: Int, geometry: CompactBarGeometry, revealed: Bool
+     ) -> some View {
+diff --git a/Tinycast/Features/Notes/UI/NotesView.swift b/Tinycast/Features/Notes/UI/NotesView.swift
+index da1ef94556a8445c2a65aa311ce0ce29337b0881..bc9d9f484e7c66b26383d4e586c4705add687dfe 100644
+--- a/Tinycast/Features/Notes/UI/NotesView.swift
++++ b/Tinycast/Features/Notes/UI/NotesView.swift
+@@ -9,6 +9,7 @@ struct NotesView: View {
+             content
+         }
+         .frame(maxWidth: .infinity, maxHeight: .infinity)
++        .background(Theme.Colors.panelScrim)
+         .background(GlassEffectView())
+         .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
+         // The band above is the title bar; AppKit must not inset the content a second time.
+diff --git a/Tinycast/Features/QuickActions/UI/QuickActionResultView.swift b/Tinycast/Features/QuickActions/UI/QuickActionResultView.swift
+index 34bdea673af49c102c232720f0692dfe662b7d14..a6bcf86cc8ce2a8ad7da51dc2d744f5dde14b86b 100644
+--- a/Tinycast/Features/QuickActions/UI/QuickActionResultView.swift
++++ b/Tinycast/Features/QuickActions/UI/QuickActionResultView.swift
+@@ -38,6 +38,7 @@ struct QuickActionResultView: View {
+         .overlay(alignment: .top) { measured(header) { headerHeight = $0 } }
+         .overlay(alignment: .bottom) { measured(footer) { footerHeight = $0 } }
+         .frame(width: metrics.size.quickActionPanel, height: panelHeight)
++        .background(Theme.Colors.panelScrim)
+         .background(GlassEffectView())
+         .clipShape(RoundedRectangle(cornerRadius: metrics.radius.dialog, style: .continuous))
+         // Reported, not measured: the frame above is ours, so reading it back would feed itself.
+diff --git a/Tinycast/Features/Settings/AppSettings.swift b/Tinycast/Features/Settings/AppSettings.swift
+index 380c9e3770199079cd3c14771dfad0d57db1e7c8..1888a98941d2306dcd4f34e5e1c04b2d0ec3584e 100644
+--- a/Tinycast/Features/Settings/AppSettings.swift
++++ b/Tinycast/Features/Settings/AppSettings.swift
+@@ -431,6 +431,10 @@ final class AppSettings {
+         didSet { defaults.set(snippetsFolder, forKey: Key.snippetsFolder.rawValue) }
+     }
+ 
++    var snippetDefaultAction: SnippetDefaultAction {
++        didSet { defaults.set(snippetDefaultAction.rawValue, forKey: Key.snippetDefaultAction.rawValue) }
++    }
++
+     var navigationEnabled: Bool {
+         didSet { defaults.set(navigationEnabled, forKey: Key.navigationEnabled.rawValue) }
+     }
+@@ -788,6 +792,9 @@ final class AppSettings {
+             defaults.object(forKey: Key.snippetsShowInLauncher.rawValue) == nil
+             || defaults.bool(forKey: Key.snippetsShowInLauncher.rawValue)
+         snippetsFolder = defaults.string(forKey: Key.snippetsFolder.rawValue)
++        snippetDefaultAction =
++            defaults.string(forKey: Key.snippetDefaultAction.rawValue)
++            .flatMap(SnippetDefaultAction.init) ?? .paste
+         // Opt-in, unlike its siblings: until it is asked for, nothing about extensions is loaded.
+         extensionsEnabled = defaults.bool(forKey: Key.extensionsEnabled.rawValue)
+         extensionsShowInLauncher =
+diff --git a/Tinycast/Features/Settings/AppSettingsKey.swift b/Tinycast/Features/Settings/AppSettingsKey.swift
+index d834283780bc852e900bdb8c41e5e98d7ca7cdbc..46cb2ae1e625d16863663f2d4fecc7e647509e20 100644
+--- a/Tinycast/Features/Settings/AppSettingsKey.swift
++++ b/Tinycast/Features/Settings/AppSettingsKey.swift
+@@ -50,6 +50,7 @@ enum AppSettingsKey: String, CaseIterable {
+     case snippetsEnabled = "snippetsEnabled"
+     case snippetsShowInLauncher = "snippetsShowInLauncher"
+     case snippetsFolder = "snippetsFolder"
++    case snippetDefaultAction = "snippetDefaultAction"
+     case navigationEnabled = "navigationEnabled"
+     case menuSearchDisabledApps = "menuSearchDisabledApps"
+     case menuSearchShowsAppleMenu = "menuSearchShowsAppleMenu"
+diff --git a/Tinycast/Features/Settings/Model/SettingsFileKey.swift b/Tinycast/Features/Settings/Model/SettingsFileKey.swift
+index c0a8e739135dda31a491272bbcf48d063b5a0bcc..859cc99c2726d37a7de8988cbd147f111e8e3264 100644
+--- a/Tinycast/Features/Settings/Model/SettingsFileKey.swift
++++ b/Tinycast/Features/Settings/Model/SettingsFileKey.swift
+@@ -69,6 +69,7 @@ enum SettingsFileKey: String, CaseIterable, Sendable {
+     case notesCommands = "notes.commands"
+     case snippetsShowInLauncher = "snippets.showInLauncher"
+     case snippetsFolder = "snippets.folder"
++    case snippetDefaultAction = "snippets.defaultAction"
+     case snippetsCommands = "snippets.commands"
+     case navigationEnabled = "navigation.enabled"
+     case menuSearchShowsAppleMenu = "navigation.menuSearchShowsAppleMenu"
+diff --git a/Tinycast/Features/Settings/SettingsFileSchema.swift b/Tinycast/Features/Settings/SettingsFileSchema.swift
+index 53b4043454f302f6d653e9809c5e244f0fddb783..9d16319327fe39d145df549d4d9e208fd97fb421 100644
+--- a/Tinycast/Features/Settings/SettingsFileSchema.swift
++++ b/Tinycast/Features/Settings/SettingsFileSchema.swift
+@@ -101,6 +101,7 @@ enum SettingsFileSchema {
+         case .notesCommands: return launcher.commandsBinding(for: key, owner: .notes)
+         case .snippetsShowInLauncher: return bind(settings, \.snippetsShowInLauncher)
+         case .snippetsFolder: return bind(settings, \.snippetsFolder, accept: folder)
++        case .snippetDefaultAction: return bind(settings, \.snippetDefaultAction)
+         case .snippetsCommands: return launcher.commandsBinding(for: key, owner: .snippets)
+         case .navigationEnabled: return bind(settings, \.navigationEnabled)
+         case .menuSearchShowsAppleMenu: return bind(settings, \.menuSearchShowsAppleMenu)
+@@ -167,6 +168,7 @@ extension CalcNumberStyle: SettingsFileRawValue {}
+ extension SearchSensitivity: SettingsFileRawValue {}
+ extension WindowCycle: SettingsFileRawValue {}
+ extension ClipboardDefaultAction: SettingsFileRawValue {}
++extension SnippetDefaultAction: SettingsFileRawValue {}
+ extension EmojiSkinTone: SettingsFileRawValue {}
+ extension EmojiGridColumns: SettingsFileRawValue {}
+ extension JoinWindow: SettingsFileRawValue {}
+diff --git a/Tinycast/Features/Settings/SettingsSearchCatalog.swift b/Tinycast/Features/Settings/SettingsSearchCatalog.swift
+index 19a4a8407e8eb7b427ac21d06ff92755a35ed305..8ad706120d6ce1458097f3a288b37010c9ad4103 100644
+--- a/Tinycast/Features/Settings/SettingsSearchCatalog.swift
++++ b/Tinycast/Features/Settings/SettingsSearchCatalog.swift
+@@ -402,6 +402,9 @@ enum SettingsSearchCatalog {
+         .init(
+             .snippetsSnippets, "Enable snippets",
+             keywords: ["expansion", "keystrokes", "accessibility"]),
++        .init(
++            .snippetsSnippets, "Default action",
++            keywords: ["enter", "return", "paste", "copy", "primary"]),
+         .init(
+             group: .snippetsCommands, "Snippet commands",
+             keywords: ["shortcut", "hotkey", "launcher", "browser"]),
+diff --git a/Tinycast/Features/Snippets/Model/Snippet.swift b/Tinycast/Features/Snippets/Model/Snippet.swift
+index c746cccaf87956f89371536ee31f52e49cf44e83..df7995679c032d132494e72c4aa972966a62f0f4 100644
+--- a/Tinycast/Features/Snippets/Model/Snippet.swift
++++ b/Tinycast/Features/Snippets/Model/Snippet.swift
+@@ -6,22 +6,42 @@ struct Snippet: Sendable, Hashable {
+     var keyword: String?
+     var isEnabled: Bool
+     var showsConfirmation: Bool
++    var isPinned: Bool
+ 
+     init(
+         name: String,
+         text: String,
+         keyword: String? = nil,
+         isEnabled: Bool = true,
+-        showsConfirmation: Bool = false
++        showsConfirmation: Bool = false,
++        isPinned: Bool = false
+     ) {
+         self.name = name
+         self.text = text
+         self.keyword = keyword
+         self.isEnabled = isEnabled
+         self.showsConfirmation = showsConfirmation
++        self.isPinned = isPinned
+     }
+ }
+ 
++/// What ↵ does in the snippets browser; the other action takes ⌘↵.
++enum SnippetDefaultAction: String, CaseIterable, Identifiable, Sendable {
++    case paste
++    case copy
++
++    var id: String { rawValue }
++
++    var title: String {
++        switch self {
++        case .paste: String(localized: "Paste")
++        case .copy: String(localized: "Copy to Clipboard")
++        }
++    }
++
++    var alternate: Self { self == .paste ? .copy : .paste }
++}
++
+ /// Fingerprint of a snippet file's bytes, detecting an external edit before a save or delete.
+ struct SnippetSourceRevision: Sendable, Hashable {
+     private let value: String
+diff --git a/Tinycast/Features/Snippets/Model/SnippetMarkdownSerializer.swift b/Tinycast/Features/Snippets/Model/SnippetMarkdownSerializer.swift
+index 4d3b00a21aa38b15ad870e8ac0aa78e1475599c4..d818d12bbd9f039dba4535c755715586003d227d 100644
+--- a/Tinycast/Features/Snippets/Model/SnippetMarkdownSerializer.swift
++++ b/Tinycast/Features/Snippets/Model/SnippetMarkdownSerializer.swift
+@@ -26,6 +26,7 @@ struct SnippetMarkdownSerializer {
+         var keyword: String?
+         var isEnabled = true
+         var showsConfirmation = false
++        var isPinned = false
+         var seenKeys = Set<String>()
+ 
+         for lineIndex in 1..<closingIndex {
+@@ -60,6 +61,8 @@ struct SnippetMarkdownSerializer {
+                 isEnabled = try decodeBoolean(rawValue, fileURL: fileURL, line: lineNumber)
+             case "show_confirmation":
+                 showsConfirmation = try decodeBoolean(rawValue, fileURL: fileURL, line: lineNumber)
++            case "pinned":
++                isPinned = try decodeBoolean(rawValue, fileURL: fileURL, line: lineNumber)
+             default:
+                 preconditionFailure("Canonical keys are exhaustively handled")
+             }
+@@ -71,7 +74,8 @@ struct SnippetMarkdownSerializer {
+             text: String(content[bodyStart...]),
+             keyword: keyword,
+             isEnabled: isEnabled,
+-            showsConfirmation: showsConfirmation
++            showsConfirmation: showsConfirmation,
++            isPinned: isPinned
+         )
+     }
+ 
+@@ -85,6 +89,8 @@ struct SnippetMarkdownSerializer {
+         }
+         lines.append("enabled: \(snippet.isEnabled)")
+         lines.append("show_confirmation: \(snippet.showsConfirmation)")
++        // Only when set, so an unpinned snippet's file stays byte-identical.
++        if snippet.isPinned { lines.append("pinned: true") }
+         lines.append("---")
+         return lines.joined(separator: "\n") + "\n" + snippet.text
+     }
+@@ -134,7 +140,7 @@ struct SnippetMarkdownSerializer {
+     private static func canonicalKey(for rawKey: String) -> String? {
+         let key = rawKey.lowercased()
+         switch key {
+-        case "name", "keyword", "enabled", "show_confirmation":
++        case "name", "keyword", "enabled", "show_confirmation", "pinned":
+             return key
+         default:
+             return nil
+diff --git a/Tinycast/Features/Snippets/Model/SnippetsStore.swift b/Tinycast/Features/Snippets/Model/SnippetsStore.swift
+index e8f5ab721ca272fe9778a6e4c6c5020be258d070..0c2eaab4d222e84c3fcd9d9d960c4bd391494761 100644
+--- a/Tinycast/Features/Snippets/Model/SnippetsStore.swift
++++ b/Tinycast/Features/Snippets/Model/SnippetsStore.swift
+@@ -17,7 +17,7 @@ final class SnippetsStore {
+     private(set) var operationError: String?
+ 
+     private(set) var snippetsDirectory: URL
+-    let ephemeral = EphemeralSnippetStore()
++    let ephemeral: EphemeralSnippetStore
+     var onSnapshot: ((SnippetRepository.Snapshot) -> Void)?
+ 
+     private var repository: SnippetRepository
+@@ -29,8 +29,12 @@ final class SnippetsStore {
+     private var watcherGeneration = 0
+     private var isStarted = false
+ 
+-    init(repository: SnippetRepository = SnippetRepository()) {
++    init(
++        repository: SnippetRepository = SnippetRepository(),
++        ephemeral: EphemeralSnippetStore = EphemeralSnippetStore()
++    ) {
+         self.repository = repository
++        self.ephemeral = ephemeral
+         snippetsDirectory = repository.snippetsDirectory
+     }
+ 
+@@ -134,6 +138,30 @@ final class SnippetsStore {
+         snippets.first(where: { $0.id == id })
+     }
+ 
++    /// A disabled snippet is off everywhere, so the browser lists exactly what the launcher does;
++    /// pinned snippets come first.
++    func browserRows(matching query: String) -> [StoredSnippet] {
++        let query = query.trimmingCharacters(in: .whitespaces)
++        let matches = snippets.filter { record in
++            record.snippet.isEnabled
++                && (query.isEmpty
++                    || record.snippet.name.localizedCaseInsensitiveContains(query)
++                    || record.snippet.keyword?.localizedCaseInsensitiveContains(query) == true)
++        }
++        return matches.filter(\.snippet.isPinned) + matches.filter { !$0.snippet.isPinned }
++    }
++
++    /// How many live AI responses the browser shows ahead of its snippets, so an index into
++    /// `browserRows` can be corrected to an index into the screen's combined rows.
++    func liveResponseCount(matching query: String, includeResponses: Bool) -> Int {
++        guard includeResponses else { return 0 }
++        let query = query.trimmingCharacters(in: .whitespaces)
++        return ephemeral.items.filter {
++            $0.expiresAt > Date()
++                && (query.isEmpty || $0.text.localizedCaseInsensitiveContains(query))
++        }.count
++    }
++
+     private enum RepositoryResult<Value: Sendable>: Sendable {
+         case success(Value)
+         case failure(SnippetRepository.RepositoryError)
+diff --git a/Tinycast/Features/Snippets/Settings/SnippetsSettingsView.swift b/Tinycast/Features/Snippets/Settings/SnippetsSettingsView.swift
+index 144287a49e98f3ff2e4699974584e17d6f5d276d..705455c1a7c23d85d0100f91b13d2a2f25809186 100644
+--- a/Tinycast/Features/Snippets/Settings/SnippetsSettingsView.swift
++++ b/Tinycast/Features/Snippets/Settings/SnippetsSettingsView.swift
+@@ -42,6 +42,16 @@ struct SnippetsSettingsView: View {
+             }
+ 
+             Group {
++                Section {
++                    Picker(selection: $settings.snippetDefaultAction) {
++                        ForEach(SnippetDefaultAction.allCases) { action in
++                            Text(action.title).tag(action)
++                        }
++                    } label: {
++                        SettingsRowTitle(.snippetsSnippets, verbatim: "Default action")
++                        Text("↵ does this, and Paste takes its shortcut.")
++                    }
++                }
+                 FeatureCommandsSection(owner: .snippets, anchor: .snippetsCommands)
+                 library
+                 libraryNotices
+diff --git a/Tinycast/Features/Snippets/UI/SnippetCoordinator.swift b/Tinycast/Features/Snippets/UI/SnippetCoordinator.swift
+index 483ef1ac2038f1cacee1075e85638743a395d764..6a74961e82c047e712cc3132ecd56f3253ce732c 100644
+--- a/Tinycast/Features/Snippets/UI/SnippetCoordinator.swift
++++ b/Tinycast/Features/Snippets/UI/SnippetCoordinator.swift
+@@ -213,6 +213,28 @@ final class SnippetCoordinator {
+         AppLauncher.showInFinder(record.fileURL)
+     }
+ 
++    func toggleSnippetPinned(id: StoredSnippet.ID) async {
++        guard settings.snippetsEnabled, var record = store.record(id: id) else { return }
++        record.snippet.isPinned.toggle()
++        do {
++            try await store.save(record)
++        } catch {
++            await core.showNotice(
++                title: String(localized: "Couldn’t Save the Change"),
++                message: error.localizedDescription, symbol: "pin", tone: .danger)
++            return
++        }
++        // The browser shows live AI responses ahead of its snippets, so the snippet index
++        // alone would land on the wrong row and ↵ would paste the wrong response.
++        guard palette.mode == .snippets,
++            let index = store.browserRows(matching: palette.query).firstIndex(where: { $0.id == id })
++        else { return }
++        palette.selection =
++            index
++            + store.liveResponseCount(
++                matching: palette.query, includeResponses: settings.ephemeralSnippetsEnabled)
++    }
++
+     func deleteSnippet(id: StoredSnippet.ID) async {
+         guard settings.snippetsEnabled, let record = store.record(id: id) else { return }
+         guard
+@@ -274,6 +296,45 @@ final class SnippetCoordinator {
+         expandSnippet(id: id, target: target)
+     }
+ 
++    func performFromPalette(_ action: SnippetDefaultAction, id: StoredSnippet.ID) {
++        switch action {
++        case .paste: expandSnippetFromPalette(id: id)
++        case .copy: copySnippetFromPalette(id: id)
++        }
++    }
++
++    /// Unmarked, so the expansion enters clipboard history like any other copy.
++    func copySnippetFromPalette(id: StoredSnippet.ID) {
++        let target = windowController.previousTarget
++        paletteCoordinator.hidePalette()
++        let records = store.snippets
++        guard let record = records.first(where: { $0.id == id }) else { return }
++        let context = injector.captureExpansionContext(
++            target: target,
++            clipboardHistory: clipboardHistoryForExpansion())
++        let result = SnippetTemplateEngine.expand(record, snippets: records, context: context)
++        guard result.missingArguments.isEmpty else {
++            promptSnippetArguments(
++                record: record,
++                records: records,
++                context: context,
++                missingArgs: result.missingArguments,
++                onCancel: { target?.restoreFocus() },
++                onExpanded: { [weak self] result in
++                    self?.copy(result, of: record)
++                    target?.restoreFocus()
++                })
++            return
++        }
++        copy(result, of: record)
++    }
++
++    private func copy(_ result: SnippetTemplateEngine.ExpansionResult, of record: StoredSnippet) {
++        Paster.copyPlainText(result.text)
++        guard record.snippet.showsConfirmation else { return }
++        showMessage(String(localized: "Copied \(record.snippet.name)"), .success)
++    }
++
+     /// A shortcut lands where the caret is; over the palette, that's what the palette covered.
+     func expandSnippetFromHotKey(id: StoredSnippet.ID) {
+         guard settings.snippetsEnabled, store.record(id: id)?.snippet.isEnabled == true else {
+@@ -366,11 +427,20 @@ final class SnippetCoordinator {
+                 records: records,
+                 context: context,
+                 missingArgs: result.missingArguments,
+-                target: target,
+-                expectedKeyword: expectedKeyword,
+-                keywordLength: keywordLength,
+-                automaticGeneration: automaticGeneration,
+-                confirmation: confirmation)
++                onCancel: { [weak self] in
++                    self?.injector.cancelArgumentPrompt(
++                        automaticGeneration: automaticGeneration,
++                        target: target)
++                },
++                onExpanded: { [weak self] result in
++                    self?.completeSnippetExpansion(
++                        result,
++                        target: target,
++                        expectedKeyword: expectedKeyword,
++                        keywordLength: keywordLength,
++                        automaticGeneration: automaticGeneration,
++                        confirmation: confirmation)
++                })
+             return
+         }
+         completeSnippetExpansion(
+@@ -387,44 +457,25 @@ final class SnippetCoordinator {
+         records: [StoredSnippet],
+         context: SnippetTemplateEngine.ExpansionContext,
+         missingArgs: [SnippetTemplateEngine.MissingArgument],
+-        target: InjectionTarget?,
+-        expectedKeyword: String?,
+-        keywordLength: Int,
+-        automaticGeneration: UInt?,
+-        confirmation: String?
++        onCancel: @escaping @MainActor () -> Void,
++        onExpanded: @escaping @MainActor (SnippetTemplateEngine.ExpansionResult) -> Void
+     ) {
+         // The open dialog would refuse this prompt, and its end must not clear the flag under it.
+-        guard !core.isShowingDialog else {
+-            injector.cancelArgumentPrompt(
+-                automaticGeneration: automaticGeneration,
+-                target: target)
+-            return
+-        }
++        guard !core.isShowingDialog else { return onCancel() }
+         listener.isPromptingForArguments = true
+         Task {
+             let arguments = await core.fillSnippetArguments(
+                 snippetName: record.snippet.name,
+                 arguments: missingArgs)
+             listener.isPromptingForArguments = false
+-            guard let arguments else {
+-                injector.cancelArgumentPrompt(
+-                    automaticGeneration: automaticGeneration,
+-                    target: target)
+-                return
+-            }
+-
+-            let result = SnippetTemplateEngine.expand(
+-                record,
+-                snippets: records,
+-                context: context,
+-                userArguments: arguments)
+-            completeSnippetExpansion(
+-                result,
+-                target: target,
+-                expectedKeyword: expectedKeyword,
+-                keywordLength: keywordLength,
+-                automaticGeneration: automaticGeneration,
+-                confirmation: confirmation)
++            guard let arguments else { return onCancel() }
++
++            onExpanded(
++                SnippetTemplateEngine.expand(
++                    record,
++                    snippets: records,
++                    context: context,
++                    userArguments: arguments))
+         }
+     }
+ 
+diff --git a/Tinycast/Features/Snippets/UI/SnippetEditorSession.swift b/Tinycast/Features/Snippets/UI/SnippetEditorSession.swift
+index f9c407d1fc2b0c5b76789832d06e4b8b2d26407e..359ba6f09f2e03868cfb4a120aaaabaffb8a4f65 100644
+--- a/Tinycast/Features/Snippets/UI/SnippetEditorSession.swift
++++ b/Tinycast/Features/Snippets/UI/SnippetEditorSession.swift
+@@ -37,7 +37,7 @@ final class SnippetEditorSession {
+         return Snippet(
+             name: name.trimmingCharacters(in: .whitespacesAndNewlines), text: text,
+             keyword: keyword.isEmpty ? nil : keyword, isEnabled: isEnabled,
+-            showsConfirmation: showsConfirmation)
++            showsConfirmation: showsConfirmation, isPinned: record?.snippet.isPinned ?? false)
+     }
+ 
+     func advanceFocus(backwards: Bool) {
+diff --git a/Tinycast/Features/Snippets/UI/SnippetsListView.swift b/Tinycast/Features/Snippets/UI/SnippetsListView.swift
+index 201153ae240021a36ef945a6d70c17ea0f4c878b..a4f93c8a116875debb444a57aeaf7a63528a1fec 100644
+--- a/Tinycast/Features/Snippets/UI/SnippetsListView.swift
++++ b/Tinycast/Features/Snippets/UI/SnippetsListView.swift
+@@ -23,6 +23,13 @@ enum SnippetBrowserRow: Identifiable, Equatable {
+         return false
+     }
+ 
++    var snippet: StoredSnippet? {
++        if case .snippet(let record) = self { return record }
++        return nil
++    }
++
++    var isPinned: Bool { snippet?.snippet.isPinned == true }
++
+     var trailingLabel: String? {
+         switch self {
+         case .snippet(let record): return record.snippet.keyword
+@@ -52,8 +59,13 @@ struct SnippetsList: View {
+                     ForEach(results) { record in
+                         if record.isResponse, record.id == results.first?.id {
+                             SectionHeader(title: "Recent AI Responses", isFirst: true)
+-                        } else if !record.isResponse, results.first?.isResponse == true,
+-                            record.id == results.first(where: { !$0.isResponse })?.id
++                        } else if record.isPinned,
++                            record.id == results.first(where: { $0.isPinned && !$0.isResponse })?.id
++                        {
++                            SectionHeader(title: "Pinned")
++                        } else if !record.isResponse, !record.isPinned,
++                            record.id
++                                == results.first(where: { !$0.isResponse && !$0.isPinned })?.id
+                         {
+                             SectionHeader(title: "Snippets")
+                         }
+diff --git a/Tinycast/Features/Snippets/UI/SnippetsScreen.swift b/Tinycast/Features/Snippets/UI/SnippetsScreen.swift
+index ecbebfdc44cb2c3d26a5bb493f3a46ed6d08e604..8956035d1b589ce8faceb1dc3c4810a4a8ebcb55 100644
+--- a/Tinycast/Features/Snippets/UI/SnippetsScreen.swift
++++ b/Tinycast/Features/Snippets/UI/SnippetsScreen.swift
+@@ -8,29 +8,25 @@ struct SnippetsScreen: PaletteScreen {
+     private var metrics: InterfaceMetrics { core.settings.interfaceSize.metrics }
+     let openActions: () -> Void
+ 
+-    /// A disabled snippet is off everywhere, so the browser lists exactly what the launcher does.
++    /// A disabled snippet is off everywhere, so the browser lists exactly what the launcher does;
++    /// pinned snippets lead the list.
+     var rows: [SnippetBrowserRow] {
+-        let enabled = store.snippets.filter { $0.snippet.isEnabled }
+-        let query = vm.query.trimmingCharacters(in: .whitespaces)
+-        let snippets =
+-            query.isEmpty
+-            ? enabled
+-            : enabled.filter { record in
+-                record.snippet.name.localizedCaseInsensitiveContains(query)
+-                    || record.snippet.keyword?.localizedCaseInsensitiveContains(query) == true
+-            }
++        let snippets = store.browserRows(matching: vm.query)
+         let responses =
+             core.settings.ephemeralSnippetsEnabled
+             ? store.ephemeral.items.filter {
+                 $0.expiresAt > Date()
+-                    && (query.isEmpty || $0.text.localizedCaseInsensitiveContains(query))
++                    && (vm.query.trimmingCharacters(in: .whitespaces).isEmpty
++                        || $0.text.localizedCaseInsensitiveContains(vm.query))
+             } : []
+         return responses.map(SnippetBrowserRow.response) + snippets.map(SnippetBrowserRow.snippet)
+     }
+ 
++    private var defaultAction: SnippetDefaultAction { core.settings.snippetDefaultAction }
++
+     var primaryActionTitle: String {
+         record(at: vm.selection)?.isResponse == true
+-            ? String(localized: "Paste Response") : String(localized: "Paste Snippet")
++            ? String(localized: "Paste Response") : defaultAction.menuTitle
+     }
+ 
+     private func record(at selection: Int) -> SnippetBrowserRow? {
+@@ -41,7 +37,7 @@ struct SnippetsScreen: PaletteScreen {
+     func actions(at selection: Int) -> PopoverMenuContent? {
+         guard let record = record(at: selection) else { return nil }
+         switch record {
+-        case .snippet(let snippet): return SnippetActionsMenu.content(record: snippet, core: core)
++        case .snippet(let snippet): return SnippetActionsMenu.content(record: snippet, defaultAction: defaultAction, core: core)
+         case .response(let reply): return SnippetActionsMenu.content(reply: reply, core: core)
+         }
+     }
+@@ -49,16 +45,16 @@ struct SnippetsScreen: PaletteScreen {
+     func activate(at selection: Int) {
+         guard let record = record(at: selection) else { return }
+         switch record {
+-        case .snippet(let snippet): core.snippetCoordinator.expandSnippetFromPalette(id: snippet.id)
++        case .snippet(let snippet): core.snippetCoordinator.performFromPalette(defaultAction, id: snippet.id)
+         case .response(let reply): core.snippetCoordinator.pasteEphemeralSnippet(id: reply.id)
+         }
+     }
+ 
+-    /// ⌘↵ reveals the file, as it does on a snippet's launcher row.
++    /// ⌘↵ performs the default action's alternate, so both are always one keystroke away.
+     func secondary(at selection: Int) -> Bool {
+         guard let record = record(at: selection) else { return false }
+         guard case .snippet(let snippet) = record else { return false }
+-        core.snippetCoordinator.showSnippetInFinder(snippet)
++        core.snippetCoordinator.performFromPalette(defaultAction.alternate, id: snippet.id)
+         return true
+     }
+ 
+@@ -72,6 +68,12 @@ struct SnippetsScreen: PaletteScreen {
+         case .edit:
+             guard case .snippet(let snippet) = record else { return false }
+             core.snippetCoordinator.editSnippet(snippet)
++        case .pin:
++            guard case .snippet(let snippet) = record else { return false }
++            Task { await core.snippetCoordinator.toggleSnippetPinned(id: snippet.id) }
++        case .showInFinder:
++            guard case .snippet(let snippet) = record else { return false }
++            core.snippetCoordinator.showSnippetInFinder(snippet)
+         case .delete:
+             guard case .snippet(let snippet) = record else { return false }
+             Task { await core.snippetCoordinator.deleteSnippet(id: snippet.id) }
+@@ -171,15 +173,15 @@ enum SnippetActionsMenu {
+             ])
+     }
+ 
+-    static func content(record: StoredSnippet, core: AppCore) -> PopoverMenuContent {
+-        PopoverMenuContent(
++    static func content(
++        record: StoredSnippet, defaultAction: SnippetDefaultAction, core: AppCore
++    ) -> PopoverMenuContent {
++        let isPinned = record.snippet.isPinned
++        return PopoverMenuContent(
+             header: record.snippet.name,
+             items: [
+-                PopoverMenuItem(
+-                    title: String(localized: "Paste Snippet"), systemImage: "text.quote", shortcut: "↵"
+-                ) {
+-                    core.snippetCoordinator.expandSnippetFromPalette(id: record.id)
+-                },
++                item(defaultAction, shortcut: "↵", record: record, core: core),
++                item(defaultAction.alternate, shortcut: "⌘↵", record: record, core: core),
+                 PopoverMenuItem(
+                     title: String(localized: "Edit Snippet"), systemImage: "pencil", startsSection: true,
+                     shortcut: "⌘E"
+@@ -191,9 +193,15 @@ enum SnippetActionsMenu {
+                 ) {
+                     core.snippetCoordinator.editSnippet(nil)
+                 },
++                PopoverMenuItem(
++                    title: isPinned ? String(localized: "Unpin Snippet") : String(localized: "Pin Snippet"),
++                    systemImage: isPinned ? "pin.slash" : "pin", shortcut: "⌘."
++                ) {
++                    Task { await core.snippetCoordinator.toggleSnippetPinned(id: record.id) }
++                },
+                 PopoverMenuItem(
+                     title: String(localized: "Show in Finder"), systemImage: "folder", startsSection: true,
+-                    shortcut: "⌘↵"
++                    shortcut: "⌘F"
+                 ) {
+                     core.snippetCoordinator.showSnippetInFinder(record)
+                 },
+@@ -205,4 +213,28 @@ enum SnippetActionsMenu {
+                 }
+             ])
+     }
++
++    private static func item(
++        _ action: SnippetDefaultAction, shortcut: String, record: StoredSnippet, core: AppCore
++    ) -> PopoverMenuItem {
++        PopoverMenuItem(title: action.menuTitle, systemImage: action.systemImage, shortcut: shortcut) {
++            core.snippetCoordinator.performFromPalette(action, id: record.id)
++        }
++    }
++}
++
++extension SnippetDefaultAction {
++    fileprivate var menuTitle: String {
++        switch self {
++        case .paste: String(localized: "Paste Snippet")
++        case .copy: String(localized: "Copy Snippet")
++        }
++    }
++
++    fileprivate var systemImage: String {
++        switch self {
++        case .paste: "text.quote"
++        case .copy: "doc.on.doc"
++        }
++    }
+ }
+diff --git a/Tinycast/Palette/MenuPanel.swift b/Tinycast/Palette/MenuPanel.swift
+index c02a2e46e81be7925315164803c66f6d05b61a19..591e27362ea0df1fcbca90e945052606e6648f74 100644
+--- a/Tinycast/Palette/MenuPanel.swift
++++ b/Tinycast/Palette/MenuPanel.swift
+@@ -67,21 +67,18 @@ final class MenuPanelController {
+     private var panel: MenuPanel?
+     private var hosting: NSHostingView<AnyView>?
+     private weak var parent: NSWindow?
+-    private var clipPath: MenuPanelClipPath?
+     private var placement: Placement?
+ 
+     var isOpen: Bool { panel?.isVisible ?? false }
+ 
+     func show(
+         _ content: AnyView, corner: MenuPanelCorner, parent: NSWindow, core: AppCore,
+-        clipPath: @escaping MenuPanelClipPath,
+         onKeyDown: @escaping (NSEvent) -> Bool, onDismiss: @escaping () -> Void
+     ) {
+         let panel = ensurePanel(state: core.palette)
+         configureCallbacks(
+             for: panel, core: core, onKeyDown: onKeyDown, onDismiss: onDismiss)
+-        let root = AnyView(content.paletteEnvironment(core))
+-        setContent(root, clipPath: clipPath, in: panel)
++        setContent(AnyView(content.paletteEnvironment(core)), in: panel)
+         self.parent = parent
+         (parent as? PalettePanel)?.onDismissMenu = onDismiss
+         // Open disarmed: a menu opened by click lands under the pointer, which chose no row of it.
+@@ -95,31 +92,21 @@ final class MenuPanelController {
+     }
+ 
+     /// Rebuilds the hosted tree in place: the panel keeps its window, so nothing flickers.
+-    func update(
+-        _ content: AnyView, corner: MenuPanelCorner, core: AppCore,
+-        clipPath: @escaping MenuPanelClipPath
+-    ) {
++    func update(_ content: AnyView, corner: MenuPanelCorner, core: AppCore) {
+         guard let panel, panel.isVisible, let parent else { return }
+-        setContent(
+-            AnyView(content.paletteEnvironment(core)),
+-            clipPath: clipPath, in: panel)
++        setContent(AnyView(content.paletteEnvironment(core)), in: panel)
+         layout(
+             corner: corner, parent: parent, metrics: core.settings.interfaceSize.metrics,
+             force: false)
+     }
+ 
+-    private func setContent(
+-        _ root: AnyView, clipPath: @escaping MenuPanelClipPath, in panel: MenuPanel
+-    ) {
+-        self.clipPath = clipPath
++    private func setContent(_ root: AnyView, in panel: MenuPanel) {
+         if let hosting {
+             hosting.rootView = root
+             return
+         }
+         let view = NSHostingView(rootView: root)
+         view.sizingOptions = [.intrinsicContentSize]
+-        view.wantsLayer = true
+-        view.layer?.allowsEdgeAntialiasing = true
+         let container = NSView(frame: .zero)
+         container.addSubview(view)
+         panel.contentView = container
+@@ -192,22 +179,7 @@ final class MenuPanelController {
+         guard force || next != placement else { return }
+         placement = next
+         panel.setFrame(frame, display: true)
+-        configureHosting(contentSize: size, corner: corner, metrics: metrics)
++        hosting.frame = NSRect(origin: .zero, size: size)
+         refreshShadow(panel)
+     }
+-
+-    private func configureHosting(
+-        contentSize: NSSize, corner: MenuPanelCorner, metrics: InterfaceMetrics
+-    ) {
+-        guard let hosting, let layer = hosting.layer, let clipPath else { return }
+-        CATransaction.begin()
+-        CATransaction.setDisableActions(true)
+-        hosting.frame = NSRect(origin: .zero, size: contentSize)
+-        let mask = (layer.mask as? CAShapeLayer) ?? CAShapeLayer()
+-        mask.frame = NSRect(origin: .zero, size: contentSize)
+-        mask.isGeometryFlipped = layer.isGeometryFlipped
+-        mask.path = clipPath(mask.bounds, metrics, corner)
+-        layer.mask = mask
+-        CATransaction.commit()
+-    }
+ }
+diff --git a/Tinycast/Palette/PaletteScreen.swift b/Tinycast/Palette/PaletteScreen.swift
+index d9aed7b5cb7d287e6a7c9e27a7897ad7956479d5..0d0cd4cc74c9b3b084063163929ecce26ecf7a73 100644
+--- a/Tinycast/Palette/PaletteScreen.swift
++++ b/Tinycast/Palette/PaletteScreen.swift
+@@ -5,16 +5,10 @@ enum PaletteAxis {
+     case horizontal
+ }
+ 
+-typealias MenuPanelClipPath =
+-    @MainActor (
+-        _ bounds: CGRect, _ metrics: InterfaceMetrics, _ corner: MenuPanelCorner
+-    ) -> CGPath
+-
+ @MainActor struct PaletteMenuContent {
+     let rowCount: Int
+     let preferredSelection: Int?
+     let isSelectable: (Int) -> Bool
+-    let clipPath: MenuPanelClipPath
+     /// Built on demand: `moveMenu` resolves the open menu on every arrow key.
+     let view: (MenuPanelCorner) -> AnyView
+     /// Bounds-checked by the caller against `rowCount`, so a row index is always one this menu has.
+@@ -24,15 +18,13 @@ typealias MenuPanelClipPath =
+         rowCount: Int, preferredSelection: Int? = nil,
+         view: @escaping (MenuPanelCorner) -> AnyView,
+         activate: @escaping (Int) -> Void,
+-        isSelectable: @escaping (Int) -> Bool = { _ in true },
+-        clipPath: @escaping MenuPanelClipPath
++        isSelectable: @escaping (Int) -> Bool = { _ in true }
+     ) {
+         self.rowCount = rowCount
+         self.preferredSelection = preferredSelection
+         self.view = view
+         self.activate = activate
+         self.isSelectable = isSelectable
+-        self.clipPath = clipPath
+     }
+ 
+     init(
+@@ -52,13 +44,7 @@ typealias MenuPanelClipPath =
+                         extraRowsHeight: extraRowsHeight))
+             },
+             activate: { popover.items[$0].action() },
+-            isSelectable: { popover.items[$0].isSelectable },
+-            clipPath: { bounds, metrics, corner in
+-                PopoverMenu.SurfaceShape(
+-                    attachment: corner.popoverAttachment, radius: metrics.radius.menuPanel,
+-                    attachedRadius: metrics.size.menuButton / 2
+-                ).path(in: bounds).cgPath
+-            })
++            isSelectable: { popover.items[$0].isSelectable })
+     }
+ }
+ 
+diff --git a/Tinycast/Palette/RootPaletteView.swift b/Tinycast/Palette/RootPaletteView.swift
+index f34acd5cc17cd23297fd7b9063cece48a7e4b37b..08902515d217eb6d607c519b401f0fee04d2a8bb 100644
+--- a/Tinycast/Palette/RootPaletteView.swift
++++ b/Tinycast/Palette/RootPaletteView.swift
+@@ -343,7 +343,10 @@ struct RootPaletteView: View {
+                 )
+                 // The window's frame is the size source, so the glass and clip stay matched.
+                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+-                // Hidden rather than unmounted, so expanding never shows a frame without glass.
++                // The scrim sits closest to the content, the glass behind it: the glass is a
++                // backdrop material, so a scrim under it would be hidden rather than dimming it.
++                // Cleared rather than removed while compact, so the tree never rebuilds.
++                .background(isCollapsed ? .clear : Theme.Colors.panelScrim)
+                 .background(
+                     GlassEffectView(style: .clear, cornerRadius: metrics.radius.panel)
+                         .opacity(isCollapsed ? 0 : 1)
+@@ -1234,11 +1237,9 @@ struct RootPaletteView: View {
+         if presenting, let hostWindow {
+             menuPanel.show(
+                 view, corner: corner, parent: hostWindow, core: core,
+-                clipPath: content.clipPath,
+                 onKeyDown: handleMenuPanelKey, onDismiss: closeMenus)
+         } else {
+-            menuPanel.update(
+-                view, corner: corner, core: core, clipPath: content.clipPath)
++            menuPanel.update(view, corner: corner, core: core)
+         }
+     }
+ 
+diff --git a/Tinycast/Resources/Localizable.xcstrings b/Tinycast/Resources/Localizable.xcstrings
+index 3f5a97ee38e71173ef161ccdbe9df26e43a27c26..2a2e7d34257fe2c0ef6bdab6dfce72845e337520 100644
+--- a/Tinycast/Resources/Localizable.xcstrings
++++ b/Tinycast/Resources/Localizable.xcstrings
+@@ -143947,6 +143947,181 @@
+         }
+       }
+     }
++,
++    "Copy Snippet" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "needs_review",
++            "value" : "Copy Snippet"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Copy Snippet"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "needs_review",
++            "value" : "Copy Snippet"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "needs_review",
++            "value" : "Copy Snippet"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "needs_review",
++            "value" : "Copy Snippet"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "needs_review",
++            "value" : "Copy Snippet"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "needs_review",
++            "value" : "Copy Snippet"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "needs_review",
++            "value" : "Copy Snippet"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "needs_review",
++            "value" : "Copy Snippet"
++          }
++        }
++      }
++    },
++    "Pin Snippet" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "needs_review",
++            "value" : "Pin Snippet"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Pin Snippet"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "needs_review",
++            "value" : "Pin Snippet"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "needs_review",
++            "value" : "Pin Snippet"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "needs_review",
++            "value" : "Pin Snippet"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "needs_review",
++            "value" : "Pin Snippet"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "needs_review",
++            "value" : "Pin Snippet"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "needs_review",
++            "value" : "Pin Snippet"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "needs_review",
++            "value" : "Pin Snippet"
++          }
++        }
++      }
++    },
++    "Unpin Snippet" : {
++      "localizations" : {
++        "de" : {
++          "stringUnit" : {
++            "state" : "needs_review",
++            "value" : "Unpin Snippet"
++          }
++        },
++        "en" : {
++          "stringUnit" : {
++            "state" : "translated",
++            "value" : "Unpin Snippet"
++          }
++        },
++        "es" : {
++          "stringUnit" : {
++            "state" : "needs_review",
++            "value" : "Unpin Snippet"
++          }
++        },
++        "fr" : {
++          "stringUnit" : {
++            "state" : "needs_review",
++            "value" : "Unpin Snippet"
++          }
++        },
++        "ja" : {
++          "stringUnit" : {
++            "state" : "needs_review",
++            "value" : "Unpin Snippet"
++          }
++        },
++        "ko" : {
++          "stringUnit" : {
++            "state" : "needs_review",
++            "value" : "Unpin Snippet"
++          }
++        },
++        "pt" : {
++          "stringUnit" : {
++            "state" : "needs_review",
++            "value" : "Unpin Snippet"
++          }
++        },
++        "ru" : {
++          "stringUnit" : {
++            "state" : "needs_review",
++            "value" : "Unpin Snippet"
++          }
++        },
++        "zh-Hans" : {
++          "stringUnit" : {
++            "state" : "needs_review",
++            "value" : "Unpin Snippet"
++          }
++        }
++      }
++    }
+   },
+   "version" : "1.0"
+ }
+\ No newline at end of file
+diff --git a/Tinycast/Windows/Dialog/DialogView.swift b/Tinycast/Windows/Dialog/DialogView.swift
+index 70a7c6bfdc690e4dca816a50a29543eb13b2711a..49ae357d41de17ee20b970da035696a9223799f2 100644
+--- a/Tinycast/Windows/Dialog/DialogView.swift
++++ b/Tinycast/Windows/Dialog/DialogView.swift
+@@ -59,6 +59,8 @@ struct DialogView: View {
+         }
+         .padding(metrics.spacing.dialogInset)
+         .frame(width: width, alignment: .leading)
++        // The scrim sits between the glass and the content, so it dims the rim with it too.
++        .background(Theme.Colors.panelScrim, in: shape)
+         .glassEffect(.regular, in: shape)
+     }
+ 
+diff --git a/Tinycast/Windows/HUD/MessageHUDView.swift b/Tinycast/Windows/HUD/MessageHUDView.swift
+index 1dadc1138e38486927345028c980c3eda80f8618..95f585d4a4884225e7d61db6c4968dc7c577edef 100644
+--- a/Tinycast/Windows/HUD/MessageHUDView.swift
++++ b/Tinycast/Windows/HUD/MessageHUDView.swift
+@@ -57,7 +57,7 @@ struct MessageHUDView: View {
+         .frame(maxWidth: metrics.size.hudMaxWidth, alignment: .leading)
+         .fixedSize()
+         .background { glow }
+-        .background(hovered ? Theme.Colors.controlHover : .clear)
++        .background(hovered ? Theme.Colors.controlHover : Theme.Colors.panelScrim)
+         .background(GlassEffectView())
+         .clipShape(Capsule())
+         .overlay { rim }
+diff --git a/Tinycast/Windows/HUD/VolumeHUDView.swift b/Tinycast/Windows/HUD/VolumeHUDView.swift
+index ac4589e080fda66719c85b6aebdd01bf887408b5..19ef26996309060ba32e32b3f3c119f73761614f 100644
+--- a/Tinycast/Windows/HUD/VolumeHUDView.swift
++++ b/Tinycast/Windows/HUD/VolumeHUDView.swift
+@@ -36,6 +36,7 @@ struct VolumeHUDView: View {
+         .padding(.vertical, Theme.Spacing.xxl)
+         .padding(.horizontal, Theme.Spacing.xl)
+         .frame(width: Theme.Size.hudWidth, height: Theme.Size.hudHeight)
++        .background(Theme.Colors.panelScrim)
+         .background(GlassEffectView())
+         .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.dialog, style: .continuous))
+         .panelEntrance()
+diff --git a/docs/features/ai.md b/docs/features/ai.md
+index 6d52594a26fa05ed6d58e53b0b3e7a9d32255afd..03ab6a0377ff8f39c2d9dabab1c8ffa9915ae457 100644
+--- a/docs/features/ai.md
++++ b/docs/features/ai.md
+@@ -901,7 +901,10 @@ its text and the chip follows it rather than the composer growing. Nothing is re
+ menu: the row itself squeezes a long draft, so the strip stops right before that menu however wide
+ its title is. Bare backspace on an empty composer removes the last
+ chip before it backs out of chat; ⌘K → Remove Attachments clears them all. Sent images persist in `message_images` and sent PDFs in `message_documents` beside their message;
+-the bubble renders images as thumbnails and documents as named chips.
++the bubble renders images as thumbnails and documents as named chips. A chip is one accessibility
++element — its filename `Text` sits inside the bubble's text selection, where an AppKit element's
++description once recursed into itself until the stack overflowed, crashing under any accessibility
++client.
+ A text file is already in the message's text and needs no table. The schema is
+ `CREATE TABLE IF NOT EXISTS` re-applied on every open, so the table needed no migration, and its
+ `ON DELETE CASCADE` leaves `prune` unchanged.
+diff --git a/docs/features/calendar.md b/docs/features/calendar.md
+index f2e66c8984e63b4615fa649a203cd55c368c38d3..f0deb40bb9e6a92278690d9157707b4ffb207a93 100644
+--- a/docs/features/calendar.md
++++ b/docs/features/calendar.md
+@@ -59,7 +59,44 @@ camera preview, and individual events as searchable launcher entries.
+ `Model/` holds the whole decision, with every clock read injected:
+ 
+ - **`MeetingLink`** — the join link plus its `Provider` and the account whose calendar carried it.
+-  Ten named services, plus `.generic` for any other `http(s)` link the event carries.
++  The ten classic meeting services, plus ten additional call and messenger providers, plus
++  `.generic` for any other `http(s)` link the event carries. Supported links:
++
++| Provider | Recognized link shapes |
++|---|---|
++| Zoom | `zoom.us`/`zoom.com`/`zoomgov.com` `/j/`, `/w/`, `/s/`, `/my/` rooms |
++| Google Meet | `meet.google.com/<code>` |
++| Microsoft Teams | `teams.microsoft.com`/`teams.microsoft.us`/`teams.live.com` meetup-join or `/meet` |
++| Webex, Jitsi, Whereby, Chime, GoTo, BlueJeans, Skype | any room path on their join hosts |
++| Yandex Telemost | `telemost.yandex.ru/j/<room>` (also `.com`, `360.yandex.ru`) |
++| Telegram | `t.me/+<hash>`, `t.me/joinchat/<hash>`, `t.me/addlist/<hash>`, `t.me/<username>[/id]` |
++| WhatsApp | `chat.whatsapp.com/<invite>`, `wa.me/<number>` |
++| Signal | `signal.link/#key=…` calls; `signal.group/#<hash>` or `/join/<hash>` groups; `signal.me/#p/…` people |
++| Discord | `discord.gg/<code>`, `discord.com/invite/<code>`, `discord.com/channels/…` |
++| Viber | `invite.viber.com/<id>`, `chat.viber.com/<id>` |
++| Messenger | `m.me/<username>` |
++| LINE | `line.me/R/<type>/…` share targets, `line.me/ti/g…/` group invites |
++| WeChat | `chat.weixin.qq.com/<id>` |
++| KakaoTalk | `open.kakao.com/o/<code>`, `pf.kakao.com/_xChat…` |
++
++  Every other host — and every known host whose path is *not* one of these shapes — is rejected
++  or falls back to `.generic`, never guessed into a named provider. The classic meeting hosts
++  match any subdomain (`acme.zoom.us`), because enterprises put their rooms there; the
++  conversation providers match their host exactly, so `evil.t.me` is not Telegram. This is
++  classification, not a security boundary: a look-alike host simply stays a `.generic` link
++  rather than being named after a brand it is not. The table is not exhaustive worldwide — it
++  is the set of providers whose documented invite shapes are pinned here, and a link outside it
++  is still openable as a `.generic` link.
++
++**A conversation link is not a meeting.** `Provider.isConversation(url:)` separates the two kinds
++of thing a calendar link can be: a call the user joins, and a chat the user opens. The distinction
++is per-URL — Signal alone mixes both, with `signal.link/#key=…` a call and `signal.me/#p/…` a chat.
++Every surface that names the action (`MeetingLink.actionTitle`) says **Open** for a conversation and
++**Join** for a call, the camera preview is skipped for a conversation (there is no camera to check),
++and `AutoJoinPolicy` filters conversation links out before the pick, so an
++event whose link is a group chat never drops the user into it on its own. A conversation link does
++not shadow a call starting beside it: the filter runs before the card's choice, not after.
++
+ - **`MeetingEvent`** — one occurrence, flattened out of `EKEvent`.
+ - **`UpcomingWindow`** — `agenda`, `carded`, `joinable`, `countdown` and a row's `rowPill`.
+ - **`MeetingDay`** — the day a meeting falls on, titled `Today, Oct 2`, `Tomorrow, Oct 3`, then
+@@ -82,15 +119,25 @@ rebuilding one per event costs more than the scan it replaces. A URL ends at whi
+ and trailing punctuation is trimmed, so `(https://whereby.com/acme).` yields the URL alone.
+ 
+ **A URL on a known host that fails that provider's path rule is rejected outright, not demoted to
+-`.generic`** — `zoom.us/download` sits in half the invites people are sent, and `meet.google.com/tel/…`
+-is a dial-in helper rather than a meeting.
++`.generic`** — `zoom.us/download` sits in half the invites people are sent, `t.me/faq` is the
++site's own page rather than a chat, and `meet.google.com/tel/…` is a dial-in helper rather than a
++meeting. **So is a link carrying userinfo or an explicit port**: no real invite has either, and
++both are classic look-alike tricks. A suffix-spoofed host (`t.me.example.com`) is not a known
++host at all, so it can only ever be a `.generic` link, never a named provider.
++
++The matching is strict on purpose: a provider is admitted only by an exact documented host and
++path shape from the table above, so a `wa.me/hello` or a bare `discord.gg` is rejected rather
++than guessed at. Queries and fragments always survive — `chat.whatsapp.com/<invite>?text=hi`
++and `signal.link/#key=…` keep what they carry.
+ 
+ ### Opening it
+ 
+ `MeetingLauncher.join` prefers the desktop app: `MeetingLink.appURL` rewrites a Zoom link to
+ `zoommtg://zoom.us/join?confno=…` (carrying `pwd` when present) and a `teams.microsoft.com` link to
+ `msteams:` plus its path and query. Nothing else is rewritten — the rest of the table has no
+-unambiguous scheme, and guessing one would open the wrong thing. If no app claims the scheme, the
++unambiguous scheme, and guessing one would open the wrong thing. The conversation providers are
++no exception: none has a documented universal native conversion, so the `https` link as written
++is the way in and `appURL` stays nil for every one of them. If no app claims the scheme, the
+ plain `https` link opens instead — in `meetingBrowserBundleID` when one is chosen under
+ `Open Meeting Links In`, otherwise in the default browser. A chosen browser since uninstalled falls
+ back to the default rather than failing the join, and the picker reads it as `Default Browser`.
+diff --git a/docs/features/clipboard.md b/docs/features/clipboard.md
+index c0d4bfc7b2af7e135e67123d761f97da6895581a..29a9ef95340891b6bc1e27020b0af64a7d3bb93f 100644
+--- a/docs/features/clipboard.md
++++ b/docs/features/clipboard.md
+@@ -63,6 +63,12 @@ sensitive-type guards, which stay unconditional — a secret must never be recor
+ arrives in. A bare screenshot carries no file URL and still falls through to the `.png`/`.tiff`
+ branch untouched.
+ 
++**Rich text is the last resort.** A copy with no file URL, plain text or image, such as a web page's
++HTML-only Clipboard API write, is converted through `NSAttributedString`, RTF before HTML, and
++recorded as a plain text entry. It sits after the image branch because a browser's image copy
++carries an `<img>` fragment beside the pixels. The HTML importer runs WebKit on the main actor, so
++fragments over 256 KB are skipped to bound the stall.
++
+ `ClipboardManager.fileURLs(on:volatileRoots:)` takes both the pasteboard and the roots as
+ parameters, so `pasteboard-test` can drive an `NSPasteboard.withUniqueName()` and its own scratch
+ tree: a harness that touched `NSPasteboard.general` would land in the reader's own running Tinycast
+diff --git a/docs/features/quick-actions.md b/docs/features/quick-actions.md
+index 2757dd942d4c636c98a9ae0d1cd7e8bca1b5fac8..da1012dced5a50e2bf1b6254c0796b24e20aeb4b 100644
+--- a/docs/features/quick-actions.md
++++ b/docs/features/quick-actions.md
+@@ -177,7 +177,7 @@ the panel. System Settings has no anchor for the sheet itself, so the last click
+ ## The panel
+ 
+ `QuickActionPanel` is Tinycast's **fourth borderless surface**, beside the dialog, the notes panel
+-and the join preview. It takes the same recipe — `GlassEffectView`, then the
++and the join preview. It takes the same recipe — `panelScrim`, then `GlassEffectView`, then the
+ clip — and sits at `.floating` like the join preview, so a failure report still lands on top of it.
+ Its footer speaks the same button language as a dialog's — `ModalActionButtonStyle`, with Replace
+ as the `.primary` role — so every borderless surface answers in one voice rather than dropping Aqua
+diff --git a/docs/features/settings-file.md b/docs/features/settings-file.md
+index 32d641edcd873d7ca9b15490247c05a42fa6e489..ac22f73c094da5086e597d765b0d851e2ea113e7 100644
+--- a/docs/features/settings-file.md
++++ b/docs/features/settings-file.md
+@@ -134,6 +134,7 @@ Where a number has a special case, the case is a word:
+ | `calendar.hideCurrentEventAfterMinutes` | `"never"`, 0 (as it starts), 5, 10, 30 |
+ | `windowManagement.gap` | 0 to 64 |
+ | `snippets.folder`, `notes.folder` | an absolute or `~/` path, or `null` for Application Support |
++| `snippets.defaultAction` | `"paste"`, `"copy"` |
+ 
+ On first launch, `general.language` is set to the primary system language if supported, otherwise
+ `"en"`. That explicit choice is saved; later system-language changes do not change it.
+diff --git a/docs/features/snippets.md b/docs/features/snippets.md
+index 3f660a3da661714082c135157cc35af1ad175b35..e0e94714b1153c66009e8acc841da09db62db584 100644
+--- a/docs/features/snippets.md
++++ b/docs/features/snippets.md
+@@ -225,20 +225,28 @@ cycle and exits with Escape or a bare backspace, and like the clipboard it split
+ preview.
+ 
+ The list is every **enabled** snippet — a disabled one is absent here exactly as it is absent from the
+-launcher — filtered by name *or* keyword. Substring matching, not the launcher's fuzzy scorer: this is
+-a library being browsed rather than a query racing apps and commands for a rank.
++launcher — filtered by name *or* keyword, with **pinned** snippets leading under their own header.
++Substring matching, not the launcher's fuzzy scorer: this is
++a library being browsed rather than a query racing apps and commands for a rank. Pinning is a
++frontmatter key (`pinned: true`, written only when set), toggled from the menu or ⌘., and it
++survives edits because the editor carries the flag through.
+ 
+ The preview shows the **raw template**, never an expansion. Expanding per selection would capture the
+ clipboard, read the target's selected text and burn a `{uuid}` on every arrow key, and a snippet
+ carrying `{argument}` would raise its prompt just to draw a pane. Beside it sits the name, keyword,
+ shortcut, file name and character count.
+ 
+-↵ and the ⌘K menu's **Paste Snippet** both go through `SnippetCoordinator.expandSnippetFromPalette`,
++↵ performs the **default action** chosen in **Settings → Snippets → Default action** — Paste, the
++original behavior, or Copy to Clipboard, which expands the template and copies it unmarked so it
++enters clipboard history like any other copy. ⌘↵ performs the other one, so both are always one
++keystroke away. Paste goes through `SnippetCoordinator.expandSnippetFromPalette`,
+ which reads `previousApp` before hiding the panel and then calls the same `expandSnippet` funnel a
+ launcher row does — so template expansion, cursor placement, the Accessibility prompt, the
+ confirmation HUD and the pasteboard lease are the ones described below, not a second copy of them.
++Copy shares that funnel up to delivery, substituting a plain copy and its own confirmation.
+ The rest of the menu is **Edit Snippet** (⌘E) and **Create Snippet** (⌘N), which open the launcher
+-editor, **Show in Finder** (⌘↵), and **Delete Snippet** (⌃X), separated at the bottom in red. Deletion
++editor, **Pin/Unpin Snippet** (⌘.), **Show in Finder** (⌘F), and **Delete Snippet** (⌃X), separated
++at the bottom in red. Deletion
+ always confirms before removing the snippet file and reports a failure without losing the record.
+ These shortcuts also work with the menu closed; ⌘N works even when the browser has no rows.
+ 
+diff --git a/docs/ui.md b/docs/ui.md
+index ce7f17d4a6df5dfdeec496522ac4691c135fcfdb..4d50ec01e370a0fe756a1fb59158093639863fa6 100644
+--- a/docs/ui.md
++++ b/docs/ui.md
+@@ -10,23 +10,24 @@ Read this before touching any view body, `Theme` value, or the panel chrome.
+ 
+ ## The look, in one paragraph
+ 
+-Tinycast is a **command palette**: a borderless floating panel whose surface is native Liquid Glass,
+-without an additional palette scrim. Everything on that surface uses an appearance-aware ink ramp.
++Tinycast is a **command palette**: a borderless floating panel whose surface is native Liquid Glass
++under a `panelScrim` — 40% black on Dark, 55% white on Light. Everything on that surface uses an
++appearance-aware ink ramp.
+ The header and bottom bar **float over the list as fully transparent overlays**; there are no hard-edged bars, strips, or dividers. Rows don't clip under the bars, they
+ **dissolve**: a scroll-driven gradient mask ghosts them as they pass beneath. Floating controls (the
+ action pill, the menu circle, popover menus) are **Liquid Glass**.
+ 
+ That paragraph describes **Dark**, which is the design. Light is the same design with the ink
+-inverted: the same native glass, and a black-alpha ramp at matched stops. Nothing about
++inverted: a white scrim over the same glass, and a black-alpha ramp at matched stops. Nothing about
+ geometry, type, motion or state changes between them.
+ 
+ Five load-bearing ideas, in priority order:
+ 
+-1. **Surface = native glass in both palette modes.** No extra scrim or solid background. Depth comes from the desktop showing through.
++1. **Surface = scrim over native glass in both palette modes.** No solid background. Depth comes from the desktop showing through the scrimmed glass.
+ 2. **One alpha ramp, never grays.** Ink at fixed stops — white over the dark surface, black over the light one.
+ 3. **Floating bars, not chrome.** Header/footer are transparent overlays; the list fills the whole panel.
+ 4. **Edges dissolve, they don't clip.** Scroll-driven mask, no separators between list and bars.
+-5. **Glass owns its contours.** The palette and floating controls use native glass without painted outlines.
++5. **Glass owns its contours.** The palette and floating controls use native glass; the scrim never paints an outline of its own.
+ 
+ ---
+ 
+@@ -40,7 +41,7 @@ These are the things that quietly break the look if changed. Preserve them unles
+ - **Some colors stay fixed in both appearances, on purpose.** The `EdgeDissolve`/`OverflowFade` gradients are **mask luminance, not color** — inverting them breaks the dissolve everywhere. `ExtensionTintColors` and a tinted `IconCache` tile keep white ink, because a saturated tile carries its own contrast. The selected compact shortcut glyph also stays white over its contrasting fill. And `IconCache` cannot use a dynamic `NSColor` at all: it rasterizes off-main, so the surface is carried explicitly and is part of the cache key.
+ - **An icon is drawn for a surface _and_ a system icon style, and both move under you.** macOS restyles the icons `NSWorkspace` hands out when System Settings → Appearance → **Icon & widget style** changes, so `IconStyleMonitor` and Tinycast's own appearance both call `IconCache.invalidateStyled()`. **The monitor may not invalidate on the notification itself.** AppKit posts `NSWorkspaceIconAppearanceConfigurationDidChange` before IconServices has swapped what `NSWorkspace` vends — measured at 25–120ms behind, jittering run to run — and the images it hands back are live objects macOS restyles in place, so flattening one on the signal freezes the _outgoing_ style into a bitmap nothing ever invalidates again. `IconStyleMonitor` therefore polls `IconCache.styleFingerprint()` until the pixels actually move, and only then invalidates. Waiting also sidesteps the cost: re-flattening every icon the instant a restyle begins forces a cold IconServices regeneration, measured at 160× the settled draw cost. That drops the cached bitmaps, bumps every cache key so an in-flight decode cannot repopulate a stale one, and moves `IconCache.style.generation`. **Any view that draws an icon must key its fetch on that generation** — wrap the view's own key in `IconRequest`, or call `IconCache.observeStyle()` where the icon is resolved synchronously in a `body`. It is reached through `IconCache` rather than injected precisely because icons are drawn in menus, popovers and every list, where a missed injection would be a silent staleness bug.
+ - **No hard dividers between the list and the bars.** The header and bottom bar are `safeAreaInset` overlays with no background; separation comes from `edgeDissolve()`, nothing else. (One deliberate exception: the vertical hairline between a list and its preview pane, as the clipboard and file search screens draw.)
+-- **The expanded panel corner is clipped once, at the root.** `RootPaletteView.body` ends with `.background(GlassEffectView()) → .clipShape(RoundedRectangle(26, .continuous))`. The clip is last; neither palette mode adds a scrim over its glass. Compact uses zero root corner radius and a four-point drawing outset so its native glass shapes own their contours without touching the window boundary.
++- **The expanded panel corner is clipped once, at the root, over glass and scrim.** `RootPaletteView.body` ends with `.background(GlassEffectView()) → .background(panelScrim) → .clipShape(RoundedRectangle(26, .continuous))`. The scrim sits above the glass so it dims the rim with everything else. The clip is last; while compact the scrim is cleared, keeping zero root corner radius and a four-point drawing outset so the native glass shapes own their contours without touching the window boundary.
+ - **Don't use the native scroll edge effect.** Inside a transparent panel it renders a hard-bounded rectangle. Use `edgeDissolve()`, or a gradient `mask` where a surface owns its own fade — `scrollEdgeEffectStyle` draws a _material_ where a scroll view meets a safe area, so over a surface that already has `GlassEffectView` it composites to nothing. Tried and rejected on `QuickActionResultView`, with and without `safeAreaBar`. This is a rule about the borderless panels; the Settings window is a titled `NSWindow` whose system titlebar draws the band itself (see "Settings").
+ - **Test over a light desktop.** Transparency and corner masking bugs only show over bright wallpaper. Dark wallpaper hides them.
+ - **No `NSAlert` or system popovers.** Every confirmation, failure report, value prompt and transient readout is Tinycast's own SwiftUI surface (see "Dialogs & HUD"). An Aqua alert on an alpha-over-vibrancy app reads as a different product, and its `runModal` run loop keeps Carbon hotkeys firing underneath.
+@@ -61,7 +62,7 @@ These are the things that quietly break the look if changed. Preserve them unles
+ - **In the palette, a hover label is Tinycast's `tooltip`, never `.help()`**: an AppKit tooltip never appears while the app sits inactive behind the non-activating panel. A Settings window activates the app, so `.help()` shows there and stays the label to use. The tooltip hangs above its control by default; a control in the palette header passes `edge: .bottom`, since above it is off the window, and a label may run to several lines — the chat's attachment pill lists every staged name.
+   Native form controls opt into `dismissOnPress` to hide the label until the next hover.
+ - **A transient readout is a HUD, not a dialog.** `VolumeHUDController`'s box is volume and mute only, since that one needs an actual level and number; every other success or info confirmation goes through `MessageHUDController`'s pill, whose leading glyph _is_ its `DialogTone`. A pill has no subject to name, so the icon rule above does not apply to it — and that mapping stays file-scoped so nothing can reach for it when building a `DialogRequest`. A new HUD means a new presenter, not a second shape bolted onto an existing controller.
+-- **Native glass supplies borderless surfaces and floating controls.** The action capsule, menu circle and `PopoverMenu` use it inside the palette; dialogs apply one system `.glassEffect(.regular)` to their root surface. Dialog buttons stay matte so their roles remain legible. Both HUDs use `GlassEffectView()` followed by their shape clip.
++- **Native glass supplies borderless surfaces and floating controls.** The action capsule, menu circle and `PopoverMenu` use it inside the palette; dialogs draw one system `.glassEffect(.regular)` behind a `panelScrim` on their root surface. Dialog buttons stay matte so their roles remain legible. Both HUDs keep the lighter `panelScrim` → `GlassEffectView()` → clip recipe.
+ 
+ ---
+ 
+@@ -263,7 +264,7 @@ Source: `Palette/PalettePanel.swift`, `Palette/RootPaletteView.swift`.
+ - **`PalettePanel`** is a borderless `NSPanel`: `isOpaque = false`, `backgroundColor = .clear`, `.palette` level (one above `.modalPanel`, so other apps' open panels never cover it), `hasShadow`, and an `AnimatedPanel`, so it opens with `.documentWindow`. It hosts SwiftUI via `NSHostingView`. `PaletteWindowController` centers it slightly above screen center (`+8%`) and dismisses it on `windowDidResignKey`.
+ - **The results layer fills the whole panel.** The header and bottom bar attach via `.safeAreaInset(edge: .top/.bottom)` as transparent overlays that float _over_ the list. The list underlaps them and dissolves at the edges.
+ - **Header** (`headerHeight 36`): a back-chevron _or_ mode glyph, then the plain `TextField` (no border/background). Sub-screens (Clipboard, Calculator History) show the back chevron; the launcher shows a magnifying glass. The search icon aligns horizontally with row content, and the query with the row titles.
+-- **Compact bar** (`compactHeight 56`, a full capsule; the expanded panel keeps `panel 26`): the window itself is bare and the shapes are glass. `CompactBar` draws them behind the header row: a native `.regular` glass `Capsule`, then one round button per enabled configured shortcut (zero to four) — Clipboard History, Emoji & Symbols, Search Files and Search Quicklinks by default — so the capsule takes whatever width they leave, and the row is narrowed to match. On every summon the capsule starts at full width and pulls back with an undershoot while each button, parked small inside its end, beads out a beat after the last; its glyph blurs in once the glass has formed. The compact bar adds no scrim or mask over the glass. Keyboard selection tints the existing glass circle and uses a white monochrome glyph; the system material draws the face and contour together, without an overlaid fill or stroke. Activation runs its command synchronously with animations disabled, so no shortcut shapes animate beneath the expanded panel. Leaving fades the bar whole; it parks again after the window has gone. The glass shapes share one `GlassEffectContainer`, and `Theme.CompactBarMotion` holds every value. With **Show animations** off the bar lands at rest: `motionScope()` strips its springs, and the park wait runs through `Motion.duration(_:)`. The glyphs sit above the container, never inside it, where a morph would smear them — and the header row sits outside it, because a container paints its merged glass over any loose content within. The window keeps its native shadow in both modes so the glass shapes remain distinct against light backgrounds.
++- **Compact bar** (`compactHeight 56`, a full capsule; the expanded panel keeps `panel 26`): the window itself is bare and the shapes are glass. `CompactBar` draws them behind the header row: a native `.regular` glass `Capsule`, then one round button per enabled configured shortcut (zero to four) — Clipboard History, Emoji & Symbols, Search Files and Search Quicklinks by default — so the capsule takes whatever width they leave, and the row is narrowed to match. On every summon the capsule starts at full width and pulls back with an undershoot while each button, parked small inside its end, beads out a beat after the last; its glyph blurs in once the glass has formed. The compact bar lays `panelScrim` over its glass through a mask of the same animated capsule and buttons, leaving the selected button out so its tint reads undimmed. Keyboard selection tints the existing glass circle and uses a white monochrome glyph; the system material draws the face and contour together, without an overlaid fill or stroke. Activation runs its command synchronously with animations disabled, so no shortcut shapes animate beneath the expanded panel. Leaving fades the bar whole; it parks again after the window has gone. The glass shapes share one `GlassEffectContainer`, and `Theme.CompactBarMotion` holds every value. With **Show animations** off the bar lands at rest: `motionScope()` strips its springs, and the park wait runs through `Motion.duration(_:)`. The glyphs sit above the container, never inside it, where a morph would smear them — and the header row sits outside it, because a container paints its merged glass over any loose content within. The window keeps its native shadow in both modes so the glass shapes remain distinct against light backgrounds.
+ - **Compact keyboard entry:** pressing `↓` in the collapsed launcher expands the results and selects the first row without replacing or defocusing the shared search field.
+ - **Bottom bar** (`bottomBarHeight 52`): a menu circle on the left, the action group on the right — both floating glass, no bar background. The action group is one glass `Capsule` holding the primary-action pill (label + `↵`) and the Actions toggle (`⌘K`).
+ - **`BarButton`** is the shared bar control: bare label at rest, a `rowHover` capsule on hover, `barButtonHeight 28`. Set `isSelected` and it fills with `selection` instead, which beats hover; the Notes formatting bar lights its buttons this way. Set `isCompact` for `sm` padding instead of `md`: around a 16-point glyph frame that makes a 28-point square. It carries the footer's two buttons and the clipboard header's type filter, so those hover identically. Hover state lives inside it, so sweeping one never re-renders the palette body.
+@@ -507,8 +508,10 @@ sole owner rule) and is the only presenter, so every confirmation in the app loo
+   red-glyph security warning can carry a plain white button — "Import executable commands?" does,
+   since importing a file destroys nothing — and running a shell command the user wrote themselves is
+   `.neutral` + `.standard` rather than a red alarm.
+-- **Surface.** A dialog applies one system `.glassEffect(.regular)` to a
+-  `RoundedRectangle(panel 26)`. Confirmations and notices use `dialogCompactWidth 290`, including the
++- **Surface.** A dialog draws one system `.glassEffect(.regular)` in a
++  `RoundedRectangle(panel 26)` behind its content, with `panelScrim` between the glass and the
++  content so the dialog keeps the launcher's density and dims the rim with it. Confirmations and
++  notices use `dialogCompactWidth 290`, including the
+   volume slider; form dialogs use `dialogWidth 420`. `DialogPanel` clips its
+   `NSHostingView` layer to the same continuous radius, then lets AppKit draw the native window shadow;
+   this avoids both the rectangular outline of an unshaped panel and the hard bounds of a SwiftUI blur.
+@@ -647,7 +650,7 @@ leaves, and `fadeIn`/`fadeOut` for the panels; Reduce Motion, or **Show animatio
+ ## The camera preview panel
+ 
+ `CameraPreviewPanel` is the third borderless surface, beside the dialog and the notes panel. It takes
+-the same recipe — `GlassEffectView`, then the clip — and the same optical lift a
++the same recipe — `panelScrim`, then `GlassEffectView`, then the clip — and the same optical lift a
+ dialog takes, but sits at `.floating` rather than `.dialog` so a failure report still lands on
+ top of it.
+ 

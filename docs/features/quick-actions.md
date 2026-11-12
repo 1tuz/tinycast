@@ -177,7 +177,7 @@ the panel. System Settings has no anchor for the sheet itself, so the last click
 ## The panel
 
 `QuickActionPanel` is Tinycast's **fourth borderless surface**, beside the dialog, the notes panel
-and the join preview. It takes the same recipe — `GlassEffectView`, then the
+and the join preview. It takes the same recipe — `panelScrim`, then `GlassEffectView`, then the
 clip — and sits at `.floating` like the join preview, so a failure report still lands on top of it.
 Its footer speaks the same button language as a dialog's — `ModalActionButtonStyle`, with Replace
 as the `.primary` role — so every borderless surface answers in one voice rather than dropping Aqua

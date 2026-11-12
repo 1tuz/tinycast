@@ -901,7 +901,10 @@ its text and the chip follows it rather than the composer growing. Nothing is re
 menu: the row itself squeezes a long draft, so the strip stops right before that menu however wide
 its title is. Bare backspace on an empty composer removes the last
 chip before it backs out of chat; ⌘K → Remove Attachments clears them all. Sent images persist in `message_images` and sent PDFs in `message_documents` beside their message;
-the bubble renders images as thumbnails and documents as named chips.
+the bubble renders images as thumbnails and documents as named chips. A chip is one accessibility
+element — its filename `Text` sits inside the bubble's text selection, where an AppKit element's
+description once recursed into itself until the stack overflowed, crashing under any accessibility
+client.
 A text file is already in the message's text and needs no table. The schema is
 `CREATE TABLE IF NOT EXISTS` re-applied on every open, so the table needed no migration, and its
 `ON DELETE CASCADE` leaves `prune` unchanged.

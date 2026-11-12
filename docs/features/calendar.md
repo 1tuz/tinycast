@@ -59,7 +59,44 @@ camera preview, and individual events as searchable launcher entries.
 `Model/` holds the whole decision, with every clock read injected:
 
 - **`MeetingLink`** — the join link plus its `Provider` and the account whose calendar carried it.
-  Ten named services, plus `.generic` for any other `http(s)` link the event carries.
+  The ten classic meeting services, plus ten additional call and messenger providers, plus
+  `.generic` for any other `http(s)` link the event carries. Supported links:
+
+| Provider | Recognized link shapes |
+|---|---|
+| Zoom | `zoom.us`/`zoom.com`/`zoomgov.com` `/j/`, `/w/`, `/s/`, `/my/` rooms |
+| Google Meet | `meet.google.com/<code>` |
+| Microsoft Teams | `teams.microsoft.com`/`teams.microsoft.us`/`teams.live.com` meetup-join or `/meet` |
+| Webex, Jitsi, Whereby, Chime, GoTo, BlueJeans, Skype | any room path on their join hosts |
+| Yandex Telemost | `telemost.yandex.ru/j/<room>` (also `.com`, `360.yandex.ru`) |
+| Telegram | `t.me/+<hash>`, `t.me/joinchat/<hash>`, `t.me/addlist/<hash>`, `t.me/<username>[/id]` |
+| WhatsApp | `chat.whatsapp.com/<invite>`, `wa.me/<number>` |
+| Signal | `signal.link/#key=…` calls; `signal.group/#<hash>` or `/join/<hash>` groups; `signal.me/#p/…` people |
+| Discord | `discord.gg/<code>`, `discord.com/invite/<code>`, `discord.com/channels/…` |
+| Viber | `invite.viber.com/<id>`, `chat.viber.com/<id>` |
+| Messenger | `m.me/<username>` |
+| LINE | `line.me/R/<type>/…` share targets, `line.me/ti/g…/` group invites |
+| WeChat | `chat.weixin.qq.com/<id>` |
+| KakaoTalk | `open.kakao.com/o/<code>`, `pf.kakao.com/_xChat…` |
+
+  Every other host — and every known host whose path is *not* one of these shapes — is rejected
+  or falls back to `.generic`, never guessed into a named provider. The classic meeting hosts
+  match any subdomain (`acme.zoom.us`), because enterprises put their rooms there; the
+  conversation providers match their host exactly, so `evil.t.me` is not Telegram. This is
+  classification, not a security boundary: a look-alike host simply stays a `.generic` link
+  rather than being named after a brand it is not. The table is not exhaustive worldwide — it
+  is the set of providers whose documented invite shapes are pinned here, and a link outside it
+  is still openable as a `.generic` link.
+
+**A conversation link is not a meeting.** `Provider.isConversation(url:)` separates the two kinds
+of thing a calendar link can be: a call the user joins, and a chat the user opens. The distinction
+is per-URL — Signal alone mixes both, with `signal.link/#key=…` a call and `signal.me/#p/…` a chat.
+Every surface that names the action (`MeetingLink.actionTitle`) says **Open** for a conversation and
+**Join** for a call, the camera preview is skipped for a conversation (there is no camera to check),
+and `AutoJoinPolicy` filters conversation links out before the pick, so an
+event whose link is a group chat never drops the user into it on its own. A conversation link does
+not shadow a call starting beside it: the filter runs before the card's choice, not after.
+
 - **`MeetingEvent`** — one occurrence, flattened out of `EKEvent`.
 - **`UpcomingWindow`** — `agenda`, `carded`, `joinable`, `countdown` and a row's `rowPill`.
 - **`MeetingDay`** — the day a meeting falls on, titled `Today, Oct 2`, `Tomorrow, Oct 3`, then
@@ -82,15 +119,25 @@ rebuilding one per event costs more than the scan it replaces. A URL ends at whi
 and trailing punctuation is trimmed, so `(https://whereby.com/acme).` yields the URL alone.
 
 **A URL on a known host that fails that provider's path rule is rejected outright, not demoted to
-`.generic`** — `zoom.us/download` sits in half the invites people are sent, and `meet.google.com/tel/…`
-is a dial-in helper rather than a meeting.
+`.generic`** — `zoom.us/download` sits in half the invites people are sent, `t.me/faq` is the
+site's own page rather than a chat, and `meet.google.com/tel/…` is a dial-in helper rather than a
+meeting. **So is a link carrying userinfo or an explicit port**: no real invite has either, and
+both are classic look-alike tricks. A suffix-spoofed host (`t.me.example.com`) is not a known
+host at all, so it can only ever be a `.generic` link, never a named provider.
+
+The matching is strict on purpose: a provider is admitted only by an exact documented host and
+path shape from the table above, so a `wa.me/hello` or a bare `discord.gg` is rejected rather
+than guessed at. Queries and fragments always survive — `chat.whatsapp.com/<invite>?text=hi`
+and `signal.link/#key=…` keep what they carry.
 
 ### Opening it
 
 `MeetingLauncher.join` prefers the desktop app: `MeetingLink.appURL` rewrites a Zoom link to
 `zoommtg://zoom.us/join?confno=…` (carrying `pwd` when present) and a `teams.microsoft.com` link to
 `msteams:` plus its path and query. Nothing else is rewritten — the rest of the table has no
-unambiguous scheme, and guessing one would open the wrong thing. If no app claims the scheme, the
+unambiguous scheme, and guessing one would open the wrong thing. The conversation providers are
+no exception: none has a documented universal native conversion, so the `https` link as written
+is the way in and `appURL` stays nil for every one of them. If no app claims the scheme, the
 plain `https` link opens instead — in `meetingBrowserBundleID` when one is chosen under
 `Open Meeting Links In`, otherwise in the default browser. A chosen browser since uninstalled falls
 back to the default rather than failing the join, and the picker reads it as `Default Browser`.

@@ -36,6 +36,10 @@ for patch in .1tuz/patches/*.patch; do
     # Generated against the exact tree the queue produces; --3way would merge it against
     # upstream, where the Focus files and the router it extends do not exist yet.
     apply_args=(--whitespace=nowarn)
+  elif [ "$name" = "0023-legibility-and-messenger-links.patch" ]; then
+    # This patch is based on the completed fork queue, including its local palette and snippets.
+    # A context conflict must stop sync rather than silently discard a local fix.
+    apply_args=(--whitespace=nowarn)
   fi
   if ! git apply "${apply_args[@]}" "$patch"; then
     failed="$name"
